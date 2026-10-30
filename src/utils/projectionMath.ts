@@ -9,6 +9,38 @@ export const POINT_COLORS = [
   '#0891b2', // Cyan
   '#db2777', // Pink
   '#4f46e5', // Indigo
+  '#ea580c', // Orange
+  '#059669', // Emerald
+  '#0d9488', // Teal
+  '#7c3aed', // Violet
+  '#e11d48', // Rose
+  '#c026d3', // Fuchsia
+  '#3b82f6', // Sky Blue
+  '#334155', // Slate
+];
+
+export interface ColorSwatch {
+  hex: string;
+  name: string;
+}
+
+export const MARKER_COLOR_GRID: ColorSwatch[] = [
+  { hex: '#2563eb', name: 'Royal Blue' },
+  { hex: '#3b82f6', name: 'Sky Blue' },
+  { hex: '#0891b2', name: 'Cyan' },
+  { hex: '#0d9488', name: 'Teal' },
+  { hex: '#059669', name: 'Emerald' },
+  { hex: '#16a34a', name: 'Green' },
+  { hex: '#ca8a04', name: 'Gold' },
+  { hex: '#d97706', name: 'Amber' },
+  { hex: '#ea580c', name: 'Orange' },
+  { hex: '#dc2626', name: 'Crimson Red' },
+  { hex: '#e11d48', name: 'Rose' },
+  { hex: '#db2777', name: 'Pink' },
+  { hex: '#c026d3', name: 'Fuchsia' },
+  { hex: '#9333ea', name: 'Purple' },
+  { hex: '#4f46e5', name: 'Indigo' },
+  { hex: '#334155', name: 'Slate' },
 ];
 
 /**

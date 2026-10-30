@@ -1,7 +1,27 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+// Procedural Rectangular Drafting Grid Geometry
+function createRectGridGeometry(width: number, height: number, step: number = 20) {
+  const pts: THREE.Vector3[] = [];
+  const halfW = width / 2;
+  const halfH = height / 2;
+
+  // Lines stepped along X (parallel to height)
+  for (let x = -halfW; x <= halfW + 0.1; x += step) {
+    pts.push(new THREE.Vector3(x, -halfH, 0));
+    pts.push(new THREE.Vector3(x, halfH, 0));
+  }
+  // Lines stepped along Y (parallel to width)
+  for (let y = -halfH; y <= halfH + 0.1; y += step) {
+    pts.push(new THREE.Vector3(-halfW, y, 0));
+    pts.push(new THREE.Vector3(halfW, y, 0));
+  }
+
+  return new THREE.BufferGeometry().setFromPoints(pts);
+}
 import { ComputedPoint } from '../types/projection';
 import {
   RotateCcw,
@@ -275,6 +295,52 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
     }
   }, [isDark]);
 
+  // Dynamic plane bounds so points never leave HP and VP, without making them look infinitely long
+  const planeBounds = useMemo(() => {
+    let minX = 0;
+    let maxX = 0;
+    let maxElevation = 35;
+    let maxDepression = 35;
+    let maxFront = 35;
+    let maxBehind = 35;
+
+    points.forEach((pt) => {
+      minX = Math.min(minX, pt.x);
+      maxX = Math.max(maxX, pt.x);
+      // Three.js Y is height relative to HP (pt.z: +above, -below)
+      if (pt.z > 0) maxElevation = Math.max(maxElevation, pt.z);
+      if (pt.z < 0) maxDepression = Math.max(maxDepression, Math.abs(pt.z));
+      // Three.js Z is depth relative to VP (pt.y: +in front, -behind)
+      if (pt.y > 0) maxFront = Math.max(maxFront, pt.y);
+      if (pt.y < 0) maxBehind = Math.max(maxBehind, Math.abs(pt.y));
+    });
+
+    const padX = 40;
+    const startX = minX - padX;
+    const endX = maxX + padX;
+    const widthX = Math.max(endX - startX, 160);
+    const centerX = (startX + endX) / 2;
+
+    const maxVert = Math.max(maxElevation, maxDepression, 55) + 30;
+    const heightY = maxVert * 2; // Symmetric above and below HP
+
+    const maxDepth = Math.max(maxFront, maxBehind, 55) + 30;
+    const depthZ = maxDepth * 2; // Symmetric in front and behind VP
+
+    return {
+      minX,
+      maxX,
+      startX,
+      endX,
+      widthX,
+      centerX,
+      maxVert,
+      heightY,
+      maxDepth,
+      depthZ,
+    };
+  }, [points]);
+
   // Construct Reference Planes (HP and VP) and Reference Line (XY)
   useEffect(() => {
     const hpGroup = hpGroupRef.current;
@@ -292,8 +358,16 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
       vpGroup.remove(obj);
     }
 
-    const planeSize = 160;
-    const halfSize = planeSize / 2;
+    const {
+      startX,
+      endX,
+      widthX,
+      centerX,
+      maxVert,
+      heightY,
+      maxDepth,
+      depthZ,
+    } = planeBounds;
 
     const hpThreeColor = new THREE.Color(hpColor);
     const vpThreeColor = new THREE.Color(vpColor);
@@ -302,7 +376,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
     // Lies in X-Z plane (Y = 0)
     // In Front of VP, Behind VP
     if (showHp) {
-      const hpGeo = new THREE.PlaneGeometry(planeSize, planeSize, 8, 8);
+      const hpGeo = new THREE.PlaneGeometry(widthX, depthZ, 8, 8);
       const hpMat = new THREE.MeshPhysicalMaterial({
         color: hpThreeColor,
         roughness: 0.3,
@@ -314,6 +388,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
       });
       const hpMesh = new THREE.Mesh(hpGeo, hpMat);
       hpMesh.rotation.x = Math.PI / 2; // Flat horizontal plane
+      hpMesh.position.set(centerX, 0, 0);
       hpMesh.receiveShadow = !isSoftwareGlRef.current;
       hpGroup.add(hpMesh);
 
@@ -327,11 +402,21 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
         })
       );
       hpLine.rotation.x = Math.PI / 2;
+      hpLine.position.set(centerX, 0, 0);
       hpGroup.add(hpLine);
 
-      // HP Sub-grid lines
-      const hpGrid = new THREE.GridHelper(planeSize, 16, hpThreeColor, isDark ? 0x1e293b : 0xe2e8f0);
-      hpGrid.position.y = 0.05;
+      // HP Sub-grid lines (clean rectangular drafting grid)
+      const hpGridGeo = createRectGridGeometry(widthX, depthZ, 20);
+      const hpGrid = new THREE.LineSegments(
+        hpGridGeo,
+        new THREE.LineBasicMaterial({
+          color: isDark ? 0x1e293b : 0xe2e8f0,
+          transparent: true,
+          opacity: 0.75,
+        })
+      );
+      hpGrid.rotation.x = Math.PI / 2;
+      hpGrid.position.set(centerX, 0.05, 0);
       hpGroup.add(hpGrid);
 
       // Labels on HP
@@ -343,7 +428,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
           backgroundColor: isDark ? 'rgba(15, 23, 42, 0.85)' : 'rgba(255, 255, 255, 0.9)',
           borderColor: hpColor,
         });
-        hpLabel.position.set(-halfSize + 28, 1, halfSize - 16);
+        hpLabel.position.set(startX + 30, 1, maxDepth - 16);
         hpGroup.add(hpLabel);
 
         // Direction indicators on HP
@@ -353,7 +438,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
           backgroundColor: isDark ? 'rgba(15, 23, 42, 0.6)' : 'rgba(255, 255, 255, 0.85)',
           borderColor: hpColor,
         });
-        inFrontLabel.position.set(0, 0.5, halfSize - 12);
+        inFrontLabel.position.set(centerX, 0.5, maxDepth - 12);
         hpGroup.add(inFrontLabel);
 
         const behindLabel = createTextSprite('▲ BEHIND VP', {
@@ -362,7 +447,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
           backgroundColor: isDark ? 'rgba(15, 23, 42, 0.6)' : 'rgba(255, 255, 255, 0.85)',
           borderColor: hpColor,
         });
-        behindLabel.position.set(0, 0.5, -halfSize + 12);
+        behindLabel.position.set(centerX, 0.5, -maxDepth + 12);
         hpGroup.add(behindLabel);
       }
     }
@@ -371,7 +456,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
     // Lies in X-Y plane (Z = 0)
     // Above HP, Below HP
     if (showVp) {
-      const vpGeo = new THREE.PlaneGeometry(planeSize, planeSize, 8, 8);
+      const vpGeo = new THREE.PlaneGeometry(widthX, heightY, 8, 8);
       const vpMat = new THREE.MeshPhysicalMaterial({
         color: vpThreeColor,
         roughness: 0.3,
@@ -382,6 +467,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
         depthWrite: false,
       });
       const vpMesh = new THREE.Mesh(vpGeo, vpMat);
+      vpMesh.position.set(centerX, 0, 0);
       vpMesh.receiveShadow = !isSoftwareGlRef.current;
       vpGroup.add(vpMesh);
 
@@ -394,12 +480,20 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
           linewidth: 2,
         })
       );
+      vpLine.position.set(centerX, 0, 0);
       vpGroup.add(vpLine);
 
       // VP Grid
-      const vpGrid = new THREE.GridHelper(planeSize, 16, vpThreeColor, isDark ? 0x1e293b : 0xe2e8f0);
-      vpGrid.rotation.x = Math.PI / 2;
-      vpGrid.position.z = -0.05;
+      const vpGridGeo = createRectGridGeometry(widthX, heightY, 20);
+      const vpGrid = new THREE.LineSegments(
+        vpGridGeo,
+        new THREE.LineBasicMaterial({
+          color: isDark ? 0x1e293b : 0xe2e8f0,
+          transparent: true,
+          opacity: 0.75,
+        })
+      );
+      vpGrid.position.set(centerX, 0, -0.05);
       vpGroup.add(vpGrid);
 
       // Labels on VP
@@ -410,7 +504,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
           backgroundColor: isDark ? 'rgba(15, 23, 42, 0.85)' : 'rgba(255, 255, 255, 0.9)',
           borderColor: vpColor,
         });
-        vpLabel.position.set(-halfSize + 28, halfSize - 16, 0.5);
+        vpLabel.position.set(startX + 30, maxVert - 16, 0.5);
         vpGroup.add(vpLabel);
 
         const aboveLabel = createTextSprite('▲ ABOVE HP', {
@@ -419,7 +513,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
           backgroundColor: isDark ? 'rgba(15, 23, 42, 0.6)' : 'rgba(255, 255, 255, 0.85)',
           borderColor: vpColor,
         });
-        aboveLabel.position.set(0, halfSize - 12, 0.5);
+        aboveLabel.position.set(centerX, maxVert - 12, 0.5);
         vpGroup.add(aboveLabel);
 
         const belowLabel = createTextSprite('▼ BELOW HP', {
@@ -428,16 +522,17 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
           backgroundColor: isDark ? 'rgba(15, 23, 42, 0.6)' : 'rgba(255, 255, 255, 0.85)',
           borderColor: vpColor,
         });
-        belowLabel.position.set(0, -halfSize + 12, 0.5);
+        belowLabel.position.set(centerX, -maxVert + 12, 0.5);
         vpGroup.add(belowLabel);
       }
     }
 
     // 3. INTERSECTION LINE (REFERENCE LINE X - Y)
     // Thin but distinctively visible XY line
+    const extX = 20;
     const groundLineGeo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(-halfSize - 15, 0, 0),
-      new THREE.Vector3(halfSize + 15, 0, 0),
+      new THREE.Vector3(startX - extX, 0, 0),
+      new THREE.Vector3(endX + extX, 0, 0),
     ]);
     const groundLineMat = new THREE.LineBasicMaterial({
       color: isDark ? 0xf8fafc : 0x0f172a,
@@ -447,7 +542,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
     vpGroup.add(groundLine);
 
     // Thin but distinctively visible rod representing XY line
-    const rodGeo = new THREE.CylinderGeometry(0.18, 0.18, planeSize + 30, 16);
+    const rodGeo = new THREE.CylinderGeometry(0.18, 0.18, widthX + extX * 2, 16);
     const rodMat = new THREE.MeshStandardMaterial({
       color: isDark ? 0xf1f5f9 : 0x0f172a,
       roughness: 0.2,
@@ -455,6 +550,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
     });
     const rod = new THREE.Mesh(rodGeo, rodMat);
     rod.rotation.z = Math.PI / 2;
+    rod.position.set(centerX, 0, 0);
     vpGroup.add(rod);
 
     // End-point labels X and Y
@@ -465,7 +561,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
         backgroundColor: '#f1f5f9',
         borderColor: '#475569',
       });
-      xLabel.position.set(-halfSize - 20, 0, 0);
+      xLabel.position.set(startX - extX - 10, 0, 0);
       vpGroup.add(xLabel);
 
       const yLabel = createTextSprite('Y', {
@@ -474,7 +570,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
         backgroundColor: '#f1f5f9',
         borderColor: '#475569',
       });
-      yLabel.position.set(halfSize + 20, 0, 0);
+      yLabel.position.set(endX + extX + 10, 0, 0);
       vpGroup.add(yLabel);
     }
 
@@ -484,14 +580,16 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
         ? ['#60a5fa', '#f87171', '#34d399', '#c084fc']
         : ['#1d4ed8', '#b91c1c', '#047857', '#7e22ce'];
 
-      const quadOffset = 45;
+      const quadOffsetVert = Math.min(maxVert * 0.5, 45);
+      const quadOffsetDepth = Math.min(maxDepth * 0.5, 45);
+
       // 1st Quadrant: +Y (up), +Z (front)
       const q1 = createTextSprite('1st Quadrant', {
         fontsize: 18,
         textColor: quadColors[0],
         backgroundColor: isDark ? 'rgba(15,23,42,0.7)' : 'rgba(255,255,255,0.75)',
       });
-      q1.position.set(-halfSize + 20, quadOffset, quadOffset);
+      q1.position.set(startX + 25, quadOffsetVert, quadOffsetDepth);
       vpGroup.add(q1);
 
       // 2nd Quadrant: +Y (up), -Z (behind)
@@ -500,7 +598,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
         textColor: quadColors[1],
         backgroundColor: isDark ? 'rgba(15,23,42,0.7)' : 'rgba(255,255,255,0.75)',
       });
-      q2.position.set(-halfSize + 20, quadOffset, -quadOffset);
+      q2.position.set(startX + 25, quadOffsetVert, -quadOffsetDepth);
       vpGroup.add(q2);
 
       // 3rd Quadrant: -Y (below), -Z (behind)
@@ -509,7 +607,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
         textColor: quadColors[2],
         backgroundColor: isDark ? 'rgba(15,23,42,0.7)' : 'rgba(255,255,255,0.75)',
       });
-      q3.position.set(-halfSize + 20, -quadOffset, -quadOffset);
+      q3.position.set(startX + 25, -quadOffsetVert, -quadOffsetDepth);
       vpGroup.add(q3);
 
       // 4th Quadrant: -Y (below), +Z (front)
@@ -518,10 +616,15 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
         textColor: quadColors[3],
         backgroundColor: isDark ? 'rgba(15,23,42,0.7)' : 'rgba(255,255,255,0.75)',
       });
-      q4.position.set(-halfSize + 20, -quadOffset, quadOffset);
+      q4.position.set(startX + 25, -quadOffsetVert, quadOffsetDepth);
       vpGroup.add(q4);
     }
-  }, [showHp, showVp, showAxes, showLabels, showQuadrants, isDark, hpColor, vpColor]);
+
+    // Auto-update orbit controls target to center of active planes
+    if (controlsRef.current) {
+      controlsRef.current.target.set(centerX, 0, 0);
+    }
+  }, [planeBounds, showHp, showVp, showAxes, showLabels, showQuadrants, isDark, hpColor, vpColor]);
 
   // Handle HP 90° Clockwise Unfolding
   useEffect(() => {
@@ -826,24 +929,27 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
     const camera = cameraRef.current;
     if (!controls || !camera) return;
 
-    controls.target.set(0, 0, 0);
+    const { centerX, widthX, maxVert, maxDepth } = planeBounds;
+    controls.target.set(centerX, 0, 0);
+
+    const dist = Math.max(widthX * 0.9, maxVert * 1.8, maxDepth * 1.8, 160);
 
     switch (view) {
       case 'iso':
-        camera.position.set(130, 95, 160);
+        camera.position.set(centerX + dist * 0.75, dist * 0.55, dist * 0.9);
         break;
       case 'front': // Elevation: Look directly along -Z at the VP (showing X and Height Z)
-        camera.position.set(0, 0, 260);
+        camera.position.set(centerX, 0, dist * 1.4);
         break;
       case 'top': // Plan: Look directly from top along -Y at the HP (showing X and Depth Y)
-        camera.position.set(0, 260, 0.001); // tiny epsilon to avoid gimbal lock
+        camera.position.set(centerX, dist * 1.4, 0.001); // tiny epsilon to avoid gimbal lock
         break;
-      case 'side': // Profile View: Look along X axis
-        camera.position.set(260, 0, 0);
+      case 'side': // Side View: Look along X axis
+        camera.position.set(centerX + dist * 1.4, 0, 0);
         break;
     }
     controls.update();
-  }, []);
+  }, [planeBounds]);
 
   // Animate Unfolding HP
   const handleToggleUnfold = () => {
@@ -952,9 +1058,9 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
           onClick={() => setCameraView('side')}
           style={{ fontFamily: "'Bebas Neue', sans-serif" }}
           className="px-2.5 py-1 text-sm sm:text-base tracking-wider rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 transition"
-          title="Profile / Side View"
+          title="Side View"
         >
-          profile
+          side view
         </button>
         <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
         <button

@@ -44,15 +44,17 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
   const originY = viewHeight / 2;
 
   // Drawing scale: 1 mm = S pixels
-  // Determine scale factor so all points fit comfortably
-  const scale = useMemo(() => {
-    if (points.length === 0) return 2.5;
+  // Determine scale factor and horizontal center so all points fit comfortably
+  const { scale, midX } = useMemo(() => {
+    if (points.length === 0) return { scale: 2.5, midX: 0 };
 
-    let maxX = 40;
-    let maxY = 40;
+    let minX = 0;
+    let maxX = 0;
+    let maxY = 35;
 
     points.forEach((p) => {
-      maxX = Math.max(maxX, Math.abs(p.x) + 30);
+      minX = Math.min(minX, p.x);
+      maxX = Math.max(maxX, p.x);
       maxY = Math.max(
         maxY,
         Math.abs(p.frontViewY) + 35,
@@ -60,9 +62,13 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
       );
     });
 
-    const scaleX = (viewWidth / 2 - 80) / maxX;
-    const scaleY = (viewHeight / 2 - 60) / maxY;
-    return Math.min(Math.max(Math.min(scaleX, scaleY), 1.2), 3.5);
+    const midX = (minX + maxX) / 2;
+    const spanX = Math.max(maxX - minX + 60, 80);
+
+    const scaleX = (viewWidth - 160) / spanX;
+    const scaleY = (viewHeight / 2 - 65) / maxY;
+    const s = Math.min(Math.max(Math.min(scaleX, scaleY), 0.8), 3.2);
+    return { scale: s, midX };
   }, [points]);
 
   // Coordinate conversion:
@@ -70,7 +76,7 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
   // SVG Y goes downward, so:
   // Above XY (+y_mm): originY - y_mm * scale
   // Below XY (-y_mm): originY + |y_mm| * scale
-  const toSvgX = (xMm: number) => originX + xMm * scale + pan.x;
+  const toSvgX = (xMm: number) => originX + (xMm - midX) * scale + pan.x;
   const toSvgY = (yMm: number) => originY - yMm * scale + pan.y;
 
   // Pan handlers
@@ -176,7 +182,7 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
             2D Orthographic Sheet
           </span>
           <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
-            (Front View &amp; Top View • Scale {scale.toFixed(1)}:1)
+            (Elevation [a′] on VP &amp; Plan [a] on HP • Scale {scale.toFixed(1)}:1)
           </span>
         </div>
 
@@ -426,12 +432,23 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
             const svgTvY = toSvgY(pt.topViewY);
             const svgGroundY = originY + pan.y;
 
-            // Offset for dimension line (lateral spacing to prevent overlap)
-            const dimOffset = 18 + idx * 8;
-            const dimX = svgX + dimOffset;
-
             // Check if Front View and Top View coincide
             const viewsCoincide = Math.abs(svgFvY - svgTvY) < 1.5;
+
+            // Dimensions placed immediately adjacent to the points (clean, compact engineering offset)
+            const isSameSide = (pt.frontViewY > 0 && pt.topViewY > 0) || (pt.frontViewY < 0 && pt.topViewY < 0);
+            let dimFvX = svgX + 9;
+            let dimTvX = svgX + 9;
+
+            if (isSameSide && !viewsCoincide) {
+              if (pt.distHp <= pt.distVp) {
+                dimFvX = svgX + 8;
+                dimTvX = svgX + 18;
+              } else {
+                dimTvX = svgX + 8;
+                dimFvX = svgX + 18;
+              }
+            }
 
             return (
               <g
@@ -499,16 +516,6 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
                       ? `${pt.frontViewLabel} (${pt.topViewLabel})`
                       : pt.frontViewLabel}
                   </text>
-                  <text
-                    x={svgX - 8}
-                    y={svgFvY + (pt.frontViewY >= 0 ? -18 : 25)}
-                    fill={colors.textMuted}
-                    fontSize="8.5"
-                    fontFamily="sans-serif"
-                    textAnchor="end"
-                  >
-                    (Elevation)
-                  </text>
                 </g>
 
                 {/* 3. TOP VIEW POINT (a or A) if not coinciding */}
@@ -550,60 +557,53 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
                     >
                       {pt.topViewLabel}
                     </text>
-                    <text
-                      x={svgX - 8}
-                      y={svgTvY + (pt.topViewY >= 0 ? -18 : 25)}
-                      fill={colors.textMuted}
-                      fontSize="8.5"
-                      fontFamily="sans-serif"
-                      textAnchor="end"
-                    >
-                      (Plan)
-                    </text>
                   </g>
                 )}
 
-                {/* 4. DIMENSION ANNOTATIONS */}
+                {/* 4. DIMENSION ANNOTATIONS - Placed immediately next to the points */}
                 {/* Distance for Front View (Height relative to HP) */}
                 {pt.distHp > 0 && (
                   <g>
                     {/* Extension lines */}
                     <line
-                      x1={svgX + 4}
+                      x1={svgX + 2}
                       y1={svgFvY}
-                      x2={dimX + 8}
+                      x2={dimFvX + 4}
                       y2={svgFvY}
                       stroke={colors.projector}
-                      strokeWidth="0.8"
+                      strokeWidth="0.75"
                     />
                     <line
-                      x1={svgX + 4}
+                      x1={svgX + 2}
                       y1={svgGroundY}
-                      x2={dimX + 8}
+                      x2={dimFvX + 4}
                       y2={svgGroundY}
                       stroke={colors.projector}
-                      strokeWidth="0.8"
+                      strokeWidth="0.75"
                     />
                     {/* Dimension Line with Double Arrows */}
                     <line
-                      x1={dimX}
+                      x1={dimFvX}
                       y1={svgGroundY}
-                      x2={dimX}
+                      x2={dimFvX}
                       y2={svgFvY}
                       stroke={colors.dimension}
-                      strokeWidth="1.2"
+                      strokeWidth="1.1"
                       markerStart="url(#dim-arrow-start)"
                       markerEnd="url(#dim-arrow-end)"
                     />
                     {/* Measurement Text */}
                     <text
-                      x={dimX + 4}
-                      y={(svgGroundY + svgFvY) / 2 + 4}
+                      x={dimFvX + 3}
+                      y={(svgGroundY + svgFvY) / 2 + 3.5}
                       fill={colors.dimensionText}
-                      fontSize="10"
+                      fontSize="9"
                       fontFamily="monospace"
                       fontWeight="bold"
                       textAnchor="start"
+                      stroke={isDark ? '#090d16' : '#ffffff'}
+                      strokeWidth="2.5"
+                      paintOrder="stroke"
                     >
                       {pt.distHp}
                     </text>
@@ -615,33 +615,44 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
                   <g>
                     {/* Extension lines */}
                     <line
-                      x1={svgX + 4}
+                      x1={svgX + 2}
                       y1={svgTvY}
-                      x2={dimX + 8}
+                      x2={dimTvX + 4}
                       y2={svgTvY}
                       stroke={colors.projector}
-                      strokeWidth="0.8"
+                      strokeWidth="0.75"
+                    />
+                    <line
+                      x1={svgX + 2}
+                      y1={svgGroundY}
+                      x2={dimTvX + 4}
+                      y2={svgGroundY}
+                      stroke={colors.projector}
+                      strokeWidth="0.75"
                     />
                     {/* Dimension Line */}
                     <line
-                      x1={dimX}
+                      x1={dimTvX}
                       y1={svgGroundY}
-                      x2={dimX}
+                      x2={dimTvX}
                       y2={svgTvY}
                       stroke={colors.dimension}
-                      strokeWidth="1.2"
+                      strokeWidth="1.1"
                       markerStart="url(#dim-arrow-start)"
                       markerEnd="url(#dim-arrow-end)"
                     />
                     {/* Measurement Text */}
                     <text
-                      x={dimX + 4}
-                      y={(svgGroundY + svgTvY) / 2 + 4}
+                      x={dimTvX + 3}
+                      y={(svgGroundY + svgTvY) / 2 + 3.5}
                       fill={colors.dimensionText}
-                      fontSize="10"
+                      fontSize="9"
                       fontFamily="monospace"
                       fontWeight="bold"
                       textAnchor="start"
+                      stroke={isDark ? '#090d16' : '#ffffff'}
+                      strokeWidth="2.5"
+                      paintOrder="stroke"
                     >
                       {pt.distVp}
                     </text>
@@ -651,28 +662,28 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
             );
           })}
 
-          {/* Standard Engineering Drawing Title Block (Bottom-Right) */}
-          <g transform={`translate(${viewWidth - 250}, ${viewHeight - 75})`}>
+          {/* Standard Engineering Drawing Title Block & Scale (Bottom-Right) */}
+          <g transform={`translate(${viewWidth - 265}, ${viewHeight - 78})`}>
             <rect
-              width="235"
-              height="60"
+              width="250"
+              height="63"
               fill={isDark ? '#0f172a' : '#f8fafc'}
               stroke={colors.titleBlockBorder}
               strokeWidth="1.2"
             />
             <line
               x1="0"
-              y1="22"
-              x2="235"
-              y2="22"
+              y1="20"
+              x2="250"
+              y2="20"
               stroke={colors.titleBlockBorder}
               strokeWidth="0.8"
             />
             <text
               x="8"
-              y="15"
+              y="14"
               fill={colors.textMain}
-              fontSize="10"
+              fontSize="9.5"
               fontFamily="sans-serif"
               fontWeight="bold"
             >
@@ -680,34 +691,49 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
             </text>
             <text
               x="8"
-              y="37"
-              fill={colors.textMuted}
+              y="33"
+              fill={colors.textMain}
               fontSize="8.5"
               fontFamily="monospace"
+              fontWeight="bold"
             >
-              SCALE: 1:1 (All Dim. in mm)
+              SCALE: 1:1 • ALL DIMENSIONS IN MM
             </text>
             <text
               x="8"
-              y="50"
-              fill={colors.textMuted}
+              y="46"
+              fill={vpColor}
               fontSize="8.5"
               fontFamily="monospace"
+              fontWeight="bold"
             >
-              PROJECTION: ORTHOGRAPHIC
+              ELEVATION: Front View a′ (on VP)
+            </text>
+            <text
+              x="8"
+              y="57"
+              fill={hpColor}
+              fontSize="8.5"
+              fontFamily="monospace"
+              fontWeight="bold"
+            >
+              PLAN: Top View a (on HP)
             </text>
           </g>
         </svg>
 
-        {/* Legend Overlay at Bottom-Left */}
-        <div className="absolute bottom-4 left-4 flex flex-col gap-1 p-2 rounded bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 text-[10px] font-mono shadow-sm pointer-events-none">
+        {/* Scale & Views Specification Overlay at Bottom-Left */}
+        <div className="absolute bottom-4 left-4 flex flex-col gap-1 p-2 rounded bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-800 text-[10px] font-mono shadow-sm pointer-events-none">
+          <div className="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-300 pb-0.5 border-b border-slate-200 dark:border-slate-800">
+            <span>SCALE {scale.toFixed(1)}:1 (1 mm = {scale.toFixed(1)} px)</span>
+          </div>
           <div className="flex items-center gap-1.5 font-semibold" style={{ color: vpColor }}>
-            <span className="w-2.5 h-2.5 rounded-full shadow-xs" style={{ backgroundColor: vpColor }} />
-            <span>Front View a′ (Elevation on VP)</span>
+            <span className="w-2.5 h-2.5 rounded-full shadow-xs flex-shrink-0" style={{ backgroundColor: vpColor }} />
+            <span>Elevation (Front View): a′</span>
           </div>
           <div className="flex items-center gap-1.5 font-semibold" style={{ color: hpColor }}>
-            <span className="w-2.5 h-2.5 rounded-full shadow-xs" style={{ backgroundColor: hpColor }} />
-            <span>Top View a (Plan on HP)</span>
+            <span className="w-2.5 h-2.5 rounded-full shadow-xs flex-shrink-0" style={{ backgroundColor: hpColor }} />
+            <span>Plan (Top View): a</span>
           </div>
         </div>
       </div>

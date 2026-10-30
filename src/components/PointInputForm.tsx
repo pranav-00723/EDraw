@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PointInput, HpRelation, VpRelation, PresetProblem } from '../types/projection';
-import { POINT_COLORS, SAMPLE_PROBLEMS } from '../utils/projectionMath';
+import { POINT_COLORS, MARKER_COLOR_GRID, SAMPLE_PROBLEMS } from '../utils/projectionMath';
 import {
   Plus,
   Trash2,
@@ -233,53 +233,89 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
           )}
         </div>
 
-        {/* 1. Point Identifier & Color */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Point Name <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              maxLength={4}
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                setNameError(null);
-              }}
-              placeholder="e.g. A, B, P"
-              className={`w-full px-3 py-1.5 text-xs font-mono rounded-lg border bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 uppercase ${
-                nameError
-                  ? 'border-red-500 focus:ring-red-400'
-                  : 'border-slate-300 dark:border-slate-700 focus:ring-blue-500'
-              }`}
-            />
-            {nameError && (
-              <p className="text-[10px] text-red-500 mt-1 flex items-center gap-1">
-                <AlertCircle className="w-3 h-3" />
-                <span>{nameError}</span>
-              </p>
-            )}
+        {/* 1. Point Identifier & Marker Colour Grid */}
+        <div className="space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex-1 max-w-xs">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Point Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                maxLength={4}
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setNameError(null);
+                }}
+                placeholder="e.g. A, B, P"
+                className={`w-full px-3 py-1.5 text-xs font-mono rounded-lg border bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 uppercase ${
+                  nameError
+                    ? 'border-red-500 focus:ring-red-400'
+                    : 'border-slate-300 dark:border-slate-700 focus:ring-blue-500'
+                }`}
+              />
+              {nameError && (
+                <p className="text-[10px] text-red-500 mt-1 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  <span>{nameError}</span>
+                </p>
+              )}
+            </div>
+
+            {/* Current Active Marker Preview & Custom Hex Selector */}
+            <div className="flex items-center gap-2 pt-1 sm:pt-4">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs">
+                <span className="w-3.5 h-3.5 rounded-full shadow-xs flex-shrink-0" style={{ backgroundColor: color }} />
+                <span className="font-mono font-medium text-slate-700 dark:text-slate-300">{color.toUpperCase()}</span>
+              </div>
+              <label
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-xs transition"
+                title="Choose custom marker color"
+              >
+                <span>Custom</span>
+                <input
+                  type="color"
+                  value={color}
+                  onChange={(e) => setColor(e.target.value)}
+                  className="w-4 h-4 rounded cursor-pointer border-0 p-0 ml-0.5"
+                />
+              </label>
+            </div>
           </div>
 
+          {/* Marker Colour Grid */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Marker Color
-            </label>
-            <div className="flex items-center gap-1.5 pt-1">
-              {POINT_COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setColor(c)}
-                  className={`w-6 h-6 rounded-full transition transform hover:scale-110 flex items-center justify-center ${
-                    color === c ? 'ring-2 ring-offset-2 ring-slate-800 dark:ring-slate-200' : ''
-                  }`}
-                  style={{ backgroundColor: c }}
-                >
-                  {color === c && <Check className="w-3.5 h-3.5 text-white" />}
-                </button>
-              ))}
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Marker Colour Grid
+              </label>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                16 Curated Drafting Colors
+              </span>
+            </div>
+            <div className="grid grid-cols-8 gap-1.5 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
+              {MARKER_COLOR_GRID.map((swatch) => {
+                const isSelected = color.toLowerCase() === swatch.hex.toLowerCase();
+                return (
+                  <button
+                    key={swatch.hex}
+                    type="button"
+                    onClick={() => setColor(swatch.hex)}
+                    title={`${swatch.name} (${swatch.hex})`}
+                    className={`h-7 rounded-md transition transform hover:scale-105 flex items-center justify-center relative shadow-xs ${
+                      isSelected
+                        ? 'ring-2 ring-offset-2 ring-blue-600 dark:ring-blue-400 z-10 scale-105 shadow-md'
+                        : 'hover:opacity-90'
+                    }`}
+                    style={{ backgroundColor: swatch.hex }}
+                  >
+                    {isSelected && (
+                      <Check className="w-3.5 h-3.5 text-white drop-shadow stroke-[3]" />
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>

@@ -17,6 +17,7 @@ import {
   Maximize2,
   Layers,
   Ruler,
+  RotateCcw,
 } from 'lucide-react';
 
 interface PictorialDraftingStagesProps {
@@ -39,10 +40,52 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const playTimerRef = useRef<number | null>(null);
 
+  // Compass drawing animation progress (0 to 1) for Stage 3 rotating arcs
+  const [arcProgress, setArcProgress] = useState<number>(1);
+  const [isAnimatingCompass, setIsAnimatingCompass] = useState<boolean>(false);
+  const animFrameRef = useRef<number | null>(null);
+
+  const startCompassAnimation = () => {
+    setIsAnimatingCompass(true);
+    setArcProgress(0);
+    const startTime = performance.now();
+    const duration = 2800; // 2.8s for smooth compass sweep of elevation and plan arcs
+
+    const animate = (now: number) => {
+      const elapsed = now - startTime;
+      const p = Math.min(1, elapsed / duration);
+      setArcProgress(p);
+      if (p < 1) {
+        animFrameRef.current = requestAnimationFrame(animate);
+      } else {
+        setIsAnimatingCompass(false);
+      }
+    };
+
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    animFrameRef.current = requestAnimationFrame(animate);
+  };
+
+  // Trigger compass animation when entering Stage 3
+  useEffect(() => {
+    if (activeStage === 3 && !isAllStagesView) {
+      startCompassAnimation();
+    } else {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      setArcProgress(1);
+      setIsAnimatingCompass(false);
+    }
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    };
+  }, [activeStage, isAllStagesView]);
+
   // Auto-play sequence through stages 1 -> 2 -> 3 -> 4
+  // Allows extra time on Stage 3 for the compass animation to finish!
   useEffect(() => {
     if (isPlaying) {
-      playTimerRef.current = window.setInterval(() => {
+      const delay = activeStage === 3 ? 3600 : 2500;
+      playTimerRef.current = window.setTimeout(() => {
         setActiveStage((prev) => {
           if (prev >= 4) {
             setIsPlaying(false);
@@ -50,17 +93,17 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
           }
           return (prev + 1) as DraftingStageNumber;
         });
-      }, 2600);
+      }, delay);
     } else {
       if (playTimerRef.current) {
-        clearInterval(playTimerRef.current);
+        clearTimeout(playTimerRef.current);
         playTimerRef.current = null;
       }
     }
     return () => {
-      if (playTimerRef.current) clearInterval(playTimerRef.current);
+      if (playTimerRef.current) clearTimeout(playTimerRef.current);
     };
-  }, [isPlaying]);
+  }, [isPlaying, activeStage]);
 
   const handleTogglePlay = () => {
     if (isPlaying) {
@@ -247,6 +290,13 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
           <marker id="arrow-amber" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
             <path d="M 0 1 L 7 4 L 0 7 z" fill="#f59e0b" />
           </marker>
+          {/* Cutting Arc Direction Arrow Markers */}
+          <marker id="arrow-arc-purple" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#c084fc" />
+          </marker>
+          <marker id="arrow-arc-emerald" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#34d399" />
+          </marker>
         </defs>
 
         {/* Blueprint Grid Background */}
@@ -416,49 +466,57 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
         {/* ============================================================== */}
         {stageNum >= 2 && (
           <g>
-            {/* Locus Line of b' (Horizontal at ptBFront.y) */}
+            {/* Locus Line of b' (Horizontal at ptBFront.y) - Noticeable visibility */}
             <line
               x1={locusStartX}
               y1={ptBFront.y}
               x2={locusEndX}
               y2={ptBFront.y}
               stroke="#f59e0b"
-              strokeWidth="1.4"
-              strokeDasharray="6,4"
-              opacity={stageNum === 2 ? 1 : 0.65}
+              strokeWidth="1.6"
+              strokeDasharray="8,4"
+              opacity={stageNum === 2 ? 0.95 : 0.78}
             />
-            <text
-              x={locusEndX + 6}
-              y={ptBFront.y + 4}
-              fill="#fbbf24"
-              fontSize={isCompact ? '10' : '11'}
-              fontWeight="600"
-              fontFamily="monospace"
-            >
-              Locus of {line.nameB.toLowerCase()}′
-            </text>
+            {/* Locus b' label badge */}
+            <g transform={`translate(${locusEndX + 6}, ${ptBFront.y - 8})`}>
+              <rect x="0" y="0" width={isCompact ? 68 : 88} height="16" rx="3" fill="#451a03" stroke="#b45309" strokeWidth="0.8" opacity="0.9" />
+              <text
+                x="4"
+                y="11"
+                fill="#fde68a"
+                fontSize={isCompact ? '9' : '10'}
+                fontWeight="600"
+                fontFamily="monospace"
+              >
+                Locus of {line.nameB.toLowerCase()}′
+              </text>
+            </g>
 
-            {/* Locus Line of b (Horizontal at ptBTop.y) */}
+            {/* Locus Line of b (Horizontal at ptBTop.y) - Noticeable visibility */}
             <line
               x1={locusStartX}
               y1={ptBTop.y}
               x2={locusEndX}
               y2={ptBTop.y}
               stroke="#06b6d4"
-              strokeWidth="1.4"
-              strokeDasharray="6,4"
-              opacity={stageNum === 2 ? 1 : 0.65}
+              strokeWidth="1.6"
+              strokeDasharray="8,4"
+              opacity={stageNum === 2 ? 0.95 : 0.78}
             />
-            <text
-              x={locusEndX + 6}
-              y={ptBTop.y + 4}
-              fill="#22d3ee"
-              fontSize={isCompact ? '10' : '11'}
-              fontWeight="600"
-              fontFamily="monospace"
-            >
-              Locus of {line.nameB.toLowerCase()}
-            </text>
+            {/* Locus b label badge */}
+            <g transform={`translate(${locusEndX + 6}, ${ptBTop.y - 8})`}>
+              <rect x="0" y="0" width={isCompact ? 68 : 88} height="16" rx="3" fill="#083344" stroke="#0e7490" strokeWidth="0.8" opacity="0.9" />
+              <text
+                x="4"
+                y="11"
+                fill="#a5f3fc"
+                fontSize={isCompact ? '9' : '10'}
+                fontWeight="600"
+                fontFamily="monospace"
+              >
+                Locus of {line.nameB.toLowerCase()}
+              </text>
+            </g>
 
             {/* Distance Between Projectors (DEP) Indicator along XY */}
             {!isCompact && (
@@ -470,7 +528,7 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
                   y2={groundY}
                   stroke="#38bdf8"
                   strokeWidth="3.2"
-                  opacity="0.8"
+                  opacity="0.85"
                 />
                 <circle cx={originX} cy={groundY} r="3" fill="#38bdf8" />
                 <circle cx={endProjectorX} cy={groundY} r="3" fill="#38bdf8" />
@@ -493,145 +551,306 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
         {/* ============================================================== */}
         {/* STAGE 3 ELEMENTS: Rotating Compass Arcs for True Length (TL) */}
         {/* ============================================================== */}
-        {stageNum >= 3 && (
-          <g>
-            {/* Elevation True Length Rotating Arc: Center a', radius TL to locus of b' */}
-            <path
-              d={`M ${ptAFront.x + radiusTL} ${ptAFront.y} A ${radiusTL} ${radiusTL} 0 0 ${
-                ptBFront.y < ptAFront.y ? '0' : '1'
-              } ${ptB1Front.x} ${ptB1Front.y}`}
-              fill="none"
-              stroke="#a855f7"
-              strokeWidth="1.5"
-              strokeDasharray="4,4"
-              opacity={stageNum === 3 ? 1 : 0.55}
-            />
+        {stageNum >= 3 && (() => {
+          // Angle calculations for accurate parametric arc drawing
+          const angTargetElev = Math.atan2(ptB1Front.y - ptAFront.y, ptB1Front.x - ptAFront.x);
+          const angTargetPlan = Math.atan2(ptB2Top.y - ptATop.y, ptB2Top.x - ptATop.x);
 
-            {/* True Length Line a'b1' (Elevation) */}
-            <line
-              x1={ptAFront.x}
-              y1={ptAFront.y}
-              x2={ptB1Front.x}
-              y2={ptB1Front.y}
-              stroke="#c084fc"
-              strokeWidth={stageNum === 3 ? '2.4' : '1.5'}
-              strokeDasharray={stageNum === 3 ? 'none' : '4,3'}
-            />
-            {/* b1' Point */}
-            <circle
-              cx={ptB1Front.x}
-              cy={ptB1Front.y}
-              r={isCompact ? 3.5 : 4.5}
-              fill="#c084fc"
-              stroke="#ffffff"
-              strokeWidth="1"
-            />
-            <text
-              x={ptB1Front.x + 8}
-              y={ptB1Front.y - 6}
-              fill="#e9d5ff"
-              fontSize={isCompact ? '10' : '12'}
-              fontWeight="bold"
-              fontFamily="monospace"
-            >
-              {line.nameB.toLowerCase()}₁′ (TL = {line.trueLength.toFixed(0)}mm)
-            </text>
+          // Arc path generator
+          const getArcD = (cx: number, cy: number, r: number, startA: number, endA: number) => {
+            const steps = 24;
+            const delta = (endA - startA) / steps;
+            const pts: string[] = [];
+            for (let i = 0; i <= steps; i++) {
+              const a = startA + i * delta;
+              const x = cx + r * Math.cos(a);
+              const y = cy + r * Math.sin(a);
+              pts.push(`${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`);
+            }
+            return pts.join(' ');
+          };
 
-            {/* True Angle θ Arc at a' */}
-            {!isCompact && (
-              <g>
-                <path
-                  d={`M ${ptAFront.x + 36} ${ptAFront.y} A 36 36 0 0 ${
-                    ptB1Front.y < ptAFront.y ? '0' : '1'
-                  } ${ptAFront.x + 36 * Math.cos((line.thetaDeg * Math.PI) / 180)} ${
-                    ptAFront.y - 36 * Math.sin((line.thetaDeg * Math.PI) / 180)
-                  }`}
-                  fill="none"
-                  stroke="#c084fc"
-                  strokeWidth="1.4"
-                />
-                <text
-                  x={ptAFront.x + 48}
-                  y={ptAFront.y - 12}
-                  fill="#e9d5ff"
-                  fontSize="11"
-                  fontWeight="bold"
-                  fontFamily="monospace"
-                >
-                  θ = {line.thetaDeg.toFixed(1)}°
-                </text>
+          // Compass SVG renderer
+          const renderDraftingCompass = (
+            cx: number,
+            cy: number,
+            px: number,
+            py: number,
+            label: string,
+            legColor: string
+          ) => {
+            const dx = px - cx;
+            const dy = py - cy;
+            const dist = Math.hypot(dx, dy) || 1;
+            const midX = (cx + px) / 2;
+            const midY = (cy + py) / 2;
+
+            const legLen = Math.max(dist * 0.9, 65);
+            const halfDist = dist / 2;
+            const h = Math.sqrt(Math.max(20 * 20, legLen * legLen - halfDist * halfDist));
+
+            let nx = -dy / dist;
+            let ny = dx / dist;
+            if (ny > 0) {
+              nx = -nx;
+              ny = -ny;
+            }
+
+            const apexX = midX + nx * h;
+            const apexY = midY + ny * h;
+            const handleX = apexX + nx * 18;
+            const handleY = apexY + ny * 18;
+
+            return (
+              <g className="pointer-events-none" style={{ filter: 'drop-shadow(0 6px 8px rgba(0,0,0,0.75))' }}>
+                {/* Steel Needle Leg to Pivot */}
+                <line x1={apexX} y1={apexY} x2={cx} y2={cy} stroke="#94a3b8" strokeWidth="3.5" strokeLinecap="round" />
+                <line x1={apexX} y1={apexY} x2={cx} y2={cy} stroke="#f1f5f9" strokeWidth="1.2" strokeLinecap="round" />
+                <circle cx={cx} cy={cy} r="3" fill="#38bdf8" stroke="#ffffff" strokeWidth="1.2" />
+
+                {/* Pencil Leg to Arc Tip */}
+                <line x1={apexX} y1={apexY} x2={px} y2={py} stroke={legColor} strokeWidth="3.5" strokeLinecap="round" />
+                <line x1={apexX} y1={apexY} x2={px} y2={py} stroke="#ffffff" strokeWidth="1.2" strokeLinecap="round" opacity="0.8" />
+                <circle cx={px} cy={py} r="3.2" fill={legColor} stroke="#ffffff" strokeWidth="1.5" />
+
+                {/* Compass Joint & Knurled Handle */}
+                <line x1={apexX} y1={apexY} x2={handleX} y2={handleY} stroke="#cbd5e1" strokeWidth="3.5" strokeLinecap="round" />
+                <circle cx={apexX} cy={apexY} r="5.5" fill="#334155" stroke="#e2e8f0" strokeWidth="1.8" />
+                <circle cx={apexX} cy={apexY} r="2" fill="#ffffff" />
+                <circle cx={handleX} cy={handleY} r="3" fill="#94a3b8" stroke="#ffffff" strokeWidth="1" />
+
+                {/* Compass HUD Label */}
+                <g transform={`translate(${apexX + 10}, ${apexY - 14})`}>
+                  <rect x="-4" y="-11" width={label.length * 6.5 + 14} height="18" rx="4" fill="#020617" stroke="#475569" strokeWidth="1" opacity="0.95" />
+                  <text x="3" y="1" fill="#f8fafc" fontSize="9.5" fontFamily="monospace" fontWeight="bold">
+                    {label}
+                  </text>
+                </g>
               </g>
-            )}
+            );
+          };
 
-            {/* Plan True Length Rotating Arc: Center a, radius TL to locus of b */}
-            <path
-              d={`M ${ptATop.x + radiusTLPlan} ${ptATop.y} A ${radiusTLPlan} ${radiusTLPlan} 0 0 ${
-                ptBTop.y > ptATop.y ? '1' : '0'
-              } ${ptB2Top.x} ${ptB2Top.y}`}
-              fill="none"
-              stroke="#10b981"
-              strokeWidth="1.5"
-              strokeDasharray="4,4"
-              opacity={stageNum === 3 ? 1 : 0.55}
-            />
+          // Determine current animation state (active only when stage 3 is single view)
+          const isAnimatingThisStage = stageNum === 3 && !isCompact && arcProgress < 1;
+          
+          // Phase 1 (0 to 0.48): Elevation arc is sweeping
+          const elevProgress = isAnimatingThisStage
+            ? Math.min(1, arcProgress / 0.48)
+            : 1;
+          const currElevAngle = elevProgress * angTargetElev;
+          const currElevTipX = ptAFront.x + radiusTL * Math.cos(currElevAngle);
+          const currElevTipY = ptAFront.y + radiusTL * Math.sin(currElevAngle);
 
-            {/* True Length Line ab2 (Plan) */}
-            <line
-              x1={ptATop.x}
-              y1={ptATop.y}
-              x2={ptB2Top.x}
-              y2={ptB2Top.y}
-              stroke="#34d399"
-              strokeWidth={stageNum === 3 ? '2.4' : '1.5'}
-              strokeDasharray={stageNum === 3 ? 'none' : '4,3'}
-            />
-            {/* b2 Point */}
-            <circle
-              cx={ptB2Top.x}
-              cy={ptB2Top.y}
-              r={isCompact ? 3.5 : 4.5}
-              fill="#34d399"
-              stroke="#ffffff"
-              strokeWidth="1"
-            />
-            <text
-              x={ptB2Top.x + 8}
-              y={ptB2Top.y + 14}
-              fill="#a7f3d0"
-              fontSize={isCompact ? '10' : '12'}
-              fontWeight="bold"
-              fontFamily="monospace"
-            >
-              {line.nameB.toLowerCase()}₂ (TL = {line.trueLength.toFixed(0)}mm)
-            </text>
+          // Phase 2 (0.52 to 1.0): Plan arc is sweeping
+          const planProgress = isAnimatingThisStage
+            ? arcProgress < 0.52
+              ? 0
+              : Math.min(1, (arcProgress - 0.52) / 0.48)
+            : 1;
+          const currPlanAngle = planProgress * angTargetPlan;
+          const currPlanTipX = ptATop.x + radiusTLPlan * Math.cos(currPlanAngle);
+          const currPlanTipY = ptATop.y + radiusTLPlan * Math.sin(currPlanAngle);
 
-            {/* True Angle φ Arc at a */}
-            {!isCompact && (
-              <g>
+          return (
+            <g>
+              {/* Elevation True Length Rotating Arc with Cutting Direction Arrow */}
+              {elevProgress > 0.02 && (
                 <path
-                  d={`M ${ptATop.x + 36} ${ptATop.y} A 36 36 0 0 ${
-                    ptB2Top.y > ptATop.y ? '1' : '0'
-                  } ${ptATop.x + 36 * Math.cos((line.phiDeg * Math.PI) / 180)} ${
-                    ptATop.y + 36 * Math.sin((line.phiDeg * Math.PI) / 180)
-                  }`}
+                  d={getArcD(ptAFront.x, ptAFront.y, radiusTL, 0, currElevAngle)}
                   fill="none"
-                  stroke="#34d399"
-                  strokeWidth="1.4"
+                  stroke="#a855f7"
+                  strokeWidth="1.8"
+                  strokeDasharray="5,4"
+                  markerEnd="url(#arrow-arc-purple)"
+                  opacity={stageNum === 3 ? 1 : 0.65}
                 />
+              )}
+
+              {/* Cutting Direction indicator label on Elevation arc */}
+              {elevProgress >= 0.95 && !isCompact && (
                 <text
-                  x={ptATop.x + 48}
-                  y={ptATop.y + 18}
-                  fill="#a7f3d0"
-                  fontSize="11"
-                  fontWeight="bold"
+                  x={(ptAFront.x + radiusTL + ptB1Front.x) / 2 + 10}
+                  y={(ptAFront.y + ptB1Front.y) / 2 - 8}
+                  fill="#c084fc"
+                  fontSize="10"
                   fontFamily="monospace"
+                  fontWeight="bold"
                 >
-                  φ = {line.phiDeg.toFixed(1)}°
+                  Arc to Locus ➔
                 </text>
-              </g>
-            )}
-          </g>
-        )}
+              )}
+
+              {/* True Length Line a'b1' (Elevation) - visible once arc reaches locus */}
+              {elevProgress >= 0.85 && (
+                <g>
+                  <line
+                    x1={ptAFront.x}
+                    y1={ptAFront.y}
+                    x2={ptB1Front.x}
+                    y2={ptB1Front.y}
+                    stroke="#c084fc"
+                    strokeWidth={stageNum === 3 ? '2.4' : '1.5'}
+                    strokeDasharray={stageNum === 3 ? 'none' : '4,3'}
+                  />
+                  <circle
+                    cx={ptB1Front.x}
+                    cy={ptB1Front.y}
+                    r={isCompact ? 3.5 : 4.5}
+                    fill="#c084fc"
+                    stroke="#ffffff"
+                    strokeWidth="1"
+                  />
+                  <text
+                    x={ptB1Front.x + 8}
+                    y={ptB1Front.y - 6}
+                    fill="#e9d5ff"
+                    fontSize={isCompact ? '10' : '12'}
+                    fontWeight="bold"
+                    fontFamily="monospace"
+                  >
+                    {line.nameB.toLowerCase()}₁′ (TL = {line.trueLength.toFixed(0)}mm)
+                  </text>
+                </g>
+              )}
+
+              {/* True Angle θ Arc at a' */}
+              {!isCompact && elevProgress >= 0.95 && (
+                <g>
+                  <path
+                    d={`M ${ptAFront.x + 36} ${ptAFront.y} A 36 36 0 0 ${
+                      ptB1Front.y < ptAFront.y ? '0' : '1'
+                    } ${ptAFront.x + 36 * Math.cos((line.thetaDeg * Math.PI) / 180)} ${
+                      ptAFront.y - 36 * Math.sin((line.thetaDeg * Math.PI) / 180)
+                    }`}
+                    fill="none"
+                    stroke="#c084fc"
+                    strokeWidth="1.4"
+                  />
+                  <text
+                    x={ptAFront.x + 48}
+                    y={ptAFront.y - 12}
+                    fill="#e9d5ff"
+                    fontSize="11"
+                    fontWeight="bold"
+                    fontFamily="monospace"
+                  >
+                    θ = {line.thetaDeg.toFixed(1)}°
+                  </text>
+                </g>
+              )}
+
+              {/* Animated Compass drawing Elevation Arc */}
+              {isAnimatingThisStage && arcProgress <= 0.48 && (
+                renderDraftingCompass(
+                  ptAFront.x,
+                  ptAFront.y,
+                  currElevTipX,
+                  currElevTipY,
+                  `Compass (Center a′, R=TL=${line.trueLength.toFixed(0)}mm)`,
+                  '#c084fc'
+                )
+              )}
+
+              {/* Plan True Length Rotating Arc with Cutting Direction Arrow */}
+              {planProgress > 0.02 && (
+                <path
+                  d={getArcD(ptATop.x, ptATop.y, radiusTLPlan, 0, currPlanAngle)}
+                  fill="none"
+                  stroke="#10b981"
+                  strokeWidth="1.8"
+                  strokeDasharray="5,4"
+                  markerEnd="url(#arrow-arc-emerald)"
+                  opacity={stageNum === 3 ? 1 : 0.65}
+                />
+              )}
+
+              {/* Cutting Direction indicator label on Plan arc */}
+              {planProgress >= 0.95 && !isCompact && (
+                <text
+                  x={(ptATop.x + radiusTLPlan + ptB2Top.x) / 2 + 10}
+                  y={(ptATop.y + ptB2Top.y) / 2 + 14}
+                  fill="#34d399"
+                  fontSize="10"
+                  fontFamily="monospace"
+                  fontWeight="bold"
+                >
+                  Arc to Locus ➔
+                </text>
+              )}
+
+              {/* True Length Line ab2 (Plan) - visible once plan arc reaches locus */}
+              {planProgress >= 0.85 && (
+                <g>
+                  <line
+                    x1={ptATop.x}
+                    y1={ptATop.y}
+                    x2={ptB2Top.x}
+                    y2={ptB2Top.y}
+                    stroke="#34d399"
+                    strokeWidth={stageNum === 3 ? '2.4' : '1.5'}
+                    strokeDasharray={stageNum === 3 ? 'none' : '4,3'}
+                  />
+                  <circle
+                    cx={ptB2Top.x}
+                    cy={ptB2Top.y}
+                    r={isCompact ? 3.5 : 4.5}
+                    fill="#34d399"
+                    stroke="#ffffff"
+                    strokeWidth="1"
+                  />
+                  <text
+                    x={ptB2Top.x + 8}
+                    y={ptB2Top.y + 14}
+                    fill="#a7f3d0"
+                    fontSize={isCompact ? '10' : '12'}
+                    fontWeight="bold"
+                    fontFamily="monospace"
+                  >
+                    {line.nameB.toLowerCase()}₂ (TL = {line.trueLength.toFixed(0)}mm)
+                  </text>
+                </g>
+              )}
+
+              {/* True Angle φ Arc at a */}
+              {!isCompact && planProgress >= 0.95 && (
+                <g>
+                  <path
+                    d={`M ${ptATop.x + 36} ${ptATop.y} A 36 36 0 0 ${
+                      ptB2Top.y > ptATop.y ? '1' : '0'
+                    } ${ptATop.x + 36 * Math.cos((line.phiDeg * Math.PI) / 180)} ${
+                      ptATop.y + 36 * Math.sin((line.phiDeg * Math.PI) / 180)
+                    }`}
+                    fill="none"
+                    stroke="#34d399"
+                    strokeWidth="1.4"
+                  />
+                  <text
+                    x={ptATop.x + 48}
+                    y={ptATop.y + 18}
+                    fill="#a7f3d0"
+                    fontSize="11"
+                    fontWeight="bold"
+                    fontFamily="monospace"
+                  >
+                    φ = {line.phiDeg.toFixed(1)}°
+                  </text>
+                </g>
+              )}
+
+              {/* Animated Compass drawing Plan Arc */}
+              {isAnimatingThisStage && arcProgress >= 0.52 && (
+                renderDraftingCompass(
+                  ptATop.x,
+                  ptATop.y,
+                  currPlanTipX,
+                  currPlanTipY,
+                  `Compass (Center a, R=TL=${line.trueLength.toFixed(0)}mm)`,
+                  '#34d399'
+                )
+              )}
+            </g>
+          );
+        })()}
 
         {/* ============================================================== */}
         {/* STAGE 4 ELEMENTS: Final Apparent Views & End Projector Collinearity */}
@@ -837,6 +1056,19 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
               {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
               <span>{isPlaying ? 'Pause Sequence' : 'Play Sequence'}</span>
             </button>
+
+            {/* Replay Compass Animation button (Stage 3) */}
+            {activeStage === 3 && !isAllStagesView && (
+              <button
+                type="button"
+                onClick={startCompassAnimation}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer border bg-purple-900/50 hover:bg-purple-900/80 text-purple-200 border-purple-600/70 shadow-xs"
+                title="Replay drafting compass arc sweep"
+              >
+                <RotateCcw className={`w-3.5 h-3.5 ${isAnimatingCompass ? 'animate-spin' : ''}`} />
+                <span>{isAnimatingCompass ? 'Tracing Arcs...' : 'Replay Compass'}</span>
+              </button>
+            )}
 
             {/* Prev / Next Chevrons */}
             <div className="flex items-center gap-1 ml-1">

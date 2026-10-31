@@ -5,7 +5,7 @@
 
 import React, { useState, useRef } from 'react';
 import { ComputedLine } from '../../types/lines';
-import { ZoomIn, ZoomOut, RotateCcw, Eye, Layers, Compass, Check } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, Eye, Layers, Compass, Check, Download } from 'lucide-react';
 
 interface LineTwoDOrthographicViewProps {
   line: ComputedLine;
@@ -20,6 +20,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
   vpColor = '#dc2626',
   isDark = false,
 }) => {
+  const svgRef = useRef<SVGSVGElement | null>(null);
   const [zoom, setZoom] = useState<number>(1.0);
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -69,6 +70,38 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
     setPan({ x: 0, y: 0 });
   };
 
+  // High-Resolution 2x PNG Export
+  const exportAsPng = () => {
+    const svgEl = svgRef.current;
+    if (!svgEl) return;
+
+    const svgData = new XMLSerializer().serializeToString(svgEl);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const scaleFactor = 2; // High-res 2x
+    canvas.width = baseWidth * scaleFactor;
+    canvas.height = baseHeight * scaleFactor;
+
+    const img = new Image();
+    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+
+    img.onload = () => {
+      ctx.fillStyle = isDark ? '#0b1329' : '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+
+      const link = document.createElement('a');
+      link.download = `orthographic-projection-line-${line.nameA}${line.nameB}-${Date.now()}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    };
+    img.src = url;
+  };
+
   // Coordinates on SVG
   const aFrontSvg = { x: toSvgX(line.aFront.x), y: toSvgY(line.aFront.y) };
   const bFrontSvg = { x: toSvgX(line.bFront.x), y: toSvgY(line.bFront.y) };
@@ -85,21 +118,21 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
       <div className="relative rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-xs select-none">
         {/* Drawing Canvas Header & Controls */}
         <div className="absolute top-3 left-3 z-10 flex flex-wrap items-center gap-2 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-mono shadow-xs">
-          {/* Elevation / Front View Badge */}
+          {/* Front View Badge */}
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-xs" style={{ backgroundColor: vpColor }} />
             <span className="font-bold text-slate-800 dark:text-slate-200">
-              Elevation: {line.nameA.toLowerCase()}′{line.nameB.toLowerCase()}′
+              Front View: {line.nameA.toLowerCase()}′{line.nameB.toLowerCase()}′
             </span>
           </div>
 
           <span className="text-slate-300 dark:text-slate-700">|</span>
 
-          {/* Plan / Top View Badge */}
+          {/* Top View Badge */}
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-xs" style={{ backgroundColor: hpColor }} />
             <span className="font-bold text-slate-800 dark:text-slate-200">
-              Plan: {line.nameA.toLowerCase()}{line.nameB.toLowerCase()}
+              Top View: {line.nameA.toLowerCase()}{line.nameB.toLowerCase()}
             </span>
           </div>
 
@@ -157,24 +190,36 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
           {/* Zoom Buttons */}
           <button
             onClick={() => setZoom((z) => Math.min(2.5, z * 1.15))}
-            className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-600 dark:text-slate-300"
+            className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-600 dark:text-slate-300 cursor-pointer"
             title="Zoom In"
           >
             <ZoomIn className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={() => setZoom((z) => Math.max(0.5, z / 1.15))}
-            className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-600 dark:text-slate-300"
+            className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-600 dark:text-slate-300 cursor-pointer"
             title="Zoom Out"
           >
             <ZoomOut className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={handleReset}
-            className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-600 dark:text-slate-300"
+            className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-600 dark:text-slate-300 cursor-pointer"
             title="Reset Pan & Zoom"
           >
             <RotateCcw className="w-3.5 h-3.5" />
+          </button>
+
+          <span className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
+
+          {/* Save Generated Projection as PNG Button */}
+          <button
+            onClick={exportAsPng}
+            className="px-2 py-1 rounded transition flex items-center gap-1 font-mono text-[11px] bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900 border border-emerald-200 dark:border-emerald-800 font-semibold cursor-pointer shadow-xs"
+            title="Save Generated Projection as PNG Image"
+          >
+            <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span className="font-sans font-medium text-xs">Save PNG</span>
           </button>
         </div>
 
@@ -187,6 +232,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
           onMouseLeave={handleMouseUp}
         >
           <svg
+            ref={svgRef}
             viewBox={`0 0 ${baseWidth} ${baseHeight}`}
             className="w-full h-full"
             style={{
@@ -217,14 +263,18 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
               <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                 <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill={isDark ? '#94a3b8' : '#64748b'} />
               </marker>
+              {/* Arrow Marker for Cutting/Rotating Arcs */}
+              <marker id="arc-arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#a855f7" />
+              </marker>
             </defs>
 
             {/* Grid Background */}
             <rect width={baseWidth} height={baseHeight} fill="url(#mainGridLines)" />
 
-            {/* 1. Locus Lines (Horizontal dashed reference lines) */}
+            {/* 1. Locus Lines (Horizontal dashed reference lines - clearly visible) */}
             {showLocus && (
-              <g className="locus-lines" strokeDasharray="6,4" strokeWidth="0.8">
+              <g className="locus-lines">
                 {/* Locus of a' */}
                 <line
                   x1={40}
@@ -232,16 +282,19 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   x2={baseWidth - 40}
                   y2={aFrontSvg.y}
                   stroke={vpColor}
-                  opacity="0.45"
+                  strokeWidth="1.4"
+                  strokeDasharray="8,4"
+                  opacity="0.75"
                 />
                 <text
                   x={baseWidth - 45}
-                  y={aFrontSvg.y - 4}
+                  y={aFrontSvg.y - 5}
                   fill={vpColor}
-                  fontSize="9"
+                  fontSize="10"
                   fontFamily="'JetBrains Mono', monospace"
+                  fontWeight="600"
                   textAnchor="end"
-                  opacity="0.7"
+                  opacity="0.9"
                 >
                   Locus of {line.nameA.toLowerCase()}′
                 </text>
@@ -253,16 +306,19 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   x2={baseWidth - 40}
                   y2={bFrontSvg.y}
                   stroke={vpColor}
-                  opacity="0.45"
+                  strokeWidth="1.4"
+                  strokeDasharray="8,4"
+                  opacity="0.75"
                 />
                 <text
                   x={baseWidth - 45}
-                  y={bFrontSvg.y - 4}
+                  y={bFrontSvg.y - 5}
                   fill={vpColor}
-                  fontSize="9"
+                  fontSize="10"
                   fontFamily="'JetBrains Mono', monospace"
+                  fontWeight="600"
                   textAnchor="end"
-                  opacity="0.7"
+                  opacity="0.9"
                 >
                   Locus of {line.nameB.toLowerCase()}′
                 </text>
@@ -274,16 +330,19 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   x2={baseWidth - 40}
                   y2={aTopSvg.y}
                   stroke={hpColor}
-                  opacity="0.45"
+                  strokeWidth="1.4"
+                  strokeDasharray="8,4"
+                  opacity="0.75"
                 />
                 <text
                   x={baseWidth - 45}
-                  y={aTopSvg.y + 11}
+                  y={aTopSvg.y + 12}
                   fill={hpColor}
-                  fontSize="9"
+                  fontSize="10"
                   fontFamily="'JetBrains Mono', monospace"
+                  fontWeight="600"
                   textAnchor="end"
-                  opacity="0.7"
+                  opacity="0.9"
                 >
                   Locus of {line.nameA.toLowerCase()}
                 </text>
@@ -295,16 +354,19 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   x2={baseWidth - 40}
                   y2={bTopSvg.y}
                   stroke={hpColor}
-                  opacity="0.45"
+                  strokeWidth="1.4"
+                  strokeDasharray="8,4"
+                  opacity="0.75"
                 />
                 <text
                   x={baseWidth - 45}
-                  y={bTopSvg.y + 11}
+                  y={bTopSvg.y + 12}
                   fill={hpColor}
-                  fontSize="9"
+                  fontSize="10"
                   fontFamily="'JetBrains Mono', monospace"
+                  fontWeight="600"
                   textAnchor="end"
-                  opacity="0.7"
+                  opacity="0.9"
                 >
                   Locus of {line.nameB.toLowerCase()}
                 </text>
@@ -352,7 +414,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                 fontFamily="'JetBrains Mono', monospace"
                 opacity="0.6"
               >
-                VP (Elevation)
+                VP (Front View)
               </text>
               <text
                 x={70}
@@ -362,7 +424,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                 fontFamily="'JetBrains Mono', monospace"
                 opacity="0.6"
               >
-                HP (Plan)
+                HP (Top View)
               </text>
             </g>
 
@@ -399,7 +461,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   x2={b1FrontSvg.x}
                   y2={b1FrontSvg.y}
                   stroke="#8b5cf6"
-                  strokeWidth="1.3"
+                  strokeWidth="1.5"
                   strokeDasharray="4,3"
                 />
                 <circle cx={b1FrontSvg.x} cy={b1FrontSvg.y} r="3" fill="#8b5cf6" />
@@ -411,7 +473,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   fontWeight="bold"
                   fontFamily="'Space Grotesk', sans-serif"
                 >
-                  {line.b1Front.label} (TL)
+                  {line.b1Front.label} (TL={line.trueLength.toFixed(1)}mm, θ={line.thetaDeg.toFixed(1)}°)
                 </text>
 
                 {/* Plan True Length line: ab2 showing True Length & phi */}
@@ -421,7 +483,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   x2={b2TopSvg.x}
                   y2={b2TopSvg.y}
                   stroke="#8b5cf6"
-                  strokeWidth="1.3"
+                  strokeWidth="1.5"
                   strokeDasharray="4,3"
                 />
                 <circle cx={b2TopSvg.x} cy={b2TopSvg.y} r="3" fill="#8b5cf6" />
@@ -433,18 +495,80 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   fontWeight="bold"
                   fontFamily="'Space Grotesk', sans-serif"
                 >
-                  {line.b2Top.label} (TL)
+                  {line.b2Top.label} (TL={line.trueLength.toFixed(1)}mm, φ={line.phiDeg.toFixed(1)}°)
                 </text>
 
-                {/* Rotation Arcs */}
-                {/* Arc from Plan rotated to locus of b */}
-                <path
-                  d={`M ${bFrontSvg.x} ${bFrontSvg.y} A ${line.topViewLength * mmScale} ${line.topViewLength * mmScale} 0 0 0 ${b1FrontSvg.x} ${b1FrontSvg.y}`}
-                  fill="none"
-                  stroke="#a855f7"
-                  strokeWidth="0.9"
+                {/* Projector from b1 in plan up to b1' on locus of b' */}
+                <line
+                  x1={toSvgX(line.xA + line.topViewLength)}
+                  y1={aTopSvg.y}
+                  x2={b1FrontSvg.x}
+                  y2={b1FrontSvg.y}
+                  stroke="#c084fc"
+                  strokeWidth="1"
                   strokeDasharray="2,2"
                 />
+                <circle cx={toSvgX(line.xA + line.topViewLength)} cy={aTopSvg.y} r="2.5" fill="#c084fc" />
+
+                {/* Projector from b2' in elevation down to b2 on locus of b */}
+                <line
+                  x1={toSvgX(line.xA + line.frontViewLength)}
+                  y1={aFrontSvg.y}
+                  x2={b2TopSvg.x}
+                  y2={b2TopSvg.y}
+                  stroke="#c084fc"
+                  strokeWidth="1"
+                  strokeDasharray="2,2"
+                />
+                <circle cx={toSvgX(line.xA + line.frontViewLength)} cy={aFrontSvg.y} r="2.5" fill="#c084fc" />
+
+                {/* Rotating Arc in Elevation: Center a', radius EL, from b' to b2' */}
+                {line.frontViewLength > 1 && (
+                  <g>
+                    <path
+                      d={`M ${bFrontSvg.x} ${bFrontSvg.y} A ${line.frontViewLength * mmScale} ${line.frontViewLength * mmScale} 0 0 ${bFrontSvg.y < aFrontSvg.y ? 1 : 0} ${toSvgX(line.xA + line.frontViewLength)} ${aFrontSvg.y}`}
+                      fill="none"
+                      stroke="#a855f7"
+                      strokeWidth="1.4"
+                      strokeDasharray="4,2.5"
+                      markerEnd="url(#arc-arrow)"
+                    />
+                    <text
+                      x={(bFrontSvg.x + toSvgX(line.xA + line.frontViewLength)) / 2}
+                      y={(bFrontSvg.y + aFrontSvg.y) / 2 - 6}
+                      fill="#a855f7"
+                      fontSize="9"
+                      fontFamily="'JetBrains Mono', monospace"
+                      fontWeight="bold"
+                    >
+                      Arc (EL) ➔
+                    </text>
+                  </g>
+                )}
+
+                {/* Rotating Arc in Plan: Center a, radius PL, from b to b1 */}
+                {line.topViewLength > 1 && (
+                  <g>
+                    <path
+                      d={`M ${bTopSvg.x} ${bTopSvg.y} A ${line.topViewLength * mmScale} ${line.topViewLength * mmScale} 0 0 ${bTopSvg.y < aTopSvg.y ? 1 : 0} ${toSvgX(line.xA + line.topViewLength)} ${aTopSvg.y}`}
+                      fill="none"
+                      stroke="#a855f7"
+                      strokeWidth="1.4"
+                      strokeDasharray="4,2.5"
+                      markerEnd="url(#arc-arrow)"
+                    />
+                    <text
+                      x={(bTopSvg.x + toSvgX(line.xA + line.topViewLength)) / 2}
+                      y={(bTopSvg.y + aTopSvg.y) / 2 + 14}
+                      fill="#a855f7"
+                      fontSize="9"
+                      fontFamily="'JetBrains Mono', monospace"
+                      fontWeight="bold"
+                    >
+                      Arc (PL) ➔
+                    </text>
+                  </g>
+                )}
               </g>
             )}
 

@@ -5,7 +5,7 @@
 
 import { HpRelation, VpRelation } from './projection';
 
-export type LineInputMode = 'END_POINTS' | 'TRUE_LENGTH_ANGLES';
+export type LineInputMode = 'END_POINTS' | 'TRUE_LENGTH_ANGLES' | 'APPARENT_VALUES';
 
 export type LineOrientationType =
   | 'PARALLEL_BOTH'
@@ -22,6 +22,8 @@ export interface EndPointSpec {
   vpRelation: VpRelation;
   distanceVp: number; // mm
 }
+
+export type TargetQuadrantB = 'FIRST' | 'SECOND' | 'THIRD' | 'FOURTH';
 
 export interface LineProblemInput {
   mode: LineInputMode;
@@ -41,6 +43,27 @@ export interface LineProblemInput {
   thetaDeg: number;   // True inclination to HP in degrees (0 - 90)
   phiDeg: number;     // True inclination to VP in degrees (0 - 90)
   endBQuadrant: 'ABOVE_FRONT' | 'ABOVE_BEHIND' | 'BELOW_FRONT' | 'BELOW_BEHIND';
+
+  // Apparent Values Mode (When True Length is NOT given and must be calculated)
+  frontViewLength?: number; // Elevation Length (EL, mm) e.g. 70
+  topViewLength?: number;   // Plan Length (PL, mm) e.g. 60
+  apparentInputType?: 'LENGTHS_DEP' | 'LENGTHS_ANGLES';
+  alphaDeg?: number;       // Apparent angle of front view with XY (degrees)
+  betaDeg?: number;        // Apparent angle of top view with XY (degrees)
+  targetQuadrantB?: TargetQuadrantB; // Quadrant i, ii, iii, or iv for End B
+}
+
+export interface QuadrantSolutionItem {
+  quadrantKey: TargetQuadrantB;
+  quadrantLabel: string;
+  quadrantNum: 'i' | 'ii' | 'iii' | 'iv';
+  hpRelation: HpRelation;
+  distHp: number; // mm
+  vpRelation: VpRelation;
+  distVp: number; // mm
+  summary: string;
+  zB: number;
+  yB: number;
 }
 
 export interface TracePoint {
@@ -117,6 +140,22 @@ export interface ComputedLine {
     deltaY: number;
     deltaZ: number;
     validAngleSum: boolean; // sin^2(theta) + sin^2(phi) <= 1
+  };
+
+  // Dedicated data when solved from apparent lengths & angles (True length unknown initially)
+  isSolvedFromApparent?: boolean;
+  apparentSolution?: {
+    el: number;
+    pl: number;
+    dep: number;
+    deltaZ: number;
+    deltaY: number;
+    calculatedTL: number;
+    thetaDeg: number;
+    phiDeg: number;
+    alphaDeg: number;
+    betaDeg: number;
+    quadrantSolutions: QuadrantSolutionItem[];
   };
 }
 

@@ -16,6 +16,7 @@ export default defineConfig(() => {
     server: {
       port: 3000,
       host: '0.0.0.0',
+      strictPort: true,
       allowedHosts: true as const,
       cors: true,
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
@@ -23,6 +24,9 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+    },
+    optimizeDeps: {
+      include: ['react', 'react-dom', 'react-dom/client', 'three', 'lucide-react', 'motion'],
     },
   };
 });

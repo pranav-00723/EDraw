@@ -44,6 +44,10 @@ const DEFAULT_LINE_INPUT: LineProblemInput = {
   thetaDeg: 30,
   phiDeg: 45,
   endBQuadrant: 'ABOVE_FRONT',
+  frontViewLength: 70,
+  topViewLength: 60,
+  apparentInputType: 'LENGTHS_DEP',
+  targetQuadrantB: 'FIRST',
 };
 
 export const LinesModule: React.FC<LinesModuleProps> = ({
@@ -63,6 +67,14 @@ export const LinesModule: React.FC<LinesModuleProps> = ({
 
   const handleReset = () => {
     setInput(DEFAULT_LINE_INPUT);
+  };
+
+  const handleSelectQuadrantB = (quadrant: any) => {
+    setInput((prev) => ({
+      ...prev,
+      mode: 'APPARENT_VALUES',
+      targetQuadrantB: quadrant,
+    }));
   };
 
   return (
@@ -140,6 +152,8 @@ export const LinesModule: React.FC<LinesModuleProps> = ({
             hpColor={hpColor}
             vpColor={vpColor}
             isDark={isDark}
+            onSelectQuadrantB={handleSelectQuadrantB}
+            activeQuadrantB={input.targetQuadrantB}
           />
 
           {/* 2nd Answer Output: The Parameters Displayed */}

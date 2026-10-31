@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { LineProblemInput, ComputedLine, SampleLineProblem, LineOrientationType, TracePoint } from '../types/lines';
+import { LineProblemInput, ComputedLine, SampleLineProblem, LineOrientationType, TracePoint, QuadrantSolutionItem } from '../types/lines';
+import { HpRelation, VpRelation } from '../types/projection';
 
 export function computeLineProjection(input: LineProblemInput): ComputedLine {
   const { nameA, nameB, color, mode, endA } = input;
@@ -28,6 +29,8 @@ export function computeLineProjection(input: LineProblemInput): ComputedLine {
   let thetaDeg = 0;
   let phiDeg = 0;
   let validAngleSum = true;
+  let isSolvedFromApparent = false;
+  let apparentSolutionData: ComputedLine['apparentSolution'] = undefined;
 
   if (mode === 'END_POINTS') {
     const { endB, dep } = input;
@@ -56,6 +59,123 @@ export function computeLineProjection(input: LineProblemInput): ComputedLine {
       const sinPhi = Math.min(1, Math.abs(dy) / trueLength);
       phiDeg = (Math.asin(sinPhi) * 180) / Math.PI;
     }
+  } else if (mode === 'APPARENT_VALUES') {
+    // Mode where True Length is NOT given and is solved from Apparent Lengths & Projectors/Angles
+    isSolvedFromApparent = true;
+    const EL = Math.max(1, input.frontViewLength || 70);
+    const PL = Math.max(1, input.topViewLength || 60);
+
+    let dep = Math.max(0, input.dep !== undefined ? input.dep : 40);
+    if (input.apparentInputType === 'LENGTHS_ANGLES') {
+      if (input.alphaDeg !== undefined && input.alphaDeg > 0 && input.alphaDeg < 90) {
+        dep = EL * Math.cos((input.alphaDeg * Math.PI) / 180);
+      } else if (input.betaDeg !== undefined && input.betaDeg > 0 && input.betaDeg < 90) {
+        dep = PL * Math.cos((input.betaDeg * Math.PI) / 180);
+      }
+    }
+
+    // Geometry validation: in orthographic projection, DEP <= min(EL, PL)
+    const maxPossibleDep = Math.min(EL, PL);
+    const effectiveDep = Math.min(dep, maxPossibleDep);
+
+    const deltaZSquared = Math.max(0, EL * EL - effectiveDep * effectiveDep);
+    const deltaYSquared = Math.max(0, PL * PL - effectiveDep * effectiveDep);
+    const absDz = Math.sqrt(deltaZSquared);
+    const absDy = Math.sqrt(deltaYSquared);
+
+    // True Length: TL^2 = DEP^2 + deltaY^2 + deltaZ^2 = EL^2 + deltaY^2 = PL^2 + deltaZ^2
+    trueLength = Math.sqrt(effectiveDep * effectiveDep + deltaYSquared + deltaZSquared);
+
+    if (trueLength > 1e-4) {
+      thetaDeg = (Math.asin(Math.min(1, absDz / trueLength)) * 180) / Math.PI;
+      phiDeg = (Math.asin(Math.min(1, absDy / trueLength)) * 180) / Math.PI;
+    }
+
+    const alphaCalc = EL > 1e-4 ? (Math.acos(Math.min(1, effectiveDep / EL)) * 180) / Math.PI : 0;
+    const betaCalc = PL > 1e-4 ? (Math.acos(Math.min(1, effectiveDep / PL)) * 180) / Math.PI : 0;
+
+    // Calculate solutions for ALL 4 quadrants (i, ii, iii, iv) for point B
+    // i) 1st Quadrant: Above HP (z > 0), In Front of VP (y > 0)
+    // ii) 2nd Quadrant: Above HP (z > 0), Behind VP (y < 0)
+    // iii) 3rd Quadrant: Below HP (z < 0), Behind VP (y < 0)
+    // iv) 4th Quadrant: Below HP (z < 0), In Front of VP (y > 0)
+    const zB_above = zA + absDz;
+    const zB_below = zA - absDz;
+    const yB_front = yA + absDy;
+    const yB_behind = yA - absDy;
+
+    const quadSolutions: QuadrantSolutionItem[] = [
+      {
+        quadrantKey: 'FIRST',
+        quadrantLabel: 'First Quadrant (i)',
+        quadrantNum: 'i',
+        hpRelation: 'ABOVE',
+        distHp: Math.abs(zB_above),
+        vpRelation: 'IN_FRONT',
+        distVp: Math.abs(yB_front),
+        summary: `${Math.abs(zB_above).toFixed(2)} mm Above HP & ${Math.abs(yB_front).toFixed(2)} mm In Front of VP`,
+        zB: zB_above,
+        yB: yB_front,
+      },
+      {
+        quadrantKey: 'SECOND',
+        quadrantLabel: 'Second Quadrant (ii)',
+        quadrantNum: 'ii',
+        hpRelation: 'ABOVE',
+        distHp: Math.abs(zB_above),
+        vpRelation: yB_behind >= 0 ? 'IN_FRONT' : 'BEHIND',
+        distVp: Math.abs(yB_behind),
+        summary: `${Math.abs(zB_above).toFixed(2)} mm Above HP & ${Math.abs(yB_behind).toFixed(2)} mm ${yB_behind >= 0 ? 'In Front of VP' : 'Behind VP'}`,
+        zB: zB_above,
+        yB: yB_behind,
+      },
+      {
+        quadrantKey: 'THIRD',
+        quadrantLabel: 'Third Quadrant (iii)',
+        quadrantNum: 'iii',
+        hpRelation: zB_below >= 0 ? 'ABOVE' : 'BELOW',
+        distHp: Math.abs(zB_below),
+        vpRelation: yB_behind >= 0 ? 'IN_FRONT' : 'BEHIND',
+        distVp: Math.abs(yB_behind),
+        summary: `${Math.abs(zB_below).toFixed(2)} mm ${zB_below >= 0 ? 'Above HP' : 'Below HP'} & ${Math.abs(yB_behind).toFixed(2)} mm ${yB_behind >= 0 ? 'In Front of VP' : 'Behind VP'}`,
+        zB: zB_below,
+        yB: yB_behind,
+      },
+      {
+        quadrantKey: 'FOURTH',
+        quadrantLabel: 'Fourth Quadrant (iv)',
+        quadrantNum: 'iv',
+        hpRelation: zB_below >= 0 ? 'ABOVE' : 'BELOW',
+        distHp: Math.abs(zB_below),
+        vpRelation: 'IN_FRONT',
+        distVp: Math.abs(yB_front),
+        summary: `${Math.abs(zB_below).toFixed(2)} mm ${zB_below >= 0 ? 'Above HP' : 'Below HP'} & ${Math.abs(yB_front).toFixed(2)} mm In Front of VP`,
+        zB: zB_below,
+        yB: yB_front,
+      },
+    ];
+
+    // Pick for the user's actively selected quadrant
+    const target = input.targetQuadrantB || 'FIRST';
+    const activeSolution = quadSolutions.find((q) => q.quadrantKey === target) || quadSolutions[0];
+
+    xB = xA + effectiveDep;
+    yB = activeSolution.yB;
+    zB = activeSolution.zB;
+
+    apparentSolutionData = {
+      el: EL,
+      pl: PL,
+      dep: effectiveDep,
+      deltaZ: absDz,
+      deltaY: absDy,
+      calculatedTL: trueLength,
+      thetaDeg,
+      phiDeg,
+      alphaDeg: alphaCalc,
+      betaDeg: betaCalc,
+      quadrantSolutions: quadSolutions,
+    };
   } else {
     // TRUE_LENGTH_ANGLES mode
     trueLength = Math.max(1, input.trueLength);
@@ -281,10 +401,49 @@ export function computeLineProjection(input: LineProblemInput): ComputedLine {
       deltaZ,
       validAngleSum,
     },
+    isSolvedFromApparent,
+    apparentSolution: apparentSolutionData,
   };
 }
 
 export const SAMPLE_LINE_PROBLEMS: SampleLineProblem[] = [
+  {
+    id: 'sample-line-exam-apparent',
+    title: 'Exam Standard: Line AB with Apparent Lengths (FV=70mm, TV=60mm, DEP=40mm)',
+    difficulty: 'Exam Standard',
+    badge: 'Classroom Exam Problem',
+    description:
+      'Point A is 30 mm above HP and 35 mm in front of VP. Length of Front View (a′b′) is 70 mm. Length of Top View (ab) is 60 mm. Distance between end projectors (DEP) is 40 mm. Find True Length (TL ≈ 83.1 mm), true inclinations (θ, φ), and find the position of point B if B is in: (i) First quadrant, (ii) Second quadrant, (iii) Third quadrant, (iv) Fourth quadrant.',
+    input: {
+      mode: 'APPARENT_VALUES',
+      nameA: 'A',
+      nameB: 'B',
+      color: '#2563eb',
+      endA: {
+        name: 'A',
+        hpRelation: 'ABOVE',
+        distanceHp: 30,
+        vpRelation: 'IN_FRONT',
+        distanceVp: 35,
+      },
+      endB: {
+        name: 'B',
+        hpRelation: 'ABOVE',
+        distanceHp: 87.45,
+        vpRelation: 'IN_FRONT',
+        distanceVp: 79.72,
+      },
+      dep: 40,
+      trueLength: 83.07,
+      thetaDeg: 43.75,
+      phiDeg: 32.57,
+      endBQuadrant: 'ABOVE_FRONT',
+      frontViewLength: 70,
+      topViewLength: 60,
+      apparentInputType: 'LENGTHS_DEP',
+      targetQuadrantB: 'FIRST',
+    },
+  },
   {
     id: 'sample-line-1',
     title: 'Line AB: Inclined to both HP (30°) & VP (45°)',

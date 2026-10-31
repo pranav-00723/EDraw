@@ -1,6 +1,8 @@
 {
-  "name": "ED2 — Projection of Points Interactive Simulator",
-  "description": "Interactive Engineering Drawing application for 3D visualization and 2D orthographic projection of points relative to the Horizontal Plane (HP) and Vertical Plane (VP).",
+  "name": "EDraw — Interactive Engineering Drawing Simulator",
+  "description": "Interactive Engineering Drawing learning platform for 3D spatial visualization and 2D orthographic projections of Points and Straight Lines relative to HP and VP.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

@@ -3,15 +3,49 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>EDraw — Interactive Engineering Drawing (Points &amp; Straight Lines)</title>
-    <meta name="description" content="EDraw: Interactive Engineering Drawing learning platform for 3D spatial visualization and 2D orthographic projections of Points (V1) and Straight Lines (V2)." />
-    <meta property="og:title" content="EDraw — Interactive Engineering Drawing Platform" />
-    <meta property="og:description" content="Interactive Engineering Drawing platform for 3D visualization and 2D orthographic projections of Points and Straight Lines." />
+    <title>EDraw — Interactive Engineering Drawing Simulator</title>
+    <meta name="description" content="Interactive Engineering Drawing learning platform for 3D spatial visualization and 2D orthographic projections of Points and Straight Lines relative to HP and VP." />
+    <meta property="og:title" content="EDraw — Interactive Engineering Drawing Simulator" />
+    <meta property="og:description" content="Interactive Engineering Drawing learning platform for 3D spatial visualization and 2D orthographic projections of Points and Straight Lines relative to HP and VP." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      (function() {
+        try {
+          var nativeFetch = typeof window !== 'undefined' ? window.fetch : null;
+          var currentFetch = function() {
+            if (typeof nativeFetch === 'function') {
+              return nativeFetch.apply(window, arguments);
+            }
+            return Promise.reject(new Error('Fetch not available'));
+          };
+
+          var descriptor = {
+            get: function() {
+              return currentFetch;
+            },
+            set: function(val) {
+              currentFetch = val;
+            },
+            configurable: true,
+            enumerable: true
+          };
+
+          try {
+            Object.defineProperty(window, 'fetch', descriptor);
+          } catch (_) {}
+
+          if (typeof Window !== 'undefined' && Window.prototype) {
+            try {
+              Object.defineProperty(Window.prototype, 'fetch', descriptor);
+            } catch (_) {}
+          }
+        } catch (_) {}
+      })();
+    </script>
   </head>
   <body class="bg-slate-50 text-slate-900 antialiased selection:bg-blue-600 selection:text-white">
     <div id="root"></div>

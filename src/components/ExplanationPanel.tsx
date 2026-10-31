@@ -1,14 +1,19 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import React, { useState } from 'react';
-import { ComputedPoint } from '../types/projection';
+import { ComputedPoint, QuadrantType } from '../types/projection';
 import {
   Compass,
   CheckCircle2,
   BookOpen,
   Info,
-  HelpCircle,
+  Layers,
   ArrowRight,
-  Maximize2,
-  ChevronRight,
+  Eye,
+  RotateCw,
 } from 'lucide-react';
 
 interface ExplanationPanelProps {
@@ -25,6 +30,7 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
   isDark = false,
 }) => {
   const [activeTab, setActiveTab] = useState<'details' | 'rules' | 'quadrants'>('details');
+  const [selectedQuadrant, setSelectedQuadrant] = useState<QuadrantType>('FIRST');
 
   if (!point) {
     return (
@@ -34,7 +40,6 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
     );
   }
 
-  // Get quadrant theme badge colors
   const getBadgeStyle = (q: string) => {
     switch (q) {
       case 'FIRST':
@@ -53,50 +58,55 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
   return (
     <div className="flex flex-col rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
       {/* Header with Navigation Tabs */}
-      <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-4 py-2 bg-slate-50 dark:bg-slate-850">
+      <div className="flex flex-wrap items-center justify-between border-b border-slate-200 dark:border-slate-800 px-4 py-2.5 bg-slate-50 dark:bg-slate-850 gap-2">
         <div className="flex items-center gap-2">
           <Compass className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-          <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
-            Pedagogical Engineering Analysis
+          <span className="text-xs font-bold text-slate-900 dark:text-slate-100 font-sans">
+            Pedagogical Engineering Analysis &amp; Theory
           </span>
         </div>
 
         <div className="flex items-center gap-1 text-[11px]">
           <button
+            type="button"
             onClick={() => setActiveTab('details')}
-            className={`px-2.5 py-1 rounded-md font-medium transition ${
+            className={`px-2.5 py-1 rounded-md font-medium transition cursor-pointer ${
               activeTab === 'details'
-                ? 'bg-blue-600 text-white shadow-xs'
+                ? 'bg-blue-600 text-white shadow-xs font-bold'
                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-750'
             }`}
           >
-            Point {point.name} Result
+            Point {point.name} Result (Pictorial)
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('rules')}
-            className={`px-2.5 py-1 rounded-md font-medium transition ${
+            className={`px-2.5 py-1 rounded-md font-medium transition cursor-pointer ${
               activeTab === 'rules'
-                ? 'bg-blue-600 text-white shadow-xs'
+                ? 'bg-blue-600 text-white shadow-xs font-bold'
                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-750'
             }`}
           >
-            Rules of Projection
+            Rules &amp; 90° Fold (Pictorial)
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('quadrants')}
-            className={`px-2.5 py-1 rounded-md font-medium transition ${
+            className={`px-2.5 py-1 rounded-md font-medium transition cursor-pointer ${
               activeTab === 'quadrants'
-                ? 'bg-blue-600 text-white shadow-xs'
+                ? 'bg-blue-600 text-white shadow-xs font-bold'
                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-750'
             }`}
           >
-            Quadrant Matrix
+            Quadrant Matrix (Pictorial)
           </button>
         </div>
       </div>
 
-      <div className="p-4">
-        {/* TAB 1: POINT SPECIFIC TECHNICAL BREAKDOWN */}
+      <div className="p-4 flex flex-col gap-4">
+        {/* ============================================================== */}
+        {/* TAB 1: POINT SPECIFIC TECHNICAL BREAKDOWN & MINI PICTOGRAM */}
+        {/* ============================================================== */}
         {activeTab === 'details' && (
           <div className="space-y-4">
             {/* Classification Banner */}
@@ -107,7 +117,7 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                   style={{ backgroundColor: point.color }}
                 />
                 <div>
-                  <div className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                  <div className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2 font-sans">
                     <span>Point {point.name}</span>
                     <span
                       className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${getBadgeStyle(
@@ -129,8 +139,9 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                   {allPoints.map((p) => (
                     <button
                       key={p.id}
+                      type="button"
                       onClick={() => onSelectPoint && onSelectPoint(p.id)}
-                      className={`px-2 py-0.5 rounded font-mono font-bold transition ${
+                      className={`px-2 py-0.5 rounded font-mono font-bold transition cursor-pointer ${
                         p.id === point.id
                           ? 'bg-blue-600 text-white'
                           : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-blue-100'
@@ -141,6 +152,51 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Pictorial 2D Projection Diagram for Selected Point */}
+            <div className="relative w-full h-[180px] rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-[#0b1329] p-2">
+              <svg viewBox="0 0 600 160" className="w-full h-full select-none">
+                {/* Blueprint grid */}
+                <pattern id="point-mini-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                  <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#16274a" strokeWidth="0.8" opacity="0.6" />
+                </pattern>
+                <rect width="600" height="160" fill="url(#point-mini-grid)" />
+
+                {/* Ground Line XY */}
+                <line x1={30} y1={80} x2={570} y2={80} stroke="#e2e8f0" strokeWidth="1.8" />
+                <text x={20} y={85} fill="#f1f5f9" fontSize="13" fontWeight="bold" fontFamily="monospace">X</text>
+                <text x={575} y={85} fill="#f1f5f9" fontSize="13" fontWeight="bold" fontFamily="monospace">Y</text>
+
+                {/* Projector Line */}
+                <line x1={300} y1={20} x2={300} y2={140} stroke="#64748b" strokeWidth="1.2" strokeDasharray="4,3" />
+
+                {/* Elevation Point (a') */}
+                {/* point.elevationY: > 0 above XY, < 0 below XY */}
+                {(() => {
+                  const elevY = 80 - point.frontViewY * 1.5;
+                  const planY = 80 - point.topViewY * 1.5;
+                  return (
+                    <g>
+                      {/* Elevation Point a' */}
+                      <circle cx={300} cy={elevY} r="5" fill="#ef4444" stroke="#fff" strokeWidth="1.5" />
+                      <text x={312} y={elevY + 4} fill="#f87171" fontSize="12" fontWeight="bold" fontFamily="monospace">
+                        {point.frontViewLabel} (Elevation: {point.distHp}mm {point.hpRelation === 'ABOVE' ? 'above' : point.hpRelation === 'BELOW' ? 'below' : 'on'} XY)
+                      </text>
+
+                      {/* Plan Point a */}
+                      <circle cx={300} cy={planY} r="5" fill="#3b82f6" stroke="#fff" strokeWidth="1.5" />
+                      <text x={312} y={planY + 4} fill="#60a5fa" fontSize="12" fontWeight="bold" fontFamily="monospace">
+                        {point.topViewLabel} (Plan: {point.distVp}mm {point.vpRelation === 'IN_FRONT' ? 'below' : point.vpRelation === 'BEHIND' ? 'above' : 'on'} XY)
+                      </text>
+                    </g>
+                  );
+                })()}
+              </svg>
+
+              <div className="absolute top-2 right-2 text-[10px] font-mono text-slate-300 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-700">
+                2D Orthographic Sheet
+              </div>
             </div>
 
             {/* Explanation Prose */}
@@ -154,7 +210,6 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
 
             {/* 2D Orthographic Mapping Summary Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Front View Card */}
               <div className="p-3 rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50/30 dark:bg-red-950/15">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-bold text-red-900 dark:text-red-300 flex items-center gap-1.5">
@@ -172,7 +227,6 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                 </div>
               </div>
 
-              {/* Top View Card */}
               <div className="p-3 rounded-lg border border-blue-200 dark:border-blue-900/50 bg-blue-50/30 dark:bg-blue-950/15">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-bold text-blue-900 dark:text-blue-300 flex items-center gap-1.5">
@@ -193,43 +247,118 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
           </div>
         )}
 
-        {/* TAB 2: RULES OF PROJECTION OF POINTS */}
+        {/* ============================================================== */}
+        {/* TAB 2: RULES OF PROJECTION WITH 3D PICTORIAL FOLDING DIAGRAM */}
+        {/* ============================================================== */}
         {activeTab === 'rules' && (
-          <div className="space-y-3 text-xs">
-            <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
-              <h3 className="font-bold text-slate-900 dark:text-slate-100 mb-1.5 flex items-center gap-1.5">
+          <div className="space-y-4 text-xs">
+            {/* Pictorial 3D Dihedral Quadrant & 90° Clockwise Rotation Schematic */}
+            <div className="relative w-full h-[220px] rounded-xl overflow-hidden border border-slate-700 bg-[#0b1329]">
+              <svg viewBox="0 0 680 200" className="w-full h-full select-none">
+                <pattern id="rules-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                  <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#16274a" strokeWidth="0.8" opacity="0.6" />
+                </pattern>
+                <rect width="680" height="200" fill="url(#rules-grid)" />
+
+                {/* Left Side: 3D Dihedral Perspective */}
+                <g transform="translate(60, 20)">
+                  {/* VP Plane (Vertical) */}
+                  <polygon points="120,10 240,10 240,150 120,150" fill="rgba(239,68,68,0.2)" stroke="#ef4444" strokeWidth="1.5" />
+                  <text x={180} y={30} fill="#fca5a5" fontSize="11" fontWeight="bold" textAnchor="middle" fontFamily="monospace">
+                    VP (Vertical)
+                  </text>
+
+                  {/* HP Plane (Horizontal) */}
+                  <polygon points="40,90 200,90 280,70 120,70" fill="rgba(59,130,246,0.2)" stroke="#3b82f6" strokeWidth="1.5" />
+                  <text x={90} y={110} fill="#93c5fd" fontSize="11" fontWeight="bold" fontFamily="monospace">
+                    HP (Horizontal)
+                  </text>
+
+                  {/* XY Line */}
+                  <line x1={120} y1={80} x2={240} y2={80} stroke="#f8fafc" strokeWidth="2.5" />
+                  <text x={110} y={84} fill="#fff" fontSize="11" fontWeight="bold">X</text>
+                  <text x={245} y={84} fill="#fff" fontSize="11" fontWeight="bold">Y</text>
+
+                  {/* 90° Clockwise Rotation Arrow on HP */}
+                  <path d="M 170 95 A 35 35 0 0 1 180 145" fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeDasharray="4,3" markerEnd="url(#arrow-amber)" />
+                  <text x={190} y={125} fill="#fbbf24" fontSize="11" fontWeight="bold" fontFamily="monospace">
+                    90° CW Fold
+                  </text>
+
+                  {/* Observer Eye */}
+                  <circle cx={20} cy={80} r="7" fill="#10b981" />
+                  <text x={20} y={105} fill="#6ee7b7" fontSize="10" textAnchor="middle" fontWeight="bold">
+                    Front Eye
+                  </text>
+                </g>
+
+                {/* Arrow from 3D to 2D Sheet */}
+                <g transform="translate(370, 95)">
+                  <line x1={0} y1={0} x2={40} y2={0} stroke="#cbd5e1" strokeWidth="2" markerEnd="url(#arrow-dim)" />
+                  <text x={20} y={-10} fill="#94a3b8" fontSize="10" textAnchor="middle" fontFamily="monospace">
+                    Unfolds to 2D
+                  </text>
+                </g>
+
+                {/* Right Side: Resulting Flat 2D Orthographic Sheet */}
+                <g transform="translate(440, 25)">
+                  <rect x={0} y={0} width={180} height={140} fill="#0f172a" stroke="#475569" strokeWidth="1.5" rx="6" />
+                  <line x1={10} y1={70} x2={170} y2={70} stroke="#f8fafc" strokeWidth="2" />
+                  <text x={12} y={64} fill="#fff" fontSize="11" fontWeight="bold">X</text>
+                  <text x={160} y={64} fill="#fff" fontSize="11" fontWeight="bold">Y</text>
+
+                  {/* VP Zone */}
+                  <text x={90} y={35} fill="#f87171" fontSize="11" textAnchor="middle" fontWeight="bold" fontFamily="monospace">
+                    VP (Elevation a′)
+                  </text>
+
+                  {/* HP Zone (Folded down) */}
+                  <text x={90} y={115} fill="#60a5fa" fontSize="11" textAnchor="middle" fontWeight="bold" fontFamily="monospace">
+                    HP (Plan a)
+                  </text>
+
+                  {/* Common Projector line */}
+                  <line x1={90} y1={15} x2={90} y2={125} stroke="#64748b" strokeWidth="1" strokeDasharray="3,3" />
+                  <circle cx={90} cy={42} r="4" fill="#ef4444" />
+                  <circle cx={90} cy={98} r="4" fill="#3b82f6" />
+                </g>
+              </svg>
+            </div>
+
+            <div className="p-3.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+              <h3 className="font-bold text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-2 font-sans">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>Fundamental Conventions in Engineering Drawing</span>
+                <span>The 5 Golden Rules of Engineering Point Projection</span>
               </h3>
-              <ul className="space-y-2 text-slate-600 dark:text-slate-300 text-[11.5px] leading-relaxed">
+              <ul className="space-y-2 text-slate-600 dark:text-slate-300 text-[11.5px] leading-relaxed font-sans">
                 <li className="flex items-start gap-2">
                   <span className="font-bold text-blue-600 dark:text-blue-400 font-mono">1.</span>
                   <span>
-                    <strong>Reference Line (XY):</strong> Represents the line of intersection between HP and VP. It is drawn as a continuous horizontal reference line across the drawing sheet.
+                    <strong>Reference Line (XY):</strong> Intersection of Horizontal Plane (HP) and Vertical Plane (VP). Drawn as a continuous horizontal reference line.
                   </span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="font-bold text-blue-600 dark:text-blue-400 font-mono">2.</span>
                   <span>
-                    <strong>Front View / Elevation (a′):</strong> Obtained by projecting the point onto the Vertical Plane (VP). Its distance from XY equals the distance of the point from HP. Labeled with small or capital letter with a <strong>prime (′)</strong>.
+                    <strong>Front View / Elevation (a′):</strong> Projected onto VP. Its distance from XY equals the distance of the point from HP. Marked with a <strong>prime (′)</strong>.
                   </span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="font-bold text-blue-600 dark:text-blue-400 font-mono">3.</span>
                   <span>
-                    <strong>Top View / Plan (a):</strong> Obtained by projecting the point onto the Horizontal Plane (HP). Its distance from XY equals the distance of the point from VP. Labeled <strong>without prime</strong>.
+                    <strong>Top View / Plan (a):</strong> Projected onto HP. Its distance from XY equals the distance of the point from VP. Marked <strong>without prime</strong>.
                   </span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="font-bold text-blue-600 dark:text-blue-400 font-mono">4.</span>
                   <span>
-                    <strong>90° Clockwise Rotation of HP:</strong> To draw both views on a flat 2D drawing sheet, the Horizontal Plane is always rotated <strong>90° clockwise</strong> about the XY axis.
+                    <strong>90° Clockwise Rotation of HP:</strong> HP is always rotated <strong>90° clockwise</strong> about XY to align coplanar with VP for drawing on a 2D sheet.
                   </span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="font-bold text-blue-600 dark:text-blue-400 font-mono">5.</span>
                   <span>
-                    <strong>Common Projector:</strong> The Front View (a′) and Top View (a) of the same point always lie on the same straight perpendicular line to the XY reference line.
+                    <strong>Common Projector:</strong> The Front View (a′) and Top View (a) always lie on the exact same vertical projector perpendicular to XY.
                   </span>
                 </li>
               </ul>
@@ -237,64 +366,175 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
           </div>
         )}
 
-        {/* TAB 3: COMPLETE QUADRANT MATRIX */}
+        {/* ============================================================== */}
+        {/* TAB 3: COMPLETE QUADRANT MATRIX WITH INTERACTIVE PICTOGRAM */}
+        {/* ============================================================== */}
         {activeTab === 'quadrants' && (
-          <div className="overflow-x-auto text-xs">
-            <table className="w-full border-collapse border border-slate-200 dark:border-slate-700 text-left">
-              <thead>
-                <tr className="bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-semibold text-[11px]">
-                  <th className="p-2 border border-slate-200 dark:border-slate-700">Quadrant</th>
-                  <th className="p-2 border border-slate-200 dark:border-slate-700">Position in Space</th>
-                  <th className="p-2 border border-slate-200 dark:border-slate-700">Front View (a′)</th>
-                  <th className="p-2 border border-slate-200 dark:border-slate-700">Top View (a)</th>
-                  <th className="p-2 border border-slate-200 dark:border-slate-700">Drawing Result</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-700 font-mono text-[11px] text-slate-700 dark:text-slate-300">
-                <tr className="hover:bg-blue-50/30 dark:hover:bg-blue-950/20">
-                  <td className="p-2 font-bold text-blue-600">1st Quadrant</td>
-                  <td className="p-2">Above HP, In Front of VP</td>
-                  <td className="p-2 text-red-600 font-semibold">Above XY</td>
-                  <td className="p-2 text-blue-600 font-semibold">Below XY</td>
-                  <td className="p-2 font-sans">a′ above, a below XY</td>
-                </tr>
-                <tr className="hover:bg-red-50/30 dark:hover:bg-red-950/20">
-                  <td className="p-2 font-bold text-red-600">2nd Quadrant</td>
-                  <td className="p-2">Above HP, Behind VP</td>
-                  <td className="p-2 text-red-600 font-semibold">Above XY</td>
-                  <td className="p-2 text-blue-600 font-semibold">Above XY</td>
-                  <td className="p-2 font-sans font-semibold text-amber-600">Both views ABOVE XY</td>
-                </tr>
-                <tr className="hover:bg-emerald-50/30 dark:hover:bg-emerald-950/20">
-                  <td className="p-2 font-bold text-emerald-600">3rd Quadrant</td>
-                  <td className="p-2">Below HP, Behind VP</td>
-                  <td className="p-2 text-red-600 font-semibold">Below XY</td>
-                  <td className="p-2 text-blue-600 font-semibold">Above XY</td>
-                  <td className="p-2 font-sans">a above, a′ below XY (3rd Angle)</td>
-                </tr>
-                <tr className="hover:bg-purple-50/30 dark:hover:bg-purple-950/20">
-                  <td className="p-2 font-bold text-purple-600">4th Quadrant</td>
-                  <td className="p-2">Below HP, In Front of VP</td>
-                  <td className="p-2 text-red-600 font-semibold">Below XY</td>
-                  <td className="p-2 text-blue-600 font-semibold">Below XY</td>
-                  <td className="p-2 font-sans font-semibold text-purple-600">Both views BELOW XY</td>
-                </tr>
-                <tr className="hover:bg-amber-50/30 dark:hover:bg-amber-950/20">
-                  <td className="p-2 font-bold text-amber-600">On HP Boundary</td>
-                  <td className="p-2">On HP, in front / behind VP</td>
-                  <td className="p-2 text-red-600 font-semibold">On XY line</td>
-                  <td className="p-2 text-blue-600 font-semibold">Below / Above XY</td>
-                  <td className="p-2 font-sans">Elevation lies on XY</td>
-                </tr>
-                <tr className="hover:bg-amber-50/30 dark:hover:bg-amber-950/20">
-                  <td className="p-2 font-bold text-amber-600">On VP Boundary</td>
-                  <td className="p-2">Above / below HP, on VP</td>
-                  <td className="p-2 text-red-600 font-semibold">Above / Below XY</td>
-                  <td className="p-2 text-blue-600 font-semibold">On XY line</td>
-                  <td className="p-2 font-sans">Plan lies on XY</td>
-                </tr>
-              </tbody>
-            </table>
+          <div className="flex flex-col gap-4 text-xs">
+            {/* Interactive 4-Quadrant Cross Section SVG */}
+            <div className="relative w-full h-[240px] rounded-xl overflow-hidden border border-slate-700 bg-[#0b1329] p-2">
+              <svg viewBox="0 0 600 220" className="w-full h-full select-none">
+                <pattern id="quad-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                  <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#16274a" strokeWidth="0.8" opacity="0.6" />
+                </pattern>
+                <rect width="600" height="220" fill="url(#quad-grid)" />
+
+                {/* Vertical Plane (VP) axis */}
+                <line x1={300} y1={20} x2={300} y2={200} stroke="#ef4444" strokeWidth="2" opacity="0.8" />
+                <text x={310} y={30} fill="#fca5a5" fontSize="10" fontFamily="monospace">Above HP (VP)</text>
+                <text x={310} y={195} fill="#fca5a5" fontSize="10" fontFamily="monospace">Below HP (VP)</text>
+
+                {/* Horizontal Plane (HP) axis */}
+                <line x1={80} y1={110} x2={520} y2={110} stroke="#3b82f6" strokeWidth="2" opacity="0.8" />
+                <text x={90} y={100} fill="#93c5fd" fontSize="10" fontFamily="monospace">Behind VP (HP)</text>
+                <text x={430} y={100} fill="#93c5fd" fontSize="10" fontFamily="monospace">In Front of VP (HP)</text>
+
+                {/* Origin XY */}
+                <circle cx={300} cy={110} r="4" fill="#ffffff" />
+                <text x={280} y={125} fill="#ffffff" fontSize="12" fontWeight="bold">XY</text>
+
+                {/* 1st Quadrant Box */}
+                <g
+                  onClick={() => setSelectedQuadrant('FIRST')}
+                  className="cursor-pointer group"
+                >
+                  <rect
+                    x={310}
+                    y={25}
+                    width={190}
+                    height={75}
+                    fill={selectedQuadrant === 'FIRST' ? 'rgba(59,130,246,0.3)' : 'rgba(59,130,246,0.08)'}
+                    stroke={selectedQuadrant === 'FIRST' ? '#3b82f6' : '#1e3a8a'}
+                    strokeWidth="1.5"
+                    rx="6"
+                  />
+                  <text x={405} y={55} fill="#60a5fa" fontSize="12" fontWeight="bold" textAnchor="middle" fontFamily="monospace">
+                    1st Quadrant
+                  </text>
+                  <text x={405} y={75} fill="#93c5fd" fontSize="10" textAnchor="middle" fontFamily="monospace">
+                    a′ Above, a Below XY
+                  </text>
+                </g>
+
+                {/* 2nd Quadrant Box */}
+                <g
+                  onClick={() => setSelectedQuadrant('SECOND')}
+                  className="cursor-pointer group"
+                >
+                  <rect
+                    x={100}
+                    y={25}
+                    width={190}
+                    height={75}
+                    fill={selectedQuadrant === 'SECOND' ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.08)'}
+                    stroke={selectedQuadrant === 'SECOND' ? '#ef4444' : '#7f1d1d'}
+                    strokeWidth="1.5"
+                    rx="6"
+                  />
+                  <text x={195} y={55} fill="#f87171" fontSize="12" fontWeight="bold" textAnchor="middle" fontFamily="monospace">
+                    2nd Quadrant
+                  </text>
+                  <text x={195} y={75} fill="#fca5a5" fontSize="10" textAnchor="middle" fontFamily="monospace">
+                    Both a′ &amp; a ABOVE XY
+                  </text>
+                </g>
+
+                {/* 3rd Quadrant Box */}
+                <g
+                  onClick={() => setSelectedQuadrant('THIRD')}
+                  className="cursor-pointer group"
+                >
+                  <rect
+                    x={100}
+                    y={120}
+                    width={190}
+                    height={75}
+                    fill={selectedQuadrant === 'THIRD' ? 'rgba(16,185,129,0.3)' : 'rgba(16,185,129,0.08)'}
+                    stroke={selectedQuadrant === 'THIRD' ? '#10b981' : '#064e3b'}
+                    strokeWidth="1.5"
+                    rx="6"
+                  />
+                  <text x={195} y={150} fill="#34d399" fontSize="12" fontWeight="bold" textAnchor="middle" fontFamily="monospace">
+                    3rd Quadrant
+                  </text>
+                  <text x={195} y={170} fill="#6ee7b7" fontSize="10" textAnchor="middle" fontFamily="monospace">
+                    a Above, a′ Below XY (3rd Angle)
+                  </text>
+                </g>
+
+                {/* 4th Quadrant Box */}
+                <g
+                  onClick={() => setSelectedQuadrant('FOURTH')}
+                  className="cursor-pointer group"
+                >
+                  <rect
+                    x={310}
+                    y={120}
+                    width={190}
+                    height={75}
+                    fill={selectedQuadrant === 'FOURTH' ? 'rgba(168,85,247,0.3)' : 'rgba(168,85,247,0.08)'}
+                    stroke={selectedQuadrant === 'FOURTH' ? '#a855f7' : '#581c87'}
+                    strokeWidth="1.5"
+                    rx="6"
+                  />
+                  <text x={405} y={150} fill="#c084fc" fontSize="12" fontWeight="bold" textAnchor="middle" fontFamily="monospace">
+                    4th Quadrant
+                  </text>
+                  <text x={405} y={170} fill="#d8b4fe" fontSize="10" textAnchor="middle" fontFamily="monospace">
+                    Both a′ &amp; a BELOW XY
+                  </text>
+                </g>
+              </svg>
+
+              <div className="absolute top-2 right-2 text-[10px] font-mono text-slate-300 bg-slate-900/90 px-2.5 py-1 rounded border border-slate-700">
+                Click any quadrant to inspect
+              </div>
+            </div>
+
+            {/* Quadrant Matrix Table */}
+            <div className="overflow-x-auto text-xs">
+              <table className="w-full border-collapse border border-slate-200 dark:border-slate-700 text-left">
+                <thead>
+                  <tr className="bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-semibold text-[11px]">
+                    <th className="p-2 border border-slate-200 dark:border-slate-700">Quadrant</th>
+                    <th className="p-2 border border-slate-200 dark:border-slate-700">Position in Space</th>
+                    <th className="p-2 border border-slate-200 dark:border-slate-700">Front View (a′)</th>
+                    <th className="p-2 border border-slate-200 dark:border-slate-700">Top View (a)</th>
+                    <th className="p-2 border border-slate-200 dark:border-slate-700">2D Drawing Result</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-700 font-mono text-[11px] text-slate-700 dark:text-slate-300">
+                  <tr className={`hover:bg-blue-50/30 dark:hover:bg-blue-950/20 ${selectedQuadrant === 'FIRST' ? 'bg-blue-50 dark:bg-blue-950/40 font-bold' : ''}`}>
+                    <td className="p-2 text-blue-600 font-bold">1st Quadrant</td>
+                    <td className="p-2">Above HP, In Front of VP</td>
+                    <td className="p-2 text-red-600 font-semibold">Above XY</td>
+                    <td className="p-2 text-blue-600 font-semibold">Below XY</td>
+                    <td className="p-2 font-sans font-medium">a′ above, a below XY</td>
+                  </tr>
+                  <tr className={`hover:bg-red-50/30 dark:hover:bg-red-950/20 ${selectedQuadrant === 'SECOND' ? 'bg-red-50 dark:bg-red-950/40 font-bold' : ''}`}>
+                    <td className="p-2 text-red-600 font-bold">2nd Quadrant</td>
+                    <td className="p-2">Above HP, Behind VP</td>
+                    <td className="p-2 text-red-600 font-semibold">Above XY</td>
+                    <td className="p-2 text-blue-600 font-semibold">Above XY</td>
+                    <td className="p-2 font-sans font-semibold text-amber-600">Both views ABOVE XY</td>
+                  </tr>
+                  <tr className={`hover:bg-emerald-50/30 dark:hover:bg-emerald-950/20 ${selectedQuadrant === 'THIRD' ? 'bg-emerald-50 dark:bg-emerald-950/40 font-bold' : ''}`}>
+                    <td className="p-2 text-emerald-600 font-bold">3rd Quadrant</td>
+                    <td className="p-2">Below HP, Behind VP</td>
+                    <td className="p-2 text-red-600 font-semibold">Below XY</td>
+                    <td className="p-2 text-blue-600 font-semibold">Above XY</td>
+                    <td className="p-2 font-sans font-medium">a above, a′ below XY (3rd Angle)</td>
+                  </tr>
+                  <tr className={`hover:bg-purple-50/30 dark:hover:bg-purple-950/20 ${selectedQuadrant === 'FOURTH' ? 'bg-purple-50 dark:bg-purple-950/40 font-bold' : ''}`}>
+                    <td className="p-2 text-purple-600 font-bold">4th Quadrant</td>
+                    <td className="p-2">Below HP, In Front of VP</td>
+                    <td className="p-2 text-red-600 font-semibold">Below XY</td>
+                    <td className="p-2 text-blue-600 font-semibold">Below XY</td>
+                    <td className="p-2 font-sans font-semibold text-purple-600">Both views BELOW XY</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>

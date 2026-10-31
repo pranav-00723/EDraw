@@ -1,0 +1,972 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { ComputedLine } from '../../types/lines';
+import {
+  Play,
+  Pause,
+  ChevronLeft,
+  ChevronRight,
+  LayoutGrid,
+  Sparkles,
+  Compass,
+  CheckCircle2,
+  Maximize2,
+  Layers,
+  Ruler,
+} from 'lucide-react';
+
+interface PictorialDraftingStagesProps {
+  line: ComputedLine;
+  hpColor?: string;
+  vpColor?: string;
+  isDark?: boolean;
+}
+
+export type DraftingStageNumber = 1 | 2 | 3 | 4;
+
+export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = ({
+  line,
+  hpColor = '#2563eb',
+  vpColor = '#dc2626',
+  isDark = true,
+}) => {
+  const [activeStage, setActiveStage] = useState<DraftingStageNumber>(1);
+  const [isAllStagesView, setIsAllStagesView] = useState<boolean>(false);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const playTimerRef = useRef<number | null>(null);
+
+  // Auto-play sequence through stages 1 -> 2 -> 3 -> 4
+  useEffect(() => {
+    if (isPlaying) {
+      playTimerRef.current = window.setInterval(() => {
+        setActiveStage((prev) => {
+          if (prev >= 4) {
+            setIsPlaying(false);
+            return 4;
+          }
+          return (prev + 1) as DraftingStageNumber;
+        });
+      }, 2600);
+    } else {
+      if (playTimerRef.current) {
+        clearInterval(playTimerRef.current);
+        playTimerRef.current = null;
+      }
+    }
+    return () => {
+      if (playTimerRef.current) clearInterval(playTimerRef.current);
+    };
+  }, [isPlaying]);
+
+  const handleTogglePlay = () => {
+    if (isPlaying) {
+      setIsPlaying(false);
+    } else {
+      if (activeStage === 4) setActiveStage(1);
+      setIsAllStagesView(false);
+      setIsPlaying(true);
+    }
+  };
+
+  const handlePrevStage = () => {
+    setIsPlaying(false);
+    setIsAllStagesView(false);
+    setActiveStage((prev) => (Math.max(1, prev - 1) as DraftingStageNumber));
+  };
+
+  const handleNextStage = () => {
+    setIsPlaying(false);
+    setIsAllStagesView(false);
+    setActiveStage((prev) => (Math.min(4, prev + 1) as DraftingStageNumber));
+  };
+
+  const handleSelectStage = (stage: DraftingStageNumber) => {
+    setIsPlaying(false);
+    setIsAllStagesView(false);
+    setActiveStage(stage);
+  };
+
+  // SVG Dimension Math & Dynamic Responsive Coordinate Mapper
+  const svgMetrics = useMemo(() => {
+    const width = 800;
+    const height = 440;
+    const groundY = 220; // XY reference line Y
+    const originX = 220; // Reference end projector X
+
+    // Calculate maximum displacement along X and Y to pick an optimal scale
+    const maxX = Math.max(
+      line.dep,
+      Math.abs(line.b1Front.x),
+      Math.abs(line.b2Top.x),
+      Math.abs(line.bFront.x),
+      40
+    );
+    const maxY = Math.max(
+      Math.abs(line.aFront.y),
+      Math.abs(line.aTop.y),
+      Math.abs(line.bFront.y),
+      Math.abs(line.bTop.y),
+      35
+    );
+
+    const scaleX = 360 / Math.max(maxX, 60);
+    const scaleY = 160 / Math.max(maxY, 50);
+    const scale = Math.min(scaleX, scaleY, 2.5);
+
+    const toX = (xMm: number) => originX + xMm * scale;
+    // In SVG, positive Y is downwards.
+    // In 2D orthographic projection: +y is above XY (elevation), -y is below XY (plan)
+    const toY = (yMm: number) => groundY - yMm * scale;
+
+    const ptAFront = { x: toX(line.aFront.x), y: toY(line.aFront.y) };
+    const ptATop = { x: toX(line.aTop.x), y: toY(line.aTop.y) };
+    const ptBFront = { x: toX(line.bFront.x), y: toY(line.bFront.y) };
+    const ptBTop = { x: toX(line.bTop.x), y: toY(line.bTop.y) };
+    const ptB1Front = { x: toX(line.b1Front.x), y: toY(line.b1Front.y) };
+    const ptB2Top = { x: toX(line.b2Top.x), y: toY(line.b2Top.y) };
+
+    const endProjectorX = toX(line.dep);
+
+    return {
+      width,
+      height,
+      groundY,
+      originX,
+      scale,
+      toX,
+      toY,
+      ptAFront,
+      ptATop,
+      ptBFront,
+      ptBTop,
+      ptB1Front,
+      ptB2Top,
+      endProjectorX,
+    };
+  }, [line]);
+
+  // Stage Educational Explanations
+  const stageExplanations = [
+    {
+      num: 1,
+      name: 'Reference Projector',
+      instrument: 'T-Square & Set Square (2H Pencil for projector, HB Pencil for points)',
+      title: 'Step 1: Draw XY Ground Line & Reference End A Projector',
+      description: `Draw the horizontal reference line XY. Erect a thin vertical projector at End A (${line.nameA}). Mark the Front View (Elevation) a′ at distance |zA| = ${Math.abs(line.zA)} mm ${line.zA >= 0 ? 'above' : 'below'} XY. Mark the Top View (Plan) a at distance |yA| = ${Math.abs(line.yA)} mm ${line.yA >= 0 ? 'below' : 'above'} XY.`,
+      keyTakeaway: 'The Front View (a′) and Top View (a) always lie on the exact same vertical projector perpendicular to XY.',
+    },
+    {
+      num: 2,
+      name: 'Loci of End B',
+      instrument: 'T-Square & Parallel Ruler (2H Pencil, Long Dashed Lines)',
+      title: 'Step 2: Establish the Parallel Locus Lines for End B',
+      description: `Draw horizontal dashed lines parallel to XY: the Locus of b′ across the elevation plane at height ${Math.abs(line.zB)} mm, and the Locus of b across the plan plane at depth ${Math.abs(line.yB)} mm. Distance Between Projectors (DEP) is ${line.dep.toFixed(1)} mm along XY.`,
+      keyTakeaway: 'As a straight line rotates in space keeping one end fixed, its other end always moves along horizontal locus lines parallel to the ground line.',
+    },
+    {
+      num: 3,
+      name: 'True Length Arcs',
+      instrument: 'Drafting Compass (Radius = True Length TL)',
+      title: 'Step 3: Rotating Line Construction for True Length & True Angles',
+      description: `With center a′ and compass radius equal to True Length (${line.trueLength.toFixed(1)} mm), swing a rotating arc cutting the locus of b′ at b₁′. The angle of a′b₁′ with XY gives the true inclination θ = ${line.thetaDeg.toFixed(1)}° to HP. Similarly, in plan with center a and radius ${line.trueLength.toFixed(1)} mm, swing an arc to cut the locus of b at b₂. The angle of ab₂ with XY gives the true inclination φ = ${line.phiDeg.toFixed(1)}° to VP.`,
+      keyTakeaway: 'True Length is only visible when the line is made parallel to a reference plane. The rotating line method swings the line parallel to find true length and true angles.',
+    },
+    {
+      num: 4,
+      name: 'Final Views & Projector',
+      instrument: 'HB Pencil & Straightedge (Thick Dark Line for Views)',
+      title: 'Step 4: Draw Final Elevation, Plan, and End Projector Alignment',
+      description: `Join a′b′ with a thick continuous line to obtain the final Elevation (Front View = ${line.frontViewLength.toFixed(1)} mm at apparent angle α = ${line.alphaDeg.toFixed(1)}°). Join ab with a thick continuous line to obtain the final Plan (Top View = ${line.topViewLength.toFixed(1)} mm at apparent angle β = ${line.betaDeg.toFixed(1)}°). Notice that b′ and b terminate on the exact same vertical projector perpendicular to XY!`,
+      keyTakeaway: 'Orthographic Invariant: The end projections b′ (elevation) and b (plan) must strictly align on one common vertical projector line perpendicular to XY.',
+    },
+  ];
+
+  // Helper renderer for a single SVG viewport representing a specific stage
+  const renderStageSvg = (stageNum: DraftingStageNumber, isCompact = false) => {
+    const {
+      width,
+      height,
+      groundY,
+      originX,
+      ptAFront,
+      ptATop,
+      ptBFront,
+      ptBTop,
+      ptB1Front,
+      ptB2Top,
+      endProjectorX,
+    } = svgMetrics;
+
+    const locusStartX = originX - 45;
+    const locusEndX = Math.max(endProjectorX, ptB1Front.x, ptB2Top.x) + 75;
+
+    // Radius for True Length arcs
+    const radiusTL = Math.hypot(ptB1Front.x - ptAFront.x, ptB1Front.y - ptAFront.y);
+    const radiusTLPlan = Math.hypot(ptB2Top.x - ptATop.x, ptB2Top.y - ptATop.y);
+
+    return (
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="w-full h-full select-none"
+        style={{ background: '#0b1329' }}
+      >
+        <defs>
+          {/* Blueprint Drafting Grid Pattern */}
+          <pattern id={`bp-grid-${stageNum}-${isCompact ? 'c' : 'f'}`} width="20" height="20" patternUnits="userSpaceOnUse">
+            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#16274a" strokeWidth="0.8" opacity="0.6" />
+          </pattern>
+          <pattern id={`bp-major-${stageNum}-${isCompact ? 'c' : 'f'}`} width="100" height="100" patternUnits="userSpaceOnUse">
+            <rect width="100" height="100" fill={`url(#bp-grid-${stageNum}-${isCompact ? 'c' : 'f'})`} />
+            <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#1f3768" strokeWidth="1.2" opacity="0.8" />
+          </pattern>
+
+          {/* Glowing Filters */}
+          <filter id="glow-red" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="2.5" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <filter id="glow-blue" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="2.5" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+
+          {/* Arrow Markers */}
+          <marker id="arrow-dim" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+            <path d="M 0 1 L 7 4 L 0 7 z" fill="#60a5fa" />
+          </marker>
+          <marker id="arrow-amber" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+            <path d="M 0 1 L 7 4 L 0 7 z" fill="#f59e0b" />
+          </marker>
+        </defs>
+
+        {/* Blueprint Grid Background */}
+        <rect width={width} height={height} fill={`url(#bp-major-${stageNum}-${isCompact ? 'c' : 'f'})`} />
+
+        {/* ============================================================== */}
+        {/* BASE GROUND LINE XY (Present in all stages) */}
+        {/* ============================================================== */}
+        <line
+          x1={30}
+          y1={groundY}
+          x2={width - 30}
+          y2={groundY}
+          stroke="#e2e8f0"
+          strokeWidth="1.8"
+        />
+
+        {/* End markers X and Y */}
+        <circle cx={40} cy={groundY} r="3" fill="#e2e8f0" />
+        <circle cx={width - 40} cy={groundY} r="3" fill="#e2e8f0" />
+        <text
+          x={24}
+          y={groundY + 5}
+          fill="#f8fafc"
+          fontSize={isCompact ? '12' : '15'}
+          fontWeight="bold"
+          fontFamily="monospace"
+        >
+          X
+        </text>
+        <text
+          x={width - 24}
+          y={groundY + 5}
+          fill="#f8fafc"
+          fontSize={isCompact ? '12' : '15'}
+          fontWeight="bold"
+          fontFamily="monospace"
+        >
+          Y
+        </text>
+
+        {/* Plane Labels (VP above XY, HP below XY in First Angle) */}
+        {!isCompact && (
+          <>
+            <text x={42} y={groundY - 14} fill="#f87171" fontSize="11" fontFamily="monospace" opacity="0.85">
+              VP (Elevation / Front View Plane)
+            </text>
+            <text x={42} y={groundY + 22} fill="#60a5fa" fontSize="11" fontFamily="monospace" opacity="0.85">
+              HP (Plan / Top View Plane)
+            </text>
+          </>
+        )}
+
+        {/* ============================================================== */}
+        {/* STAGE 1 ELEMENTS: Reference End Projector and Points a' and a */}
+        {/* ============================================================== */}
+        {/* Reference End Projector Line (Vertical, passing through XY) */}
+        <line
+          x1={originX}
+          y1={Math.min(ptAFront.y, groundY) - 35}
+          x2={originX}
+          y2={Math.max(ptATop.y, groundY) + 35}
+          stroke="#94a3b8"
+          strokeWidth="1.2"
+          strokeDasharray="4,3"
+        />
+
+        {/* Dimension Lines for a' (Elevation distance from XY) */}
+        {!isCompact && (
+          <g>
+            <line
+              x1={originX - 25}
+              y1={groundY}
+              x2={originX - 25}
+              y2={ptAFront.y}
+              stroke="#f87171"
+              strokeWidth="1"
+              markerStart="url(#arrow-dim)"
+              markerEnd="url(#arrow-dim)"
+            />
+            <line x1={originX - 30} y1={groundY} x2={originX - 10} y2={groundY} stroke="#f87171" strokeWidth="0.8" opacity="0.5" />
+            <line x1={originX - 30} y1={ptAFront.y} x2={originX - 10} y2={ptAFront.y} stroke="#f87171" strokeWidth="0.8" opacity="0.5" />
+            <text
+              x={originX - 32}
+              y={(groundY + ptAFront.y) / 2 + 3}
+              fill="#fca5a5"
+              fontSize="10"
+              fontFamily="monospace"
+              textAnchor="end"
+            >
+              {Math.abs(line.zA)} mm
+            </text>
+          </g>
+        )}
+
+        {/* Dimension Lines for a (Plan distance from XY) */}
+        {!isCompact && (
+          <g>
+            <line
+              x1={originX - 25}
+              y1={groundY}
+              x2={originX - 25}
+              y2={ptATop.y}
+              stroke="#60a5fa"
+              strokeWidth="1"
+              markerStart="url(#arrow-dim)"
+              markerEnd="url(#arrow-dim)"
+            />
+            <line x1={originX - 30} y1={ptATop.y} x2={originX - 10} y2={ptATop.y} stroke="#60a5fa" strokeWidth="0.8" opacity="0.5" />
+            <text
+              x={originX - 32}
+              y={(groundY + ptATop.y) / 2 + 3}
+              fill="#93c5fd"
+              fontSize="10"
+              fontFamily="monospace"
+              textAnchor="end"
+            >
+              {Math.abs(line.yA)} mm
+            </text>
+          </g>
+        )}
+
+        {/* Point a' (Elevation Point) */}
+        <circle
+          cx={ptAFront.x}
+          cy={ptAFront.y}
+          r={isCompact ? 4 : 5.5}
+          fill="#ef4444"
+          stroke="#ffffff"
+          strokeWidth="1.5"
+          filter="url(#glow-red)"
+        />
+        <text
+          x={ptAFront.x - 12}
+          y={ptAFront.y - 8}
+          fill="#fca5a5"
+          fontSize={isCompact ? '12' : '14'}
+          fontWeight="bold"
+          fontFamily="monospace"
+        >
+          {line.nameA.toLowerCase()}′
+        </text>
+
+        {/* Point a (Plan Point) */}
+        <circle
+          cx={ptATop.x}
+          cy={ptATop.y}
+          r={isCompact ? 4 : 5.5}
+          fill="#3b82f6"
+          stroke="#ffffff"
+          strokeWidth="1.5"
+          filter="url(#glow-blue)"
+        />
+        <text
+          x={ptATop.x - 12}
+          y={ptATop.y + 16}
+          fill="#93c5fd"
+          fontSize={isCompact ? '12' : '14'}
+          fontWeight="bold"
+          fontFamily="monospace"
+        >
+          {line.nameA.toLowerCase()}
+        </text>
+
+        {/* ============================================================== */}
+        {/* STAGE 2 ELEMENTS: Locus Lines of End B */}
+        {/* ============================================================== */}
+        {stageNum >= 2 && (
+          <g>
+            {/* Locus Line of b' (Horizontal at ptBFront.y) */}
+            <line
+              x1={locusStartX}
+              y1={ptBFront.y}
+              x2={locusEndX}
+              y2={ptBFront.y}
+              stroke="#f59e0b"
+              strokeWidth="1.4"
+              strokeDasharray="6,4"
+              opacity={stageNum === 2 ? 1 : 0.65}
+            />
+            <text
+              x={locusEndX + 6}
+              y={ptBFront.y + 4}
+              fill="#fbbf24"
+              fontSize={isCompact ? '10' : '11'}
+              fontWeight="600"
+              fontFamily="monospace"
+            >
+              Locus of {line.nameB.toLowerCase()}′
+            </text>
+
+            {/* Locus Line of b (Horizontal at ptBTop.y) */}
+            <line
+              x1={locusStartX}
+              y1={ptBTop.y}
+              x2={locusEndX}
+              y2={ptBTop.y}
+              stroke="#06b6d4"
+              strokeWidth="1.4"
+              strokeDasharray="6,4"
+              opacity={stageNum === 2 ? 1 : 0.65}
+            />
+            <text
+              x={locusEndX + 6}
+              y={ptBTop.y + 4}
+              fill="#22d3ee"
+              fontSize={isCompact ? '10' : '11'}
+              fontWeight="600"
+              fontFamily="monospace"
+            >
+              Locus of {line.nameB.toLowerCase()}
+            </text>
+
+            {/* Distance Between Projectors (DEP) Indicator along XY */}
+            {!isCompact && (
+              <g>
+                <line
+                  x1={originX}
+                  y1={groundY}
+                  x2={endProjectorX}
+                  y2={groundY}
+                  stroke="#38bdf8"
+                  strokeWidth="3.2"
+                  opacity="0.8"
+                />
+                <circle cx={originX} cy={groundY} r="3" fill="#38bdf8" />
+                <circle cx={endProjectorX} cy={groundY} r="3" fill="#38bdf8" />
+                <text
+                  x={(originX + endProjectorX) / 2}
+                  y={groundY - 7}
+                  fill="#7dd3fc"
+                  fontSize="10"
+                  fontFamily="monospace"
+                  textAnchor="middle"
+                  fontWeight="bold"
+                >
+                  DEP = {line.dep.toFixed(0)} mm
+                </text>
+              </g>
+            )}
+          </g>
+        )}
+
+        {/* ============================================================== */}
+        {/* STAGE 3 ELEMENTS: Rotating Compass Arcs for True Length (TL) */}
+        {/* ============================================================== */}
+        {stageNum >= 3 && (
+          <g>
+            {/* Elevation True Length Rotating Arc: Center a', radius TL to locus of b' */}
+            <path
+              d={`M ${ptAFront.x + radiusTL} ${ptAFront.y} A ${radiusTL} ${radiusTL} 0 0 ${
+                ptBFront.y < ptAFront.y ? '0' : '1'
+              } ${ptB1Front.x} ${ptB1Front.y}`}
+              fill="none"
+              stroke="#a855f7"
+              strokeWidth="1.5"
+              strokeDasharray="4,4"
+              opacity={stageNum === 3 ? 1 : 0.55}
+            />
+
+            {/* True Length Line a'b1' (Elevation) */}
+            <line
+              x1={ptAFront.x}
+              y1={ptAFront.y}
+              x2={ptB1Front.x}
+              y2={ptB1Front.y}
+              stroke="#c084fc"
+              strokeWidth={stageNum === 3 ? '2.4' : '1.5'}
+              strokeDasharray={stageNum === 3 ? 'none' : '4,3'}
+            />
+            {/* b1' Point */}
+            <circle
+              cx={ptB1Front.x}
+              cy={ptB1Front.y}
+              r={isCompact ? 3.5 : 4.5}
+              fill="#c084fc"
+              stroke="#ffffff"
+              strokeWidth="1"
+            />
+            <text
+              x={ptB1Front.x + 8}
+              y={ptB1Front.y - 6}
+              fill="#e9d5ff"
+              fontSize={isCompact ? '10' : '12'}
+              fontWeight="bold"
+              fontFamily="monospace"
+            >
+              {line.nameB.toLowerCase()}₁′ (TL = {line.trueLength.toFixed(0)}mm)
+            </text>
+
+            {/* True Angle θ Arc at a' */}
+            {!isCompact && (
+              <g>
+                <path
+                  d={`M ${ptAFront.x + 36} ${ptAFront.y} A 36 36 0 0 ${
+                    ptB1Front.y < ptAFront.y ? '0' : '1'
+                  } ${ptAFront.x + 36 * Math.cos((line.thetaDeg * Math.PI) / 180)} ${
+                    ptAFront.y - 36 * Math.sin((line.thetaDeg * Math.PI) / 180)
+                  }`}
+                  fill="none"
+                  stroke="#c084fc"
+                  strokeWidth="1.4"
+                />
+                <text
+                  x={ptAFront.x + 48}
+                  y={ptAFront.y - 12}
+                  fill="#e9d5ff"
+                  fontSize="11"
+                  fontWeight="bold"
+                  fontFamily="monospace"
+                >
+                  θ = {line.thetaDeg.toFixed(1)}°
+                </text>
+              </g>
+            )}
+
+            {/* Plan True Length Rotating Arc: Center a, radius TL to locus of b */}
+            <path
+              d={`M ${ptATop.x + radiusTLPlan} ${ptATop.y} A ${radiusTLPlan} ${radiusTLPlan} 0 0 ${
+                ptBTop.y > ptATop.y ? '1' : '0'
+              } ${ptB2Top.x} ${ptB2Top.y}`}
+              fill="none"
+              stroke="#10b981"
+              strokeWidth="1.5"
+              strokeDasharray="4,4"
+              opacity={stageNum === 3 ? 1 : 0.55}
+            />
+
+            {/* True Length Line ab2 (Plan) */}
+            <line
+              x1={ptATop.x}
+              y1={ptATop.y}
+              x2={ptB2Top.x}
+              y2={ptB2Top.y}
+              stroke="#34d399"
+              strokeWidth={stageNum === 3 ? '2.4' : '1.5'}
+              strokeDasharray={stageNum === 3 ? 'none' : '4,3'}
+            />
+            {/* b2 Point */}
+            <circle
+              cx={ptB2Top.x}
+              cy={ptB2Top.y}
+              r={isCompact ? 3.5 : 4.5}
+              fill="#34d399"
+              stroke="#ffffff"
+              strokeWidth="1"
+            />
+            <text
+              x={ptB2Top.x + 8}
+              y={ptB2Top.y + 14}
+              fill="#a7f3d0"
+              fontSize={isCompact ? '10' : '12'}
+              fontWeight="bold"
+              fontFamily="monospace"
+            >
+              {line.nameB.toLowerCase()}₂ (TL = {line.trueLength.toFixed(0)}mm)
+            </text>
+
+            {/* True Angle φ Arc at a */}
+            {!isCompact && (
+              <g>
+                <path
+                  d={`M ${ptATop.x + 36} ${ptATop.y} A 36 36 0 0 ${
+                    ptB2Top.y > ptATop.y ? '1' : '0'
+                  } ${ptATop.x + 36 * Math.cos((line.phiDeg * Math.PI) / 180)} ${
+                    ptATop.y + 36 * Math.sin((line.phiDeg * Math.PI) / 180)
+                  }`}
+                  fill="none"
+                  stroke="#34d399"
+                  strokeWidth="1.4"
+                />
+                <text
+                  x={ptATop.x + 48}
+                  y={ptATop.y + 18}
+                  fill="#a7f3d0"
+                  fontSize="11"
+                  fontWeight="bold"
+                  fontFamily="monospace"
+                >
+                  φ = {line.phiDeg.toFixed(1)}°
+                </text>
+              </g>
+            )}
+          </g>
+        )}
+
+        {/* ============================================================== */}
+        {/* STAGE 4 ELEMENTS: Final Apparent Views & End Projector Collinearity */}
+        {/* ============================================================== */}
+        {stageNum === 4 && (
+          <g>
+            {/* Common End Projector Line Connecting b' and b */}
+            <line
+              x1={endProjectorX}
+              y1={Math.min(ptBFront.y, groundY) - 30}
+              x2={endProjectorX}
+              y2={Math.max(ptBTop.y, groundY) + 30}
+              stroke="#e2e8f0"
+              strokeWidth="1.8"
+              strokeDasharray="5,3"
+            />
+
+            {/* Collinearity Alignment Badge on End Projector */}
+            {!isCompact && (
+              <g>
+                <circle cx={endProjectorX} cy={groundY} r="4" fill="#38bdf8" stroke="#ffffff" strokeWidth="1" />
+                <text
+                  x={endProjectorX + 8}
+                  y={groundY - 10}
+                  fill="#f1f5f9"
+                  fontSize="10"
+                  fontFamily="monospace"
+                  fontWeight="bold"
+                >
+                  End Projector of {line.nameB}
+                </text>
+              </g>
+            )}
+
+            {/* FINAL FRONT VIEW (ELEVATION): a'b' in Thick Red Stroke */}
+            <line
+              x1={ptAFront.x}
+              y1={ptAFront.y}
+              x2={ptBFront.x}
+              y2={ptBFront.y}
+              stroke="#ef4444"
+              strokeWidth={isCompact ? '2.5' : '3.4'}
+              filter="url(#glow-red)"
+            />
+            {/* Point b' */}
+            <circle
+              cx={ptBFront.x}
+              cy={ptBFront.y}
+              r={isCompact ? 4.5 : 6}
+              fill="#ef4444"
+              stroke="#ffffff"
+              strokeWidth="2"
+              filter="url(#glow-red)"
+            />
+            <text
+              x={ptBFront.x + 10}
+              y={ptBFront.y - 8}
+              fill="#f87171"
+              fontSize={isCompact ? '12' : '15'}
+              fontWeight="bold"
+              fontFamily="monospace"
+            >
+              {line.nameB.toLowerCase()}′
+            </text>
+
+            {/* Apparent Angle α Arc */}
+            {!isCompact && (
+              <g>
+                <text
+                  x={(ptAFront.x + ptBFront.x) / 2 - 10}
+                  y={(ptAFront.y + ptBFront.y) / 2 - 12}
+                  fill="#fca5a5"
+                  fontSize="11"
+                  fontWeight="bold"
+                  fontFamily="monospace"
+                >
+                  Elevation = {line.frontViewLength.toFixed(1)} mm (α = {line.alphaDeg.toFixed(1)}°)
+                </text>
+              </g>
+            )}
+
+            {/* FINAL TOP VIEW (PLAN): ab in Thick Blue Stroke */}
+            <line
+              x1={ptATop.x}
+              y1={ptATop.y}
+              x2={ptBTop.x}
+              y2={ptBTop.y}
+              stroke="#3b82f6"
+              strokeWidth={isCompact ? '2.5' : '3.4'}
+              filter="url(#glow-blue)"
+            />
+            {/* Point b */}
+            <circle
+              cx={ptBTop.x}
+              cy={ptBTop.y}
+              r={isCompact ? 4.5 : 6}
+              fill="#3b82f6"
+              stroke="#ffffff"
+              strokeWidth="2"
+              filter="url(#glow-blue)"
+            />
+            <text
+              x={ptBTop.x + 10}
+              y={ptBTop.y + 18}
+              fill="#60a5fa"
+              fontSize={isCompact ? '12' : '15'}
+              fontWeight="bold"
+              fontFamily="monospace"
+            >
+              {line.nameB.toLowerCase()}
+            </text>
+
+            {/* Apparent Angle β Arc */}
+            {!isCompact && (
+              <g>
+                <text
+                  x={(ptATop.x + ptBTop.x) / 2 - 10}
+                  y={(ptATop.y + ptBTop.y) / 2 + 20}
+                  fill="#93c5fd"
+                  fontSize="11"
+                  fontWeight="bold"
+                  fontFamily="monospace"
+                >
+                  Plan = {line.topViewLength.toFixed(1)} mm (β = {line.betaDeg.toFixed(1)}°)
+                </text>
+              </g>
+            )}
+          </g>
+        )}
+      </svg>
+    );
+  };
+
+  const currentStageInfo = stageExplanations[activeStage - 1];
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* ============================================================== */}
+      {/* STAGE SELECTION CONTROLS BAR (Matches User's UI Screenshot) */}
+      {/* ============================================================== */}
+      <div className="flex flex-col gap-2.5">
+        {/* Row 1: The 4 Sequenced Stage Buttons */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {stageExplanations.map((stg) => {
+            const isSelected = activeStage === stg.num && !isAllStagesView;
+            return (
+              <button
+                key={stg.num}
+                type="button"
+                onClick={() => handleSelectStage(stg.num as DraftingStageNumber)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition cursor-pointer text-left ${
+                  isSelected
+                    ? 'bg-blue-600 text-white shadow-md ring-1 ring-blue-400 font-bold'
+                    : 'bg-slate-800/80 hover:bg-slate-850 text-slate-300 border border-slate-700/80 hover:border-slate-600'
+                }`}
+              >
+                <span
+                  className={`w-5 h-5 rounded-full flex items-center justify-center font-mono text-[10px] shrink-0 font-bold ${
+                    isSelected
+                      ? 'bg-white text-blue-700'
+                      : 'bg-slate-700 text-slate-300'
+                  }`}
+                >
+                  {stg.num}
+                </span>
+                <span className="truncate">{stg.name}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Row 2: All 4 Stages + Play Sequence + Navigation Chevrons */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+          <div className="flex items-center gap-2">
+            {/* All 4 Stages Toggle Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setIsPlaying(false);
+                setIsAllStagesView(!isAllStagesView);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer border ${
+                isAllStagesView
+                  ? 'bg-blue-600 text-white border-blue-500 shadow-xs font-bold'
+                  : 'bg-slate-800 hover:bg-slate-750 text-slate-300 border-slate-700'
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>All 4 Stages</span>
+            </button>
+
+            {/* Play Sequence Button */}
+            <button
+              type="button"
+              onClick={handleTogglePlay}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer border ${
+                isPlaying
+                  ? 'bg-amber-600 text-white border-amber-500 shadow-xs font-bold'
+                  : 'bg-slate-800 hover:bg-slate-750 text-slate-300 border-slate-700'
+              }`}
+              title="Auto-play all 4 drafting stages in sequence"
+            >
+              {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+              <span>{isPlaying ? 'Pause Sequence' : 'Play Sequence'}</span>
+            </button>
+
+            {/* Prev / Next Chevrons */}
+            <div className="flex items-center gap-1 ml-1">
+              <button
+                type="button"
+                onClick={handlePrevStage}
+                disabled={activeStage <= 1 && !isAllStagesView}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-700 cursor-pointer transition"
+                title="Previous Drafting Step"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={handleNextStage}
+                disabled={activeStage >= 4 && !isAllStagesView}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-700 cursor-pointer transition"
+                title="Next Drafting Step"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Current Stage Indicator */}
+          <div className="text-[11px] font-mono text-slate-400 flex items-center gap-2">
+            <span>
+              {isAllStagesView ? 'Showing All 4 Stages' : `Stage ${activeStage} of 4: ${currentStageInfo.name}`}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ============================================================== */}
+      {/* MAIN VIEWPORT: SINGLE STAGE CANVAS OR ALL 4 STAGES STORYBOARD */}
+      {/* ============================================================== */}
+      {!isAllStagesView ? (
+        <div className="flex flex-col gap-3">
+          {/* Main Interactive Stage SVG Canvas */}
+          <div className="relative w-full h-[360px] sm:h-[420px] rounded-xl overflow-hidden border border-slate-700 shadow-inner">
+            {renderStageSvg(activeStage, false)}
+
+            {/* Corner Badge Indicator */}
+            <div className="absolute top-3 left-3 bg-slate-900/90 backdrop-blur-md px-2.5 py-1 rounded-md border border-slate-700/80 text-[11px] font-mono text-slate-300 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+              <span>Step {activeStage}: {currentStageInfo.name}</span>
+            </div>
+
+            {/* Quick Legend in Corner */}
+            <div className="absolute bottom-3 right-3 hidden sm:flex items-center gap-3 bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-700/80 text-[10.5px] font-mono text-slate-300">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-xs bg-red-500" />
+                <span>Elevation</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-xs bg-blue-500" />
+                <span>Plan</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-xs bg-purple-400" />
+                <span>True Length</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-xs bg-amber-400" />
+                <span>Locus Line</span>
+              </span>
+            </div>
+          </div>
+
+          {/* Accompanying Theory & Drafting Procedure Note */}
+          <div className="p-4 rounded-xl bg-slate-800/60 dark:bg-slate-900/80 border border-slate-700/80 text-xs text-slate-200 flex flex-col gap-2 shadow-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700 pb-2">
+              <h4 className="font-bold text-sm text-white flex items-center gap-2 font-sans">
+                <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-mono text-xs flex items-center justify-center font-bold">
+                  {currentStageInfo.num}
+                </span>
+                <span>{currentStageInfo.title}</span>
+              </h4>
+              <span className="text-[11px] font-mono text-blue-400 bg-blue-950/60 border border-blue-800/60 px-2 py-0.5 rounded">
+                {currentStageInfo.instrument}
+              </span>
+            </div>
+
+            <p className="text-slate-300 leading-relaxed text-[12px] font-sans">
+              {currentStageInfo.description}
+            </p>
+
+            <div className="flex items-start gap-2 pt-1 text-[11.5px] text-emerald-300 font-sans">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              <span>
+                <strong>Drafting Principle:</strong> {currentStageInfo.keyTakeaway}
+              </span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* ============================================================== */
+        /* ALL 4 STAGES PROGRESSIVE STORYBOARD GRID VIEW */
+        /* ============================================================== */
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {stageExplanations.map((stg) => (
+            <div
+              key={stg.num}
+              onClick={() => handleSelectStage(stg.num as DraftingStageNumber)}
+              className="group cursor-pointer rounded-xl border border-slate-700 bg-slate-900 overflow-hidden hover:border-blue-500 transition shadow-sm flex flex-col"
+            >
+              <div className="p-2.5 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                <span className="text-xs font-bold text-white flex items-center gap-1.5 font-sans">
+                  <span className="w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] font-mono flex items-center justify-center font-bold">
+                    {stg.num}
+                  </span>
+                  <span>{stg.name}</span>
+                </span>
+                <span className="text-[10px] font-mono text-slate-400 group-hover:text-blue-400 transition">
+                  Click to Expand
+                </span>
+              </div>
+
+              {/* Compact SVG Viewport */}
+              <div className="w-full h-[180px] bg-[#0b1329] overflow-hidden">
+                {renderStageSvg(stg.num as DraftingStageNumber, true)}
+              </div>
+
+              <div className="p-3 bg-slate-850/60 border-t border-slate-800/80 text-[11px] text-slate-300 leading-relaxed font-sans">
+                {stg.description}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};

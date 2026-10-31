@@ -8,6 +8,7 @@ import {
   LineProblemInput,
   LineInputMode,
   SampleLineProblem,
+  EndPointSpec,
 } from '../../types/lines';
 import { SAMPLE_LINE_PROBLEMS } from '../../utils/linesMath';
 import {
@@ -46,18 +47,32 @@ export const LineInputForm: React.FC<LineInputFormProps> = ({
     onChange({ ...input, [field]: value });
   };
 
-  const updateEndA = (key: string, value: any) => {
-    onChange({
-      ...input,
-      endA: { ...input.endA, [key]: value },
-    });
+  const updateEndA = (keyOrUpdates: string | Partial<EndPointSpec>, value?: any) => {
+    if (typeof keyOrUpdates === 'string') {
+      onChange({
+        ...input,
+        endA: { ...input.endA, [keyOrUpdates]: value },
+      });
+    } else {
+      onChange({
+        ...input,
+        endA: { ...input.endA, ...keyOrUpdates },
+      });
+    }
   };
 
-  const updateEndB = (key: string, value: any) => {
-    onChange({
-      ...input,
-      endB: { ...input.endB, [key]: value },
-    });
+  const updateEndB = (keyOrUpdates: string | Partial<EndPointSpec>, value?: any) => {
+    if (typeof keyOrUpdates === 'string') {
+      onChange({
+        ...input,
+        endB: { ...input.endB, [keyOrUpdates]: value },
+      });
+    } else {
+      onChange({
+        ...input,
+        endB: { ...input.endB, ...keyOrUpdates },
+      });
+    }
   };
 
   // Check mathematical viability for true angles
@@ -173,43 +188,56 @@ export const LineInputForm: React.FC<LineInputFormProps> = ({
               <span className="w-2 h-2 rounded-xs" style={{ backgroundColor: hpColor }} />
               Relative to Horizontal Plane (HP)
             </span>
-            <label className="flex items-center gap-1 text-[10px] cursor-pointer text-slate-500">
+            <label className="flex items-center gap-1.5 text-[10px] cursor-pointer text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 select-none">
               <input
                 type="checkbox"
                 checked={input.endA.hpRelation === 'ON'}
                 onChange={(e) => {
-                  updateEndA('hpRelation', e.target.checked ? 'ON' : 'ABOVE');
-                  if (e.target.checked) updateEndA('distanceHp', 0);
+                  const isChecked = e.target.checked;
+                  updateEndA({
+                    hpRelation: isChecked ? 'ON' : 'ABOVE',
+                    distanceHp: isChecked ? 0 : (input.endA.distanceHp === 0 ? 20 : input.endA.distanceHp),
+                  });
                 }}
-                className="rounded text-blue-600"
+                className="w-3.5 h-3.5 rounded accent-blue-600 cursor-pointer"
               />
-              <span>On HP</span>
+              <span className={input.endA.hpRelation === 'ON' ? 'font-semibold text-blue-600 dark:text-blue-400' : ''}>On HP</span>
             </label>
           </div>
-          {input.endA.hpRelation !== 'ON' && (
-            <div className="grid grid-cols-2 gap-2">
-              <select
-                value={input.endA.hpRelation}
-                onChange={(e) => updateEndA('hpRelation', e.target.value)}
-                className="text-xs px-2 py-1.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
-              >
-                <option value="ABOVE">Above HP</option>
-                <option value="BELOW">Below HP</option>
-              </select>
-              <div className="relative">
-                <input
-                  type="number"
-                  min="0"
-                  max="300"
-                  step="1"
-                  value={input.endA.distanceHp}
-                  onChange={(e) => updateEndA('distanceHp', Math.max(0, parseFloat(e.target.value) || 0))}
-                  className="w-full text-xs px-2 py-1.5 font-mono rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pr-7"
-                />
-                <span className="absolute right-2 top-1.5 text-[10px] text-slate-400 font-mono">mm</span>
-              </div>
+          <div className={`grid grid-cols-2 gap-2 transition-opacity ${input.endA.hpRelation === 'ON' ? 'opacity-60' : ''}`}>
+            <select
+              value={input.endA.hpRelation}
+              onChange={(e) => {
+                const val = e.target.value as 'ABOVE' | 'BELOW' | 'ON';
+                if (val === 'ON') {
+                  updateEndA({ hpRelation: 'ON', distanceHp: 0 });
+                } else {
+                  updateEndA({
+                    hpRelation: val,
+                    distanceHp: input.endA.distanceHp === 0 ? 20 : input.endA.distanceHp,
+                  });
+                }
+              }}
+              className="text-xs px-2 py-1.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+            >
+              <option value="ABOVE">Above HP</option>
+              <option value="BELOW">Below HP</option>
+              <option value="ON">On HP (0 mm)</option>
+            </select>
+            <div className="relative">
+              <input
+                type="number"
+                min="0"
+                max="300"
+                step="1"
+                disabled={input.endA.hpRelation === 'ON'}
+                value={input.endA.hpRelation === 'ON' ? 0 : input.endA.distanceHp}
+                onChange={(e) => updateEndA('distanceHp', Math.max(0, parseFloat(e.target.value) || 0))}
+                className="w-full text-xs px-2 py-1.5 font-mono rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pr-7 disabled:bg-slate-100 dark:disabled:bg-slate-800/60 disabled:cursor-not-allowed text-slate-900 dark:text-slate-100"
+              />
+              <span className="absolute right-2 top-1.5 text-[10px] text-slate-400 font-mono">mm</span>
             </div>
-          )}
+          </div>
         </div>
 
         {/* End A with VP */}
@@ -219,43 +247,56 @@ export const LineInputForm: React.FC<LineInputFormProps> = ({
               <span className="w-2 h-2 rounded-xs" style={{ backgroundColor: vpColor }} />
               Relative to Vertical Plane (VP)
             </span>
-            <label className="flex items-center gap-1 text-[10px] cursor-pointer text-slate-500">
+            <label className="flex items-center gap-1.5 text-[10px] cursor-pointer text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 select-none">
               <input
                 type="checkbox"
                 checked={input.endA.vpRelation === 'ON'}
                 onChange={(e) => {
-                  updateEndA('vpRelation', e.target.checked ? 'ON' : 'IN_FRONT');
-                  if (e.target.checked) updateEndA('distanceVp', 0);
+                  const isChecked = e.target.checked;
+                  updateEndA({
+                    vpRelation: isChecked ? 'ON' : 'IN_FRONT',
+                    distanceVp: isChecked ? 0 : (input.endA.distanceVp === 0 ? 20 : input.endA.distanceVp),
+                  });
                 }}
-                className="rounded text-red-600"
+                className="w-3.5 h-3.5 rounded accent-red-600 cursor-pointer"
               />
-              <span>On VP</span>
+              <span className={input.endA.vpRelation === 'ON' ? 'font-semibold text-red-600 dark:text-red-400' : ''}>On VP</span>
             </label>
           </div>
-          {input.endA.vpRelation !== 'ON' && (
-            <div className="grid grid-cols-2 gap-2">
-              <select
-                value={input.endA.vpRelation}
-                onChange={(e) => updateEndA('vpRelation', e.target.value)}
-                className="text-xs px-2 py-1.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
-              >
-                <option value="IN_FRONT">In Front of VP</option>
-                <option value="BEHIND">Behind VP</option>
-              </select>
-              <div className="relative">
-                <input
-                  type="number"
-                  min="0"
-                  max="300"
-                  step="1"
-                  value={input.endA.distanceVp}
-                  onChange={(e) => updateEndA('distanceVp', Math.max(0, parseFloat(e.target.value) || 0))}
-                  className="w-full text-xs px-2 py-1.5 font-mono rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pr-7"
-                />
-                <span className="absolute right-2 top-1.5 text-[10px] text-slate-400 font-mono">mm</span>
-              </div>
+          <div className={`grid grid-cols-2 gap-2 transition-opacity ${input.endA.vpRelation === 'ON' ? 'opacity-60' : ''}`}>
+            <select
+              value={input.endA.vpRelation}
+              onChange={(e) => {
+                const val = e.target.value as 'IN_FRONT' | 'BEHIND' | 'ON';
+                if (val === 'ON') {
+                  updateEndA({ vpRelation: 'ON', distanceVp: 0 });
+                } else {
+                  updateEndA({
+                    vpRelation: val,
+                    distanceVp: input.endA.distanceVp === 0 ? 20 : input.endA.distanceVp,
+                  });
+                }
+              }}
+              className="text-xs px-2 py-1.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+            >
+              <option value="IN_FRONT">In Front of VP</option>
+              <option value="BEHIND">Behind VP</option>
+              <option value="ON">On VP (0 mm)</option>
+            </select>
+            <div className="relative">
+              <input
+                type="number"
+                min="0"
+                max="300"
+                step="1"
+                disabled={input.endA.vpRelation === 'ON'}
+                value={input.endA.vpRelation === 'ON' ? 0 : input.endA.distanceVp}
+                onChange={(e) => updateEndA('distanceVp', Math.max(0, parseFloat(e.target.value) || 0))}
+                className="w-full text-xs px-2 py-1.5 font-mono rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pr-7 disabled:bg-slate-100 dark:disabled:bg-slate-800/60 disabled:cursor-not-allowed text-slate-900 dark:text-slate-100"
+              />
+              <span className="absolute right-2 top-1.5 text-[10px] text-slate-400 font-mono">mm</span>
             </div>
-          )}
+          </div>
         </div>
       </div>
 
@@ -280,43 +321,56 @@ export const LineInputForm: React.FC<LineInputFormProps> = ({
                 <span className="w-2 h-2 rounded-xs" style={{ backgroundColor: hpColor }} />
                 Relative to Horizontal Plane (HP)
               </span>
-              <label className="flex items-center gap-1 text-[10px] cursor-pointer text-slate-500">
+              <label className="flex items-center gap-1.5 text-[10px] cursor-pointer text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 select-none">
                 <input
                   type="checkbox"
                   checked={input.endB.hpRelation === 'ON'}
                   onChange={(e) => {
-                    updateEndB('hpRelation', e.target.checked ? 'ON' : 'ABOVE');
-                    if (e.target.checked) updateEndB('distanceHp', 0);
+                    const isChecked = e.target.checked;
+                    updateEndB({
+                      hpRelation: isChecked ? 'ON' : 'ABOVE',
+                      distanceHp: isChecked ? 0 : (input.endB.distanceHp === 0 ? 20 : input.endB.distanceHp),
+                    });
                   }}
-                  className="rounded text-emerald-600"
+                  className="w-3.5 h-3.5 rounded accent-emerald-600 cursor-pointer"
                 />
-                <span>On HP</span>
+                <span className={input.endB.hpRelation === 'ON' ? 'font-semibold text-emerald-600 dark:text-emerald-400' : ''}>On HP</span>
               </label>
             </div>
-            {input.endB.hpRelation !== 'ON' && (
-              <div className="grid grid-cols-2 gap-2">
-                <select
-                  value={input.endB.hpRelation}
-                  onChange={(e) => updateEndB('hpRelation', e.target.value)}
-                  className="text-xs px-2 py-1.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
-                >
-                  <option value="ABOVE">Above HP</option>
-                  <option value="BELOW">Below HP</option>
-                </select>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min="0"
-                    max="300"
-                    step="1"
-                    value={input.endB.distanceHp}
-                    onChange={(e) => updateEndB('distanceHp', Math.max(0, parseFloat(e.target.value) || 0))}
-                    className="w-full text-xs px-2 py-1.5 font-mono rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pr-7"
-                  />
-                  <span className="absolute right-2 top-1.5 text-[10px] text-slate-400 font-mono">mm</span>
-                </div>
+            <div className={`grid grid-cols-2 gap-2 transition-opacity ${input.endB.hpRelation === 'ON' ? 'opacity-60' : ''}`}>
+              <select
+                value={input.endB.hpRelation}
+                onChange={(e) => {
+                  const val = e.target.value as 'ABOVE' | 'BELOW' | 'ON';
+                  if (val === 'ON') {
+                    updateEndB({ hpRelation: 'ON', distanceHp: 0 });
+                  } else {
+                    updateEndB({
+                      hpRelation: val,
+                      distanceHp: input.endB.distanceHp === 0 ? 20 : input.endB.distanceHp,
+                    });
+                  }
+                }}
+                className="text-xs px-2 py-1.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+              >
+                <option value="ABOVE">Above HP</option>
+                <option value="BELOW">Below HP</option>
+                <option value="ON">On HP (0 mm)</option>
+              </select>
+              <div className="relative">
+                <input
+                  type="number"
+                  min="0"
+                  max="300"
+                  step="1"
+                  disabled={input.endB.hpRelation === 'ON'}
+                  value={input.endB.hpRelation === 'ON' ? 0 : input.endB.distanceHp}
+                  onChange={(e) => updateEndB('distanceHp', Math.max(0, parseFloat(e.target.value) || 0))}
+                  className="w-full text-xs px-2 py-1.5 font-mono rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pr-7 disabled:bg-slate-100 dark:disabled:bg-slate-800/60 disabled:cursor-not-allowed text-slate-900 dark:text-slate-100"
+                />
+                <span className="absolute right-2 top-1.5 text-[10px] text-slate-400 font-mono">mm</span>
               </div>
-            )}
+            </div>
           </div>
 
           {/* End B with VP */}
@@ -326,43 +380,56 @@ export const LineInputForm: React.FC<LineInputFormProps> = ({
                 <span className="w-2 h-2 rounded-xs" style={{ backgroundColor: vpColor }} />
                 Relative to Vertical Plane (VP)
               </span>
-              <label className="flex items-center gap-1 text-[10px] cursor-pointer text-slate-500">
+              <label className="flex items-center gap-1.5 text-[10px] cursor-pointer text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 select-none">
                 <input
                   type="checkbox"
                   checked={input.endB.vpRelation === 'ON'}
                   onChange={(e) => {
-                    updateEndB('vpRelation', e.target.checked ? 'ON' : 'IN_FRONT');
-                    if (e.target.checked) updateEndB('distanceVp', 0);
+                    const isChecked = e.target.checked;
+                    updateEndB({
+                      vpRelation: isChecked ? 'ON' : 'IN_FRONT',
+                      distanceVp: isChecked ? 0 : (input.endB.distanceVp === 0 ? 20 : input.endB.distanceVp),
+                    });
                   }}
-                  className="rounded text-red-600"
+                  className="w-3.5 h-3.5 rounded accent-red-600 cursor-pointer"
                 />
-                <span>On VP</span>
+                <span className={input.endB.vpRelation === 'ON' ? 'font-semibold text-red-600 dark:text-red-400' : ''}>On VP</span>
               </label>
             </div>
-            {input.endB.vpRelation !== 'ON' && (
-              <div className="grid grid-cols-2 gap-2">
-                <select
-                  value={input.endB.vpRelation}
-                  onChange={(e) => updateEndB('vpRelation', e.target.value)}
-                  className="text-xs px-2 py-1.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
-                >
-                  <option value="IN_FRONT">In Front of VP</option>
-                  <option value="BEHIND">Behind VP</option>
-                </select>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min="0"
-                    max="300"
-                    step="1"
-                    value={input.endB.distanceVp}
-                    onChange={(e) => updateEndB('distanceVp', Math.max(0, parseFloat(e.target.value) || 0))}
-                    className="w-full text-xs px-2 py-1.5 font-mono rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pr-7"
-                  />
-                  <span className="absolute right-2 top-1.5 text-[10px] text-slate-400 font-mono">mm</span>
-                </div>
+            <div className={`grid grid-cols-2 gap-2 transition-opacity ${input.endB.vpRelation === 'ON' ? 'opacity-60' : ''}`}>
+              <select
+                value={input.endB.vpRelation}
+                onChange={(e) => {
+                  const val = e.target.value as 'IN_FRONT' | 'BEHIND' | 'ON';
+                  if (val === 'ON') {
+                    updateEndB({ vpRelation: 'ON', distanceVp: 0 });
+                  } else {
+                    updateEndB({
+                      vpRelation: val,
+                      distanceVp: input.endB.distanceVp === 0 ? 20 : input.endB.distanceVp,
+                    });
+                  }
+                }}
+                className="text-xs px-2 py-1.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+              >
+                <option value="IN_FRONT">In Front of VP</option>
+                <option value="BEHIND">Behind VP</option>
+                <option value="ON">On VP (0 mm)</option>
+              </select>
+              <div className="relative">
+                <input
+                  type="number"
+                  min="0"
+                  max="300"
+                  step="1"
+                  disabled={input.endB.vpRelation === 'ON'}
+                  value={input.endB.vpRelation === 'ON' ? 0 : input.endB.distanceVp}
+                  onChange={(e) => updateEndB('distanceVp', Math.max(0, parseFloat(e.target.value) || 0))}
+                  className="w-full text-xs px-2 py-1.5 font-mono rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pr-7 disabled:bg-slate-100 dark:disabled:bg-slate-800/60 disabled:cursor-not-allowed text-slate-900 dark:text-slate-100"
+                />
+                <span className="absolute right-2 top-1.5 text-[10px] text-slate-400 font-mono">mm</span>
               </div>
-            )}
+            </div>
           </div>
 
           {/* Distance between end projectors (DEP) */}

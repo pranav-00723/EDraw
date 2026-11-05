@@ -420,15 +420,6 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
         style={{ background: '#0b1329' }}
       >
         <defs>
-          {/* Blueprint Drafting Grid Pattern */}
-          <pattern id={`bp-grid-${stageNum}-${isCompact ? 'c' : 'f'}`} width="20" height="20" patternUnits="userSpaceOnUse">
-            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#16274a" strokeWidth="0.8" opacity="0.6" />
-          </pattern>
-          <pattern id={`bp-major-${stageNum}-${isCompact ? 'c' : 'f'}`} width="100" height="100" patternUnits="userSpaceOnUse">
-            <rect width="100" height="100" fill={`url(#bp-grid-${stageNum}-${isCompact ? 'c' : 'f'})`} />
-            <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#1f3768" strokeWidth="1.2" opacity="0.8" />
-          </pattern>
-
           {/* Glowing Filters */}
           <filter id="glow-red" x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur stdDeviation="2.5" result="blur" />

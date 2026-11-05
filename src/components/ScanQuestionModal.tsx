@@ -105,14 +105,14 @@ interface ScanQuestionModalProps {
 
 const SAMPLE_TEXTBOOK_QUESTIONS = [
   {
-    title: 'Parallel to HP and Inclined to VP (Standard Heading)',
-    topic: 'lines' as const,
-    text: 'A Line PQ 70mm long is parallel to the HP and inclined at 30° to the VP. Point P is 25mm above the HP and 20mm in front of the VP. Draw its projections.',
-  },
-  {
     title: 'Perpendicular to HP and Parallel to VP (Classroom Problem)',
     topic: 'lines' as const,
     text: 'A Line AB 25mm is parallel to the VP and perpendicular to the HP. Point A is 35mm above the HP and 20mm in front of the VP. B is 10 mm above the HP. Draw its projections.',
+  },
+  {
+    title: 'Parallel to HP and Inclined to VP (Standard Heading)',
+    topic: 'lines' as const,
+    text: 'A Line PQ 70mm long is parallel to the HP and inclined at 30° to the VP. Point P is 25mm above the HP and 20mm in front of the VP. Draw its projections.',
   },
   {
     title: 'Parallel to VP and Inclined to HP',

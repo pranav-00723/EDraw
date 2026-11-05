@@ -427,7 +427,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
 
               {/* Standard Textbook VP / HP notations next to reference projector */}
               <text
-                x={aFrontSvg.x - 44}
+                x={aFrontSvg.x - 62}
                 y={originY - 8}
                 fill={isDark ? '#e2e8f0' : '#0f172a'}
                 fontSize="13"
@@ -437,7 +437,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                 VP
               </text>
               <text
-                x={aFrontSvg.x - 44}
+                x={aFrontSvg.x - 62}
                 y={originY + 18}
                 fill={isDark ? '#e2e8f0' : '#0f172a'}
                 fontSize="13"

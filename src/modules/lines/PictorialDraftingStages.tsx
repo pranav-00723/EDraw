@@ -192,41 +192,79 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
     };
   }, [line]);
 
-  // Stage Educational Explanations
-  const stageExplanations = [
-    {
-      num: 1,
-      name: 'Reference Projector',
-      instrument: 'T-Square & Set Square (2H Pencil for projector, HB Pencil for points)',
-      title: 'Step 1: Draw XY Ground Line & Reference End A Projector',
-      description: `Draw the horizontal reference line XY. Erect a thin continuous vertical projector at End A (${line.nameA}). Mark the Front View (Elevation) ${line.aFront.label} at distance |zA| = ${Math.abs(line.input.endA.distanceHp).toFixed(1)} mm ${line.input.endA.hpRelation}. Mark the Top View (Plan) ${line.aTop.label} at distance |yA| = ${Math.abs(line.input.endA.distanceVp).toFixed(1)} mm ${line.input.endA.vpRelation}.`,
-      keyTakeaway: 'The Front View (a′) and Top View (a) strictly lie on the exact same continuous vertical projector perpendicular to XY.',
-    },
-    {
-      num: 2,
-      name: 'TL & Locus Cutting',
-      instrument: 'Drafting Compass & Protractor (Radius = True Length TL)',
-      title: 'Step 2: Apply True Inclinations (θ, φ) & Cut TL Arcs to Establish Loci',
-      description: `From Front View base point ${line.aFront.label}, draw the horizontal reference line, apply True Inclination with HP (${Math.abs(line.thetaDeg) >= 0.5 ? `θ = ${line.thetaDeg.toFixed(1)}°` : 'parallel to HP'}), and cut the arc using True Length (TL = ${line.trueLength.toFixed(1)} mm) to locate ${line.b1Front.label} and establish the Locus of ${line.nameB.toLowerCase()}′. Similarly, from Top View base point ${line.aTop.label}, apply True Inclination with VP (${Math.abs(line.phiDeg) >= 0.5 ? `φ = ${line.phiDeg.toFixed(1)}°` : 'parallel to VP'}) using True Length (TL) to locate ${line.b2Top.label} and establish the Locus of ${line.nameB.toLowerCase()}.`,
-      keyTakeaway: 'Establishing loci using True Length and true inclination angles (a′ ➔ HL and a ➔ TL/Locus) fixes the horizontal boundaries for End B.',
-    },
-    {
-      num: 3,
-      name: 'Rotating Views',
-      instrument: 'Drafting Compass (Radius = Apparent Lengths)',
-      title: 'Step 3: Project & Rotate Construction Lines to Cut Loci',
-      description: `Project ${line.b1Front.label} down to the horizontal reference through a to obtain the plan length ab₁, and project ${line.b2Top.label} up to the reference through a′ to obtain the elevation length a′b₂′. With centers a and a′, swing rotating arcs to intersect the respective locus lines, locating the final projections ${line.bTop.label} and ${line.bFront.label}.`,
-      keyTakeaway: 'True Length is only visible when the line is made parallel to a reference plane. The rotating line method swings the line parallel to find true length and true angles.',
-    },
-    {
-      num: 4,
-      name: 'Final Views & Projector',
-      instrument: 'HB Pencil & Straightedge (Thick Continuous Line for Views)',
-      title: 'Step 4: Draw Final Elevation, Plan, and End Projector Alignment',
-      description: `Join ${line.aFront.label}${line.bFront.label} with a thick continuous line to obtain the final Elevation (Front View = ${line.frontViewLength.toFixed(1)} mm at apparent angle α = ${line.alphaDeg.toFixed(1)}°). Join ${line.aTop.label}${line.bTop.label} with a thick continuous line to obtain the final Plan (Top View = ${line.topViewLength.toFixed(1)} mm at apparent angle β = ${line.betaDeg.toFixed(1)}°). Draw the continuous thin vertical projector between ${line.bFront.label} and ${line.bTop.label} to verify they strictly align on one projector!`,
-      keyTakeaway: 'Orthographic Invariant: The end projections b′ (elevation) and b (plan) must strictly align on one common continuous vertical projector line perpendicular to XY.',
-    },
-  ];
+  const isPerpHP = line.orientation === 'PERPENDICULAR_HP';
+  const isPerpVP = line.orientation === 'PERPENDICULAR_VP';
+
+  // Dynamic educational explanations adapted to line orientation
+  const stageExplanations = isPerpHP
+    ? [
+        {
+          num: 1,
+          name: 'Ground Line & Projector',
+          instrument: 'T-Square & Set Square (2H Pencil for projector)',
+          title: 'Step 1: Draw XY Reference Line & Vertical Projector',
+          description: `Draw horizontal ground line XY. Erect a single continuous vertical projector line extending across both VP (above XY) and HP (below XY).`,
+          keyTakeaway: 'Because the line is perpendicular to HP, both of its views lie along one single vertical projector.',
+        },
+        {
+          num: 2,
+          name: 'Plan View Point',
+          instrument: 'HB Pencil for point, 2H for extension lines',
+          title: `Step 2: Locate Plan (Top View) Coincident Point ${line.aTop.label} in HP`,
+          description: `Looking from above (Top View), the line collapses into a single point. Mark ${line.aTop.label} at distance ${Math.abs(line.yA).toFixed(0)} mm in front of VP (below XY). Upper end ${line.nameA.toLowerCase()} is visible, lower end (${line.nameB.toLowerCase()}) is hidden beneath.`,
+          keyTakeaway: `Top view collapses to a single point: ${line.aTop.label} at ${Math.abs(line.yA).toFixed(0)} mm below XY.`,
+        },
+        {
+          num: 3,
+          name: 'Elevation End Points',
+          instrument: 'HB Pencil for points, Scale for vertical heights',
+          title: `Step 3: Mark Elevation (Front View) End Points ${line.bFront.label} and ${line.aFront.label} in VP`,
+          description: `Along the vertical projector above XY: Mark lower end ${line.bFront.label} at distance ${Math.min(Math.abs(line.zA), Math.abs(line.zB)).toFixed(0)} mm above HP. Mark upper end ${line.aFront.label} at distance ${Math.max(Math.abs(line.zA), Math.abs(line.zB)).toFixed(0)} mm above HP (${Math.min(Math.abs(line.zA), Math.abs(line.zB)).toFixed(0)} + ${line.trueLength.toFixed(0)} = ${Math.max(Math.abs(line.zA), Math.abs(line.zB)).toFixed(0)} mm).`,
+          keyTakeaway: `Both end points lie on the same vertical line at their respective heights above HP.`,
+        },
+        {
+          num: 4,
+          name: 'True Length Front View',
+          instrument: 'HB Pencil for thick object line, Dimensioning Tools',
+          title: `Step 4: Draw Front View ${line.aFront.label}${line.bFront.label} (True Length = ${line.trueLength.toFixed(0)} mm) & Dimensions`,
+          description: `Join ${line.aFront.label} and ${line.bFront.label} with a thick continuous object line. In Front View, the line shows its True Length (${line.trueLength.toFixed(0)} mm) perpendicular to XY. Complete the drawing with standard 3-tier dimensioning.`,
+          keyTakeaway: 'When a line is perpendicular to HP, its Front View is a vertical line equal to True Length, and its Top View is a point.',
+        },
+      ]
+    : [
+        {
+          num: 1,
+          name: 'Reference Projector',
+          instrument: 'T-Square & Set Square (2H Pencil for projector, HB Pencil for points)',
+          title: 'Step 1: Draw XY Ground Line & Reference End A Projector',
+          description: `Draw the horizontal reference line XY. Erect a thin continuous vertical projector at End A (${line.nameA}). Mark the Front View (Elevation) ${line.aFront.label} at distance |zA| = ${Math.abs(line.input.endA.distanceHp).toFixed(1)} mm ${line.input.endA.hpRelation}. Mark the Top View (Plan) ${line.aTop.label} at distance |yA| = ${Math.abs(line.input.endA.distanceVp).toFixed(1)} mm ${line.input.endA.vpRelation}.`,
+          keyTakeaway: 'The Front View (a′) and Top View (a) strictly lie on the exact same continuous vertical projector perpendicular to XY.',
+        },
+        {
+          num: 2,
+          name: 'TL & Locus Cutting',
+          instrument: 'Drafting Compass & Protractor (Radius = True Length TL)',
+          title: 'Step 2: Apply True Inclinations (θ, φ) & Cut TL Arcs to Establish Loci',
+          description: `From Front View base point ${line.aFront.label}, draw the horizontal reference line, apply True Inclination with HP (${Math.abs(line.thetaDeg) >= 0.5 ? `θ = ${line.thetaDeg.toFixed(1)}°` : 'parallel to HP'}), and cut the arc using True Length (TL = ${line.trueLength.toFixed(1)} mm) to locate ${line.b1Front.label} and establish the Locus of ${line.nameB.toLowerCase()}′. Similarly, from Top View base point ${line.aTop.label}, apply True Inclination with VP (${Math.abs(line.phiDeg) >= 0.5 ? `φ = ${line.phiDeg.toFixed(1)}°` : 'parallel to VP'}) using True Length (TL) to locate ${line.b2Top.label} and establish the Locus of ${line.nameB.toLowerCase()}.`,
+          keyTakeaway: 'Establishing loci using True Length and true inclination angles (a′ ➔ HL and a ➔ TL/Locus) fixes the horizontal boundaries for End B.',
+        },
+        {
+          num: 3,
+          name: 'Rotating Views',
+          instrument: 'Drafting Compass (Radius = Apparent Lengths)',
+          title: 'Step 3: Project & Rotate Construction Lines to Cut Loci',
+          description: `Project ${line.b1Front.label} down to the horizontal reference through a to obtain the plan length ab₁, and project ${line.b2Top.label} up to the reference through a′ to obtain the elevation length a′b₂′. With centers a and a′, swing rotating arcs to intersect the respective locus lines, locating the final projections ${line.bTop.label} and ${line.bFront.label}.`,
+          keyTakeaway: 'True Length is only visible when the line is made parallel to a reference plane. The rotating line method swings the line parallel to find true length and true angles.',
+        },
+        {
+          num: 4,
+          name: 'Final Views & Projector',
+          instrument: 'HB Pencil & Straightedge (Thick Continuous Line for Views)',
+          title: 'Step 4: Draw Final Elevation, Plan, and End Projector Alignment',
+          description: `Join ${line.aFront.label}${line.bFront.label} with a thick continuous line to obtain the final Elevation (Front View = ${line.frontViewLength.toFixed(1)} mm at apparent angle α = ${line.alphaDeg.toFixed(1)}°). Join ${line.aTop.label}${line.bTop.label} with a thick continuous line to obtain the final Plan (Top View = ${line.topViewLength.toFixed(1)} mm at apparent angle β = ${line.betaDeg.toFixed(1)}°). Draw the continuous thin vertical projector between ${line.bFront.label} and ${line.bTop.label} to verify they strictly align on one projector!`,
+          keyTakeaway: 'Orthographic Invariant: The end projections b′ (elevation) and b (plan) must strictly align on one common continuous vertical projector line perpendicular to XY.',
+        },
+      ];
 
   // Helper renderer for a single SVG viewport representing a specific stage
   const renderStageSvg = (stageNum: DraftingStageNumber, isCompact = false) => {
@@ -250,6 +288,130 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
     // Radius for True Length arcs
     const radiusTL = Math.hypot(ptB1Front.x - ptAFront.x, ptB1Front.y - ptAFront.y);
     const radiusTLPlan = Math.hypot(ptB2Top.x - ptATop.x, ptB2Top.y - ptATop.y);
+
+    // Dedicated clean drafting procedure for Line Perpendicular to HP
+    if (isPerpHP) {
+      const topFvY = Math.min(ptAFront.y, ptBFront.y);
+      const botFvY = Math.max(ptAFront.y, ptBFront.y);
+      const lowerHeight = Math.min(Math.abs(line.zA), Math.abs(line.zB));
+      const topDepth = Math.abs(line.yA);
+      const dimX = originX - 35;
+      const extLeftX = originX - 45;
+      const extRightX = originX - 8;
+
+      return (
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          className="w-full h-full select-none"
+          style={{ background: '#0b1329' }}
+        >
+          <defs>
+            <marker id="dim-arrow-start" viewBox="0 0 10 10" refX="0" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+              <path d="M 10 2 L 0 5 L 10 8 z" fill="#60a5fa" />
+            </marker>
+            <marker id="dim-arrow-end" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+              <path d="M 0 2 L 10 5 L 0 8 z" fill="#60a5fa" />
+            </marker>
+          </defs>
+
+          {/* Clean Drafting Workspace (No grid) */}
+          {/* XY Ground Line */}
+          <line x1={30} y1={groundY} x2={width - 30} y2={groundY} stroke="#e2e8f0" strokeWidth="1.8" />
+          <circle cx={40} cy={groundY} r="3" fill="#e2e8f0" />
+          <circle cx={width - 40} cy={groundY} r="3" fill="#e2e8f0" />
+          <text x={24} y={groundY + 5} fill="#f8fafc" fontSize={isCompact ? '12' : '15'} fontWeight="bold" fontFamily="monospace">X</text>
+          <text x={width - 24} y={groundY + 5} fill="#f8fafc" fontSize={isCompact ? '12' : '15'} fontWeight="bold" fontFamily="monospace">Y</text>
+
+          {/* Clean Standard Plane Labels */}
+          {!isCompact && (
+            <>
+              <text x={55} y={groundY - 10} fill="#f87171" fontSize="13" fontWeight="bold" fontFamily="monospace">VP</text>
+              <text x={55} y={groundY + 20} fill="#60a5fa" fontSize="13" fontWeight="bold" fontFamily="monospace">HP</text>
+            </>
+          )}
+
+          {/* Continuous vertical projector (All stages) */}
+          <line
+            x1={originX}
+            y1={topFvY - 40}
+            x2={originX}
+            y2={ptATop.y + 40}
+            stroke="#94a3b8"
+            strokeWidth="1.0"
+          />
+
+          {/* Stage 2, 3, 4: Top View Point a(b) in HP */}
+          {stageNum >= 2 && (
+            <g>
+              <circle cx={originX} cy={ptATop.y} r={isCompact ? 2.5 : 3.2} fill="#3b82f6" stroke="#ffffff" strokeWidth="1.2" />
+              <text x={originX + 10} y={ptATop.y + 4} fill="#93c5fd" fontSize={isCompact ? '11' : '13'} fontWeight="bold" fontFamily="monospace">
+                {line.aTop.label}
+              </text>
+              {/* Dimension for top depth */}
+              {!isCompact && topDepth > 1 && (
+                <g>
+                  <line x1={extLeftX} y1={groundY} x2={extRightX} y2={groundY} stroke="#60a5fa" strokeWidth="0.8" opacity="0.5" />
+                  <line x1={extLeftX} y1={ptATop.y} x2={extRightX} y2={ptATop.y} stroke="#60a5fa" strokeWidth="0.8" opacity="0.5" />
+                  <line x1={dimX} y1={groundY} x2={dimX} y2={ptATop.y} stroke="#60a5fa" strokeWidth="1" markerStart="url(#dim-arrow-start)" markerEnd="url(#dim-arrow-end)" />
+                  <text x={dimX - 6} y={(groundY + ptATop.y) / 2 + 3} fill="#93c5fd" fontSize="10" fontFamily="monospace" textAnchor="end">
+                    {topDepth.toFixed(0)}
+                  </text>
+                </g>
+              )}
+            </g>
+          )}
+
+          {/* Stage 3, 4: Front View End Points b' and a' */}
+          {stageNum >= 3 && (
+            <g>
+              <circle cx={originX} cy={botFvY} r={isCompact ? 2.5 : 3.2} fill="#ef4444" stroke="#ffffff" strokeWidth="1.2" />
+              <text x={originX + 10} y={botFvY + 4} fill="#fca5a5" fontSize={isCompact ? '11' : '13'} fontWeight="bold" fontFamily="monospace">
+                {line.bFront.label}
+              </text>
+              <circle cx={originX} cy={topFvY} r={isCompact ? 2.5 : 3.2} fill="#ef4444" stroke="#ffffff" strokeWidth="1.2" />
+              <text x={originX + 10} y={topFvY - 4} fill="#fca5a5" fontSize={isCompact ? '11' : '13'} fontWeight="bold" fontFamily="monospace">
+                {line.aFront.label}
+              </text>
+
+              {/* Dimension for lower height */}
+              {!isCompact && lowerHeight > 1 && (
+                <g>
+                  <line x1={extLeftX} y1={botFvY} x2={extRightX} y2={botFvY} stroke="#f87171" strokeWidth="0.8" opacity="0.5" />
+                  <line x1={dimX} y1={groundY} x2={dimX} y2={botFvY} stroke="#f87171" strokeWidth="1" markerStart="url(#dim-arrow-start)" markerEnd="url(#dim-arrow-end)" />
+                  <text x={dimX - 6} y={(groundY + botFvY) / 2 + 3} fill="#fca5a5" fontSize="10" fontFamily="monospace" textAnchor="end">
+                    {lowerHeight.toFixed(0)}
+                  </text>
+                </g>
+              )}
+
+              {/* Dimension for True Length */}
+              {!isCompact && (
+                <g>
+                  <line x1={extLeftX} y1={topFvY} x2={extRightX} y2={topFvY} stroke="#f87171" strokeWidth="0.8" opacity="0.5" />
+                  <line x1={dimX} y1={topFvY} x2={dimX} y2={botFvY} stroke="#f87171" strokeWidth="1" markerStart="url(#dim-arrow-start)" markerEnd="url(#dim-arrow-end)" />
+                  <text x={dimX - 6} y={(topFvY + botFvY) / 2 + 3} fill="#fca5a5" fontSize="10" fontFamily="monospace" textAnchor="end">
+                    {line.trueLength.toFixed(0)}
+                  </text>
+                </g>
+              )}
+            </g>
+          )}
+
+          {/* Stage 4: Thick dark object line for Front View */}
+          {stageNum === 4 && (
+            <line
+              x1={originX}
+              y1={topFvY}
+              x2={originX}
+              y2={botFvY}
+              stroke="#ef4444"
+              strokeWidth={isCompact ? '2.8' : '3.4'}
+              strokeLinecap="round"
+            />
+          )}
+        </svg>
+      );
+    }
 
     return (
       <svg
@@ -306,8 +468,7 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
           </marker>
         </defs>
 
-        {/* Blueprint Grid Background */}
-        <rect width={width} height={height} fill={`url(#bp-major-${stageNum}-${isCompact ? 'c' : 'f'})`} />
+        {/* Clean Drafting Workspace (Grid removed as requested) */}
 
         {/* ============================================================== */}
         {/* BASE GROUND LINE XY (Present in all stages) */}
@@ -345,14 +506,14 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
           Y
         </text>
 
-        {/* Plane Labels (VP above XY, HP below XY in First Angle) */}
+        {/* Clean Standard Plane Labels (VP above XY, HP below XY in First Angle) */}
         {!isCompact && (
           <>
-            <text x={42} y={groundY - 14} fill="#f87171" fontSize="11" fontFamily="monospace" opacity="0.85">
-              VP (Elevation / Front View Plane)
+            <text x={55} y={groundY - 10} fill="#f87171" fontSize="13" fontWeight="bold" fontFamily="monospace">
+              VP
             </text>
-            <text x={42} y={groundY + 22} fill="#60a5fa" fontSize="11" fontFamily="monospace" opacity="0.85">
-              HP (Plan / Top View Plane)
+            <text x={55} y={groundY + 20} fill="#60a5fa" fontSize="13" fontWeight="bold" fontFamily="monospace">
+              HP
             </text>
           </>
         )}

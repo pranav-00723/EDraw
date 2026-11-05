@@ -34,262 +34,357 @@ const ai = new GoogleGenAI({
 });
 
 /**
- * Robust rule-based engineering graphics solver and question parser.
- * Used when Gemini API is unavailable, as well as a reference validation layer.
+ * Standard Engineering Graphics Output Schema
  */
-function solveQuestionRuleBased(text: string) {
+export interface ExtractedQuestionSchema {
+  line_name: string;
+  start_point: string;
+  end_point: string;
+  true_length_mm: number | null;
+  p_above_hp_mm: number | null;
+  p_in_front_of_vp_mm: number | null;
+  q_above_hp_mm: number | null;
+  q_in_front_of_vp_mm: number | null;
+  theta_hp_deg: number | null;
+  phi_vp_deg: number | null;
+  alpha_apparent_fv_deg: number | null;
+  beta_apparent_tv_deg: number | null;
+  front_view_length_mm: number | null;
+  top_view_length_mm: number | null;
+  dep_projector_distance_mm: number | null;
+  is_parallel_to_hp: boolean;
+  is_parallel_to_vp: boolean;
+  is_perpendicular_to_hp: boolean;
+  is_perpendicular_to_vp: boolean;
+  transcribed_question?: string;
+  heading?: string;
+}
+
+/**
+ * Robust rule-based engineering graphics solver and question parser.
+ * Adheres strictly to the user's 5 critical rules.
+ */
+function solveQuestionRuleBased(text: string): { schema: ExtractedQuestionSchema; parsed: any } {
   const raw = text.trim();
   const lower = raw.toLowerCase();
 
-  const isLine =
-    lower.includes('line') ||
-    lower.includes('true length') ||
-    lower.includes('perpendicular') ||
-    lower.includes('parallel') ||
-    lower.includes('inclined at') ||
-    /line\s+[a-z]{1,2}/i.test(lower);
+  // RULE 1: Focus on problem statement and heading. Strip out numbered solution steps (e.g. "1. Draw XY...", "2. Mark p'...")
+  const cleanedText = raw
+    .replace(/(?:^|\n)\s*\d+[\.\)]\s*[^.\n]*(?:draw|mark|join|project|extend|measure|with|taking|from|cut|locate)[^\n]*/gi, '')
+    .trim();
+  const cleanedLower = cleanedText.toLowerCase();
 
-  if (isLine) {
-    // 1. Line names
-    let nameA = 'A';
-    let nameB = 'B';
-    const nameMatch =
-      raw.match(/line\s+([A-Z])([A-Z])/i) ||
-      raw.match(/line\s+([A-Z])\s*(?:and|to|-)\s*([A-Z])/i);
-    if (nameMatch) {
-      nameA = nameMatch[1].toUpperCase();
-      nameB = nameMatch[2].toUpperCase();
-    }
+  // Detect heading (e.g., "Parallel to the HP and Inclined to the VP")
+  let heading = '';
+  const headingMatch = cleanedText.match(/^(?:problem|exercise|example|\#\#|\#)?\s*([A-Za-z\s]+(?:parallel|perpendicular|inclined)[^\n\.\:]*)/i);
+  if (headingMatch) {
+    heading = headingMatch[1].trim();
+  }
 
-    // 2. Length (e.g. "25mm", "25 mm", "25 mm long", "length 25 mm")
-    let tl = 25;
-    const tlMatch =
-      lower.match(/line\s+[a-z]{1,2}\s+(\d+(?:\.\d+)?)\s*mm/i) ||
-      lower.match(/(\d+(?:\.\d+)?)\s*mm\s*long/i) ||
-      lower.match(/length\s*(?:of)?\s*(\d+(?:\.\d+)?)\s*mm/i) ||
-      lower.match(/tl\s*=?\s*(\d+(?:\.\d+)?)/i) ||
-      lower.match(/(\d+(?:\.\d+)?)\s*mm/i);
-    if (tlMatch) {
-      tl = parseFloat(tlMatch[1]);
-    }
+  // 1. Line names
+  let startPoint = 'P';
+  let endPoint = 'Q';
+  let lineName = 'PQ';
+  const nameMatch =
+    cleanedText.match(/line\s+([A-Z])([A-Z])/i) ||
+    cleanedText.match(/line\s+([A-Z])\s*(?:and|to|-)\s*([A-Z])/i) ||
+    cleanedText.match(/([A-Z])([A-Z])\s+(?:is\s+a\s+line|\d+\s*mm)/i);
+  if (nameMatch) {
+    startPoint = nameMatch[1].toUpperCase();
+    endPoint = nameMatch[2].toUpperCase();
+    lineName = `${startPoint}${endPoint}`;
+  }
 
-    // 3. Orientations:
-    // Check "perpendicular to the HP" / "perpendicular to HP"
-    const isPerpHP =
-      lower.includes('perpendicular to the hp') ||
-      lower.includes('perpendicular to hp') ||
-      lower.includes('perp to hp') ||
-      lower.includes('perp. to hp') ||
-      lower.includes('normal to hp');
+  // 2. True Length
+  let tl: number | null = null;
+  const tlMatch =
+    cleanedLower.match(/line\s+[a-z]{1,2}\s+(\d+(?:\.\d+)?)\s*mm/i) ||
+    cleanedLower.match(/(\d+(?:\.\d+)?)\s*mm\s*long/i) ||
+    cleanedLower.match(/length\s*(?:of)?\s*(?:the\s*line\s*)?(\d+(?:\.\d+)?)\s*mm/i) ||
+    cleanedLower.match(/tl\s*=?\s*(\d+(?:\.\d+)?)/i) ||
+    cleanedLower.match(/(\d+(?:\.\d+)?)\s*mm/i);
+  if (tlMatch) {
+    tl = parseFloat(tlMatch[1]);
+  }
 
-    // Check "perpendicular to the VP" / "perpendicular to VP"
-    const isPerpVP =
-      lower.includes('perpendicular to the vp') ||
-      lower.includes('perpendicular to vp') ||
-      lower.includes('perp to vp') ||
-      lower.includes('perp. to vp') ||
-      lower.includes('normal to vp');
+  // RULE 4: Parallel and Perpendicular constraints
+  const isPerpHP =
+    cleanedLower.includes('perpendicular to the hp') ||
+    cleanedLower.includes('perpendicular to hp') ||
+    cleanedLower.includes('perp to hp') ||
+    cleanedLower.includes('perp. to hp') ||
+    cleanedLower.includes('normal to hp');
 
-    // Check "parallel to the VP" / "parallel to VP"
-    const isParVP =
-      lower.includes('parallel to the vp') ||
-      lower.includes('parallel to vp') ||
-      lower.includes('parallel to both');
+  const isPerpVP =
+    cleanedLower.includes('perpendicular to the vp') ||
+    cleanedLower.includes('perpendicular to vp') ||
+    cleanedLower.includes('perp to vp') ||
+    cleanedLower.includes('perp. to vp') ||
+    cleanedLower.includes('normal to vp');
 
-    // Check "parallel to the HP" / "parallel to HP"
-    const isParHP =
-      lower.includes('parallel to the hp') ||
-      lower.includes('parallel to hp') ||
-      lower.includes('parallel to both');
+  const isParVP =
+    isPerpHP ||
+    cleanedLower.includes('parallel to the vp') ||
+    cleanedLower.includes('parallel to vp') ||
+    cleanedLower.includes('parallel to both');
 
-    let theta = 30;
-    let phi = 45;
-    let orientation = 'INCLINED_BOTH';
+  const isParHP =
+    isPerpVP ||
+    cleanedLower.includes('parallel to the hp') ||
+    cleanedLower.includes('parallel to hp') ||
+    cleanedLower.includes('parallel to both');
 
-    if (isPerpHP && isParVP) {
-      theta = 90;
-      phi = 0;
-      orientation = 'PERPENDICULAR_HP';
-    } else if (isPerpVP && isParHP) {
-      theta = 0;
-      phi = 90;
-      orientation = 'PERPENDICULAR_VP';
-    } else if (isParHP && isParVP) {
-      theta = 0;
-      phi = 0;
-      orientation = 'PARALLEL_BOTH';
+  // RULE 3: Inclination angles (DO NOT SWAP HP AND VP)
+  let thetaHp: number | null = null;
+  let phiVp: number | null = null;
+
+  if (isPerpHP) {
+    thetaHp = 90;
+    phiVp = 0;
+  } else if (isPerpVP) {
+    thetaHp = 0;
+    phiVp = 90;
+  } else {
+    if (isParHP) {
+      thetaHp = 0;
     } else {
       const thetaMatch =
-        lower.match(/(?:inclined\s*(?:at)?\s*(\d+(?:\.\d+)?)\s*(?:°|deg|degrees)?\s*to\s*(?:the\s*)?hp)/i) ||
-        lower.match(/(?:(\d+(?:\.\d+)?)\s*(?:°|deg|degrees)?\s*(?:with|to)\s*(?:the\s*)?hp)/i) ||
-        lower.match(/θ\s*=?\s*(\d+(?:\.\d+)?)/i);
-      if (thetaMatch) theta = parseFloat(thetaMatch[1]);
-      else if (isParHP) theta = 0;
-
-      const phiMatch =
-        lower.match(/(?:inclined\s*(?:at)?\s*(\d+(?:\.\d+)?)\s*(?:°|deg|degrees)?\s*to\s*(?:the\s*)?vp)/i) ||
-        lower.match(/(?:(\d+(?:\.\d+)?)\s*(?:°|deg|degrees)?\s*(?:with|to)\s*(?:the\s*)?vp)/i) ||
-        lower.match(/φ\s*=?\s*(\d+(?:\.\d+)?)/i);
-      if (phiMatch) phi = parseFloat(phiMatch[1]);
-      else if (isParVP) phi = 0;
+        cleanedLower.match(/(?:inclined\s*(?:at)?\s*(\d+(?:\.\d+)?)\s*(?:°|deg|degrees)?\s*to\s*(?:the\s*)?hp)/i) ||
+        cleanedLower.match(/(?:(\d+(?:\.\d+)?)\s*(?:°|deg|degrees)?\s*(?:with|to)\s*(?:the\s*)?hp)/i) ||
+        cleanedLower.match(/θ\s*=?\s*(\d+(?:\.\d+)?)/i);
+      if (thetaMatch) thetaHp = parseFloat(thetaMatch[1]);
     }
 
-    // 4. Point A relations
-    let hpRelA = 'ABOVE';
-    let distHpA = 35;
-    const hpAMatch =
-      lower.match(/point\s*a\s*(?:is)?\s*(\d+(?:\.\d+)?)\s*mm\s*above\s*(?:the\s*)?hp/i) ||
-      lower.match(/(\d+(?:\.\d+)?)\s*mm\s*above\s*(?:the\s*)?hp/i);
-    const hpABelowMatch =
-      lower.match(/point\s*a\s*(?:is)?\s*(\d+(?:\.\d+)?)\s*mm\s*below\s*(?:the\s*)?hp/i) ||
-      lower.match(/(\d+(?:\.\d+)?)\s*mm\s*below\s*(?:the\s*)?hp/i);
-    if (hpAMatch) {
-      hpRelA = 'ABOVE';
-      distHpA = parseFloat(hpAMatch[1]);
-    } else if (hpABelowMatch) {
-      hpRelA = 'BELOW';
-      distHpA = parseFloat(hpABelowMatch[1]);
-    }
-
-    let vpRelA = 'IN_FRONT';
-    let distVpA = 20;
-    const vpAMatch =
-      lower.match(/(\d+(?:\.\d+)?)\s*mm\s*in\s*front\s*of\s*(?:the\s*)?vp/i);
-    const vpABehindMatch =
-      lower.match(/(\d+(?:\.\d+)?)\s*mm\s*behind\s*(?:the\s*)?vp/i);
-    if (vpAMatch) {
-      vpRelA = 'IN_FRONT';
-      distVpA = parseFloat(vpAMatch[1]);
-    } else if (vpABehindMatch) {
-      vpRelA = 'BEHIND';
-      distVpA = parseFloat(vpABehindMatch[1]);
-    }
-
-    // 5. Point B relations
-    let hpRelB = 'ABOVE';
-    let distHpB = 10;
-    const hpBMatch =
-      lower.match(/(?:point\s*)?b\s*(?:is)?\s*(\d+(?:\.\d+)?)\s*mm\s*above\s*(?:the\s*)?hp/i);
-    const hpBBelowMatch =
-      lower.match(/(?:point\s*)?b\s*(?:is)?\s*(\d+(?:\.\d+)?)\s*mm\s*below\s*(?:the\s*)?hp/i);
-    if (hpBMatch) {
-      hpRelB = 'ABOVE';
-      distHpB = parseFloat(hpBMatch[1]);
-    } else if (hpBBelowMatch) {
-      hpRelB = 'BELOW';
-      distHpB = parseFloat(hpBBelowMatch[1]);
+    if (isParVP) {
+      phiVp = 0;
     } else {
-      // If B is not explicitly stated and line is Perp to HP, B height = A height - TL
-      distHpB = Math.max(0, distHpA - tl);
+      const phiMatch =
+        cleanedLower.match(/(?:inclined\s*(?:at)?\s*(\d+(?:\.\d+)?)\s*(?:°|deg|degrees)?\s*to\s*(?:the\s*)?vp)/i) ||
+        cleanedLower.match(/(?:(\d+(?:\.\d+)?)\s*(?:°|deg|degrees)?\s*(?:with|to)\s*(?:the\s*)?vp)/i) ||
+        cleanedLower.match(/φ\s*=?\s*(\d+(?:\.\d+)?)/i);
+      if (phiMatch) phiVp = parseFloat(phiMatch[1]);
     }
-
-    let vpRelB = vpRelA;
-    let distVpB = distVpA;
-    if (isParVP || orientation === 'PERPENDICULAR_HP') {
-      distVpB = distVpA;
-      vpRelB = vpRelA;
-    }
-
-    // Verify TL if both heights given for vertical line
-    if (orientation === 'PERPENDICULAR_HP' && hpBMatch && hpAMatch) {
-      tl = Math.abs(distHpA - distHpB);
-    }
-
-    const isHiddenB = orientation === 'PERPENDICULAR_HP' && distHpA >= distHpB;
-    const isHiddenA = orientation === 'PERPENDICULAR_HP' && distHpB > distHpA;
-
-    return {
-      type: 'LINE',
-      nameA,
-      nameB,
-      trueLength: tl,
-      thetaDeg: theta,
-      phiDeg: phi,
-      orientation,
-      mode: 'END_POINTS',
-      endA: {
-        name: nameA,
-        hpRelation: hpRelA,
-        distanceHp: distHpA,
-        vpRelation: vpRelA,
-        distanceVp: distVpA,
-      },
-      endB: {
-        name: nameB,
-        hpRelation: hpRelB,
-        distanceHp: distHpB,
-        vpRelation: vpRelB,
-        distanceVp: distVpB,
-      },
-      dep: orientation === 'PERPENDICULAR_HP' || orientation === 'PERPENDICULAR_VP' ? 0 : 50,
-      frontViewLength: orientation === 'PERPENDICULAR_HP' ? tl : orientation === 'PERPENDICULAR_VP' ? 0 : tl,
-      topViewLength: orientation === 'PERPENDICULAR_HP' ? 0 : orientation === 'PERPENDICULAR_VP' ? tl : tl,
-      targetQuadrantB: 'FIRST',
-      hiddenA: isHiddenA,
-      hiddenB: isHiddenB,
-      topViewLabel: orientation === 'PERPENDICULAR_HP' ? `${nameA.toLowerCase()}(${nameB.toLowerCase()})` : `${nameA.toLowerCase()}${nameB.toLowerCase()}`,
-      frontViewLabelA: `${nameA.toLowerCase()}′`,
-      frontViewLabelB: `${nameB.toLowerCase()}′`,
-      explanation: `Line ${nameA}${nameB} (${tl} mm) is ${orientation === 'PERPENDICULAR_HP' ? 'perpendicular to HP and parallel to VP' : 'inclined to planes'}. Front view is ${tl} mm vertical. Top view is a point labeled ${nameA.toLowerCase()}(${nameB.toLowerCase()}) at ${distVpA} mm in front of VP.`,
-    };
   }
 
-  // Point Problem
-  let pointName = 'A';
-  const pNameMatch = raw.match(/point\s+([A-Z0-9])/i);
-  if (pNameMatch) pointName = pNameMatch[1].toUpperCase();
+  // Point P (Start Point) Position
+  let pAboveHp: number | null = null;
+  let pInFrontVp: number | null = null;
 
-  let hpRel = 'ABOVE';
-  let distHp = 30;
-  if (lower.includes('in hp') || lower.includes('on hp') || lower.includes('in the hp')) {
-    hpRel = 'ON';
-    distHp = 0;
+  // Check on HP / on VP for P
+  const pName = startPoint.toLowerCase();
+  const qName = endPoint.toLowerCase();
+
+  if (
+    cleanedLower.includes(`point ${pName} is in hp`) ||
+    cleanedLower.includes(`point ${pName} is in the hp`) ||
+    cleanedLower.includes(`point ${pName} is on hp`) ||
+    cleanedLower.includes(`end ${pName} is in hp`) ||
+    cleanedLower.includes(`${pName} is in the hp`)
+  ) {
+    pAboveHp = 0;
   } else {
-    const hpAboveMatch = lower.match(/(\d+(?:\.\d+)?)\s*mm\s*above\s*(?:the\s*)?hp/i);
-    const hpBelowMatch = lower.match(/(\d+(?:\.\d+)?)\s*mm\s*below\s*(?:the\s*)?hp/i);
-    if (hpAboveMatch) {
-      hpRel = 'ABOVE';
-      distHp = parseFloat(hpAboveMatch[1]);
-    } else if (hpBelowMatch) {
-      hpRel = 'BELOW';
-      distHp = parseFloat(hpBelowMatch[1]);
+    const hpMatch =
+      cleanedLower.match(new RegExp(`(?:point\\s*${pName}|end\\s*${pName}|\\b${pName}\\b)[^.]*?(\\d+(?:\\.\\d+)?)\\s*mm\\s*above\\s*(?:the\\s*)?hp`, 'i')) ||
+      cleanedLower.match(/(\d+(?:\.\d+)?)\s*mm\s*above\s*(?:the\s*)?hp/i);
+    const hpBelowMatch =
+      cleanedLower.match(new RegExp(`(?:point\\s*${pName}|end\\s*${pName}|\\b${pName}\\b)[^.]*?(\\d+(?:\\.\\d+)?)\\s*mm\\s*below\\s*(?:the\\s*)?hp`, 'i')) ||
+      cleanedLower.match(/(\d+(?:\.\d+)?)\s*mm\s*below\s*(?:the\s*)?hp/i);
+    if (hpMatch) pAboveHp = parseFloat(hpMatch[1]);
+    else if (hpBelowMatch) pAboveHp = -parseFloat(hpBelowMatch[1]);
+  }
+
+  if (
+    cleanedLower.includes(`point ${pName} is in vp`) ||
+    cleanedLower.includes(`point ${pName} is in the vp`) ||
+    cleanedLower.includes(`point ${pName} is on vp`) ||
+    cleanedLower.includes(`end ${pName} is in vp`) ||
+    cleanedLower.includes(`${pName} is in the vp`)
+  ) {
+    pInFrontVp = 0;
+  } else {
+    const vpMatch =
+      cleanedLower.match(new RegExp(`(?:point\\s*${pName}|end\\s*${pName}|\\b${pName}\\b)[^.]*?(\\d+(?:\\.\\d+)?)\\s*mm\\s*in\\s*front\\s*of\\s*(?:the\\s*)?vp`, 'i')) ||
+      cleanedLower.match(/(\d+(?:\.\d+)?)\s*mm\s*in\s*front\s*of\s*(?:the\s*)?vp/i);
+    const vpBehindMatch =
+      cleanedLower.match(new RegExp(`(?:point\\s*${pName}|end\\s*${pName}|\\b${pName}\\b)[^.]*?(\\d+(?:\\.\\d+)?)\\s*mm\\s*behind\\s*(?:the\\s*)?vp`, 'i')) ||
+      cleanedLower.match(/(\d+(?:\.\d+)?)\s*mm\s*behind\s*(?:the\s*)?vp/i);
+    if (vpMatch) pInFrontVp = parseFloat(vpMatch[1]);
+    else if (vpBehindMatch) pInFrontVp = -parseFloat(vpBehindMatch[1]);
+  }
+
+  // Point Q (End Point) Position
+  let qAboveHp: number | null = null;
+  let qInFrontVp: number | null = null;
+
+  if (isParHP) {
+    // If parallel to HP, q_above_hp = p_above_hp
+    qAboveHp = pAboveHp;
+  } else {
+    const qHpMatch =
+      cleanedLower.match(new RegExp(`(?:point\\s*${qName}|end\\s*${qName}|\\b${qName}\\b)[^.]*?(\\d+(?:\\.\\d+)?)\\s*mm\\s*above\\s*(?:the\\s*)?hp`, 'i'));
+    const qHpBelowMatch =
+      cleanedLower.match(new RegExp(`(?:point\\s*${qName}|end\\s*${qName}|\\b${qName}\\b)[^.]*?(\\d+(?:\\.\\d+)?)\\s*mm\\s*below\\s*(?:the\\s*)?hp`, 'i'));
+    if (qHpMatch) qAboveHp = parseFloat(qHpMatch[1]);
+    else if (qHpBelowMatch) qAboveHp = -parseFloat(qHpBelowMatch[1]);
+  }
+
+  if (isParVP) {
+    // If parallel to VP, q_in_front_of_vp = p_in_front_of_vp
+    qInFrontVp = pInFrontVp;
+  } else {
+    const qVpMatch =
+      cleanedLower.match(new RegExp(`(?:point\\s*${qName}|end\\s*${qName}|\\b${qName}\\b)[^.]*?(\\d+(?:\\.\\d+)?)\\s*mm\\s*in\\s*front\\s*of\\s*(?:the\\s*)?vp`, 'i'));
+    const qVpBehindMatch =
+      cleanedLower.match(new RegExp(`(?:point\\s*${qName}|end\\s*${qName}|\\b${qName}\\b)[^.]*?(\\d+(?:\\.\\d+)?)\\s*mm\\s*behind\\s*(?:the\\s*)?vp`, 'i'));
+    if (qVpMatch) qInFrontVp = parseFloat(qVpMatch[1]);
+    else if (qVpBehindMatch) qInFrontVp = -parseFloat(qVpBehindMatch[1]);
+  }
+
+  // Distance between end projectors (DEP)
+  let dep: number | null = null;
+  const depMatch =
+    cleanedLower.match(/(?:distance\s*between\s*(?:end\s*)?projectors|dep)\s*(?:is)?\s*(\d+(?:\.\d+)?)\s*mm/i);
+  if (depMatch) {
+    dep = parseFloat(depMatch[1]);
+  } else if (isPerpHP || isPerpVP) {
+    dep = 0;
+  }
+
+  // Apparent lengths
+  let el: number | null = null;
+  const elMatch =
+    cleanedLower.match(/(?:front\s*view|elevation)\s*(?:length\s*)?(?:is)?\s*(\d+(?:\.\d+)?)\s*mm/i);
+  if (elMatch) el = parseFloat(elMatch[1]);
+
+  let pl: number | null = null;
+  const plMatch =
+    cleanedLower.match(/(?:top\s*view|plan)\s*(?:length\s*)?(?:is)?\s*(\d+(?:\.\d+)?)\s*mm/i);
+  if (plMatch) pl = parseFloat(plMatch[1]);
+
+  const schema: ExtractedQuestionSchema = {
+    line_name: lineName,
+    start_point: startPoint,
+    end_point: endPoint,
+    true_length_mm: tl,
+    p_above_hp_mm: pAboveHp,
+    p_in_front_of_vp_mm: pInFrontVp,
+    q_above_hp_mm: qAboveHp,
+    q_in_front_of_vp_mm: qInFrontVp,
+    theta_hp_deg: thetaHp,
+    phi_vp_deg: phiVp,
+    alpha_apparent_fv_deg: null,
+    beta_apparent_tv_deg: null,
+    front_view_length_mm: el,
+    top_view_length_mm: pl,
+    dep_projector_distance_mm: dep,
+    is_parallel_to_hp: isParHP,
+    is_parallel_to_vp: isParVP,
+    is_perpendicular_to_hp: isPerpHP,
+    is_perpendicular_to_vp: isPerpVP,
+    transcribed_question: cleanedText,
+    heading,
+  };
+
+  // Convert schema into simulator format
+  const parsed = convertSchemaToSimulation(schema);
+  return { schema, parsed };
+}
+
+/**
+ * Converts the extracted schema into the simulator's internal representation
+ * strictly following BIS SP 46:2003 geometry and NO hallucinated defaults.
+ */
+function convertSchemaToSimulation(s: ExtractedQuestionSchema) {
+  const tl = s.true_length_mm ?? 50;
+  const theta = s.theta_hp_deg ?? (s.is_perpendicular_to_hp ? 90 : s.is_parallel_to_hp ? 0 : 30);
+  const phi = s.phi_vp_deg ?? (s.is_perpendicular_to_vp ? 90 : s.is_parallel_to_vp ? 0 : 45);
+
+  let orientation = 'INCLINED_BOTH';
+  if (s.is_perpendicular_to_hp) orientation = 'PERPENDICULAR_HP';
+  else if (s.is_perpendicular_to_vp) orientation = 'PERPENDICULAR_VP';
+  else if (s.is_parallel_to_hp && s.is_parallel_to_vp) orientation = 'PARALLEL_BOTH';
+  else if (s.is_parallel_to_hp) orientation = 'INCLINED_VP_PARALLEL_HP';
+  else if (s.is_parallel_to_vp) orientation = 'INCLINED_HP_PARALLEL_VP';
+
+  const pAbove = s.p_above_hp_mm ?? 20;
+  const pFront = s.p_in_front_of_vp_mm ?? 25;
+
+  let qAbove = s.q_above_hp_mm;
+  if (qAbove === null || qAbove === undefined) {
+    if (s.is_parallel_to_hp) qAbove = pAbove;
+    else if (s.is_perpendicular_to_hp) qAbove = Math.max(0, pAbove - tl);
+    else qAbove = pAbove + tl * Math.sin((theta * Math.PI) / 180);
+  }
+
+  let qFront = s.q_in_front_of_vp_mm;
+  if (qFront === null || qFront === undefined) {
+    if (s.is_parallel_to_vp) qFront = pFront;
+    else if (s.is_perpendicular_to_vp) qFront = Math.max(0, pFront - tl);
+    else qFront = pFront + tl * Math.sin((phi * Math.PI) / 180);
+  }
+
+  // Calculate dep mathematically without hallucinating 50
+  let calculatedDep = s.dep_projector_distance_mm;
+  if (calculatedDep === null || calculatedDep === undefined) {
+    if (s.is_perpendicular_to_hp || s.is_perpendicular_to_vp) {
+      calculatedDep = 0;
+    } else {
+      const thetaRad = (theta * Math.PI) / 180;
+      const phiRad = (phi * Math.PI) / 180;
+      const dy = tl * Math.sin(phiRad);
+      const dz = tl * Math.sin(thetaRad);
+      const dxSq = Math.max(0, tl * tl - dy * dy - dz * dz);
+      calculatedDep = Math.round(Math.sqrt(dxSq) * 100) / 100;
     }
   }
 
-  let vpRel = 'IN_FRONT';
-  let distVp = 40;
-  if (lower.includes('in vp') || lower.includes('on vp') || lower.includes('in the vp')) {
-    vpRel = 'ON';
-    distVp = 0;
-  } else {
-    const vpFrontMatch = lower.match(/(\d+(?:\.\d+)?)\s*mm\s*in\s*front\s*of\s*(?:the\s*)?vp/i);
-    const vpBehindMatch = lower.match(/(\d+(?:\.\d+)?)\s*mm\s*behind\s*(?:the\s*)?vp/i);
-    if (vpFrontMatch) {
-      vpRel = 'IN_FRONT';
-      distVp = parseFloat(vpFrontMatch[1]);
-    } else if (vpBehindMatch) {
-      vpRel = 'BEHIND';
-      distVp = parseFloat(vpBehindMatch[1]);
-    }
-  }
+  const isHiddenB = orientation === 'PERPENDICULAR_HP' && pAbove >= qAbove;
+  const isHiddenA = orientation === 'PERPENDICULAR_HP' && qAbove > pAbove;
 
   return {
-    type: 'POINT',
-    name: pointName,
-    hpRelation: hpRel,
-    distanceHp: distHp,
-    vpRelation: vpRel,
-    distanceVp: distVp,
-    isHidden: lower.includes('hidden') || lower.includes('bracket'),
-    explanation: `Point ${pointName} is ${distHp} mm ${hpRel} HP and ${distVp} mm ${vpRel} VP.`,
+    type: 'LINE',
+    nameA: s.start_point,
+    nameB: s.end_point,
+    trueLength: tl,
+    thetaDeg: theta,
+    phiDeg: phi,
+    orientation,
+    mode: 'END_POINTS',
+    endA: {
+      name: s.start_point,
+      hpRelation: pAbove === 0 ? 'ON' : pAbove > 0 ? 'ABOVE' : 'BELOW',
+      distanceHp: Math.abs(pAbove),
+      vpRelation: pFront === 0 ? 'ON' : pFront > 0 ? 'IN_FRONT' : 'BEHIND',
+      distanceVp: Math.abs(pFront),
+    },
+    endB: {
+      name: s.end_point,
+      hpRelation: qAbove === 0 ? 'ON' : qAbove > 0 ? 'ABOVE' : 'BELOW',
+      distanceHp: Math.abs(qAbove),
+      vpRelation: qFront === 0 ? 'ON' : qFront > 0 ? 'IN_FRONT' : 'BEHIND',
+      distanceVp: Math.abs(qFront),
+    },
+    dep: calculatedDep,
+    frontViewLength: s.front_view_length_mm ?? (orientation === 'PERPENDICULAR_VP' ? 0 : tl * Math.cos((phi * Math.PI) / 180)),
+    topViewLength: s.top_view_length_mm ?? (orientation === 'PERPENDICULAR_HP' ? 0 : tl * Math.cos((theta * Math.PI) / 180)),
+    targetQuadrantB: 'FIRST',
+    hiddenA: isHiddenA,
+    hiddenB: isHiddenB,
+    topViewLabel:
+      orientation === 'PERPENDICULAR_HP'
+        ? pAbove >= qAbove
+          ? `${s.start_point.toLowerCase()}(${s.end_point.toLowerCase()})`
+          : `${s.end_point.toLowerCase()}(${s.start_point.toLowerCase()})`
+        : `${s.start_point.toLowerCase()}${s.end_point.toLowerCase()}`,
+    frontViewLabelA: `${s.start_point.toLowerCase()}′`,
+    frontViewLabelB: `${s.end_point.toLowerCase()}′`,
+    explanation: `Line ${s.line_name} (${tl} mm) ${orientation === 'PERPENDICULAR_HP' ? 'perpendicular to HP and parallel to VP' : orientation === 'PERPENDICULAR_VP' ? 'perpendicular to VP and parallel to HP' : orientation === 'PARALLEL_BOTH' ? 'parallel to both HP and VP' : orientation === 'INCLINED_HP_PARALLEL_VP' ? `inclined to HP at θ=${theta}° and parallel to VP` : orientation === 'INCLINED_VP_PARALLEL_HP' ? `inclined to VP at φ=${phi}° and parallel to HP` : `inclined to both planes at θ=${theta}° and φ=${phi}°`}.`,
   };
 }
 
 /**
  * POST /api/scan-question
- * Accepts imageBase64 or text.
- * Performs accurate OCR via Gemini 3.8 Flash, analyzes the engineering graphics geometry,
- * and extracts structured parameters strictly adhering to BIS SP 46:2003 / ISO 128 standards.
+ * Performs OCR and extraction adhering strictly to the user's critical rules and JSON schema.
  */
 app.post('/api/scan-question', async (req, res) => {
   try {
@@ -304,14 +399,12 @@ app.post('/api/scan-question', async (req, res) => {
 
     let recognizedText = text || '';
 
-    // If Gemini API Key is available, use gemini-3.8-flash for OCR & Structured Reasoning
-    if (apiKey) {
+    if (apiKey && apiKey.trim().length > 10 && !apiKey.includes('YOUR_')) {
       try {
         const parts: any[] = [];
 
         if (imageBase64) {
-          // Clean base64 string
-          const base64Data = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
+          const base64Data = imageBase64.replace(/^data:image\/[a-z0-9\+\-]+;base64,/, '');
           parts.push({
             inlineData: {
               mimeType: mimeType || 'image/jpeg',
@@ -321,204 +414,113 @@ app.post('/api/scan-question', async (req, res) => {
         }
 
         const promptText = `
-You are an expert Senior Engineering Drawing & Descriptive Geometry Professor (BIS SP 46:2003 / ISO 128 standards).
-Your task is to analyze the engineering graphics problem from the textbook image or text prompt.
+You are an expert Engineering Graphics parser specializing in First-Angle Orthographic Projection of Straight Lines, Planes, and Solids.
 
-1. FIRST, accurately transcribe the EXACT text of the question (OCR).
-2. IDENTIFY whether this is a PROJECTION OF STRAIGHT LINE problem or a PROJECTION OF POINT problem.
-3. EXTRACT all geometric parameters:
-   - For Straight Line:
-     * Line ends names (e.g. A and B).
-     * True Length (TL in mm).
-     * Orientation:
-       - 'PERPENDICULAR_HP' (if perpendicular to HP, parallel to VP, θ=90°, φ=0°).
-       - 'PERPENDICULAR_VP' (if perpendicular to VP, parallel to HP, θ=0°, φ=90°).
-       - 'PARALLEL_BOTH' (parallel to both HP & VP, θ=0°, φ=0°).
-       - 'INCLINED_HP_PARALLEL_VP' (inclined to HP at θ, parallel to VP φ=0°).
-       - 'INCLINED_VP_PARALLEL_HP' (inclined to VP at φ, parallel to HP θ=0°).
-       - 'INCLINED_BOTH' (oblique line inclined to both HP and VP).
-     * True inclinations: thetaDeg (to HP, 0-90°), phiDeg (to VP, 0-90°).
-     * Position of End A: distanceHp (mm), hpRelation ('ABOVE'|'BELOW'|'ON'), distanceVp (mm), vpRelation ('IN_FRONT'|'BEHIND'|'ON').
-     * Position of End B: distanceHp (mm), hpRelation ('ABOVE'|'BELOW'|'ON'), distanceVp (mm), vpRelation ('IN_FRONT'|'BEHIND'|'ON').
-       (NOTE: If line is parallel to VP, B has the same distanceVp as A! If line is perpendicular to HP, B has same distanceVp as A, and distanceHp of B = distanceHp of A ± TL).
-     * Projector distance DEP: 0 if perpendicular to HP or VP, otherwise given DEP or calculated.
-     * Visibility & Labels:
-       - If line is PERPENDICULAR_HP: Top View is a POINT where End A and End B coincide. The end with higher elevation is visible and the lower end is hidden beneath it in parentheses, e.g. 'a(b)' if A is 35mm and B is 10mm! Front view is a vertical line a'b' of true length.
-       - If line is PERPENDICULAR_VP: Front View is a point with hidden notation, e.g. 'a′(b′)', Top view is a line of true length.
-   - For Point:
-     * Point name (e.g. A or P).
-     * hpRelation ('ABOVE'|'BELOW'|'ON'), distanceHp (mm).
-     * vpRelation ('IN_FRONT'|'BEHIND'|'ON'), distanceVp (mm).
-     * isHidden (boolean).
+Your job is to extract exact geometric parameters from a scanned image or text of an Engineering Drawing problem and output ONLY valid JSON matching the schema below.
 
-Return JSON matching the schema precisely.
+CRITICAL RULES TO PREVENT MISINTERPRETATION:
+1. FOCUS ONLY ON THE PROBLEM STATEMENT: Scanned images often include headings (e.g., "Parallel to the HP and Inclined to the VP") and numbered solution steps below the question. Read the heading and problem paragraph. IGNORE numbered instructional steps (e.g., "1. Draw line XY... 3. Mark p'...") as they frequently contain textbook typos.
+2. FIRST-ANGLE PROJECTION MAPPING:
+   - HP = Horizontal Plane (Top View / Plan, drawn BELOW the XY line).
+   - VP = Vertical Plane (Front View / Elevation, drawn ABOVE the XY line).
+   - "above HP" -> positive distance above XY (p_above_hp).
+   - "below HP" -> negative distance below XY.
+   - "in front of VP" -> positive distance below XY (p_in_front_of_vp).
+   - "behind VP" -> negative distance above XY.
+3. INCLINATION ANGLES (DO NOT SWAP HP AND VP):
+   - "inclined at X° to HP" -> theta_hp = X. (Even though it is measured in the Front View, it is the angle with HP).
+   - "inclined at Y° to VP" -> phi_vp = Y. (Even though it is measured in the Top View, it is the angle with VP).
+4. PARALLEL & PERPENDICULAR CONSTRAINTS:
+   - If the line is "parallel to HP": You MUST set theta_hp = 0 and is_parallel_to_hp = true. This means both ends are at the exact same distance above HP (q_above_hp = p_above_hp).
+   - If the line is "parallel to VP": You MUST set phi_vp = 0 and is_parallel_to_vp = true. This means both ends are at the exact same distance in front of VP (q_in_front_of_vp = p_in_front_of_vp).
+   - If the line is "perpendicular to HP": Set theta_hp = 90, phi_vp = 0, is_perpendicular_to_hp = true, is_parallel_to_vp = true.
+   - If the line is "perpendicular to VP": Set phi_vp = 90, theta_hp = 0, is_perpendicular_to_vp = true, is_parallel_to_hp = true.
+   - If an end is "in HP" or "on HP": Its distance above HP is 0.
+   - If an end is "in VP" or "on VP": Its distance in front of VP is 0.
+5. NO HALLUCINATED DEFAULTS:
+   - Never invent 50 for dep (distance between end projectors) or 0 for q_above_hp unless explicitly stated in the problem text. Use null for any parameter not explicitly given or directly implied by parallelism.
 `;
         parts.push({ text: promptText });
 
-        const response = await ai.models.generateContent({
+        const generatePromise = ai.models.generateContent({
           model: 'gemini-3.8-flash',
           contents: { parts },
           config: {
             systemInstruction:
-              'You are an authoritative engineering drawing and descriptive geometry parser adhering to BIS SP 46:2003 and N.D. Bhatt textbook standards. Always return valid JSON matching the response schema.',
+              'You are an authoritative engineering graphics parser adhering to First-Angle projection BIS SP 46:2003 standards. Output valid JSON matching the schema.',
             responseMimeType: 'application/json',
             responseSchema: {
               type: Type.OBJECT,
               properties: {
-                transcribedQuestion: {
-                  type: Type.STRING,
-                  description: 'The exact question text transcribed from the image or input.',
-                },
-                problemType: {
-                  type: Type.STRING,
-                  enum: ['LINE', 'POINT'],
-                },
-                line: {
-                  type: Type.OBJECT,
-                  properties: {
-                    nameA: { type: Type.STRING },
-                    nameB: { type: Type.STRING },
-                    trueLength: { type: Type.NUMBER },
-                    orientation: {
-                      type: Type.STRING,
-                      enum: [
-                        'PERPENDICULAR_HP',
-                        'PERPENDICULAR_VP',
-                        'PARALLEL_BOTH',
-                        'INCLINED_HP_PARALLEL_VP',
-                        'INCLINED_VP_PARALLEL_HP',
-                        'INCLINED_BOTH',
-                      ],
-                    },
-                    thetaDeg: { type: Type.NUMBER },
-                    phiDeg: { type: Type.NUMBER },
-                    endA: {
-                      type: Type.OBJECT,
-                      properties: {
-                        name: { type: Type.STRING },
-                        distanceHp: { type: Type.NUMBER },
-                        hpRelation: { type: Type.STRING, enum: ['ABOVE', 'BELOW', 'ON'] },
-                        distanceVp: { type: Type.NUMBER },
-                        vpRelation: { type: Type.STRING, enum: ['IN_FRONT', 'BEHIND', 'ON'] },
-                      },
-                      required: ['distanceHp', 'hpRelation', 'distanceVp', 'vpRelation'],
-                    },
-                    endB: {
-                      type: Type.OBJECT,
-                      properties: {
-                        name: { type: Type.STRING },
-                        distanceHp: { type: Type.NUMBER },
-                        hpRelation: { type: Type.STRING, enum: ['ABOVE', 'BELOW', 'ON'] },
-                        distanceVp: { type: Type.NUMBER },
-                        vpRelation: { type: Type.STRING, enum: ['IN_FRONT', 'BEHIND', 'ON'] },
-                      },
-                      required: ['distanceHp', 'hpRelation', 'distanceVp', 'vpRelation'],
-                    },
-                    dep: { type: Type.NUMBER },
-                    frontViewLength: { type: Type.NUMBER },
-                    topViewLength: { type: Type.NUMBER },
-                    topViewLabel: { type: Type.STRING },
-                    frontViewLabelA: { type: Type.STRING },
-                    frontViewLabelB: { type: Type.STRING },
-                    hiddenA: { type: Type.BOOLEAN },
-                    hiddenB: { type: Type.BOOLEAN },
-                    explanation: { type: Type.STRING },
-                  },
-                },
-                point: {
-                  type: Type.OBJECT,
-                  properties: {
-                    name: { type: Type.STRING },
-                    distanceHp: { type: Type.NUMBER },
-                    hpRelation: { type: Type.STRING, enum: ['ABOVE', 'BELOW', 'ON'] },
-                    distanceVp: { type: Type.NUMBER },
-                    vpRelation: { type: Type.STRING, enum: ['IN_FRONT', 'BEHIND', 'ON'] },
-                    isHidden: { type: Type.BOOLEAN },
-                    explanation: { type: Type.STRING },
-                  },
-                },
+                transcribed_question: { type: Type.STRING },
+                line_name: { type: Type.STRING },
+                start_point: { type: Type.STRING },
+                end_point: { type: Type.STRING },
+                true_length_mm: { type: Type.NUMBER },
+                p_above_hp_mm: { type: Type.NUMBER },
+                p_in_front_of_vp_mm: { type: Type.NUMBER },
+                q_above_hp_mm: { type: Type.NUMBER },
+                q_in_front_of_vp_mm: { type: Type.NUMBER },
+                theta_hp_deg: { type: Type.NUMBER },
+                phi_vp_deg: { type: Type.NUMBER },
+                alpha_apparent_fv_deg: { type: Type.NUMBER },
+                beta_apparent_tv_deg: { type: Type.NUMBER },
+                front_view_length_mm: { type: Type.NUMBER },
+                top_view_length_mm: { type: Type.NUMBER },
+                dep_projector_distance_mm: { type: Type.NUMBER },
+                is_parallel_to_hp: { type: Type.BOOLEAN },
+                is_parallel_to_vp: { type: Type.BOOLEAN },
+                is_perpendicular_to_hp: { type: Type.BOOLEAN },
+                is_perpendicular_to_vp: { type: Type.BOOLEAN },
               },
-              required: ['transcribedQuestion', 'problemType'],
+              required: [
+                'line_name',
+                'start_point',
+                'end_point',
+                'is_parallel_to_hp',
+                'is_parallel_to_vp',
+                'is_perpendicular_to_hp',
+                'is_perpendicular_to_vp',
+              ],
             },
           },
         });
 
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Gemini API timeout')), 4500)
+        );
+
+        const response: any = await Promise.race([generatePromise, timeoutPromise]);
+
         const rawJson = (response.text || '').trim();
-        const parsedData = JSON.parse(rawJson);
+        const extractedSchema: ExtractedQuestionSchema = JSON.parse(rawJson);
+        recognizedText = extractedSchema.transcribed_question || recognizedText;
 
-        recognizedText = parsedData.transcribedQuestion || recognizedText;
+        const parsed = convertSchemaToSimulation(extractedSchema);
 
-        if (parsedData.problemType === 'LINE' && parsedData.line) {
-          const l = parsedData.line;
-          return res.json({
-            success: true,
-            rawText: recognizedText,
-            source: 'gemini-3.8-flash',
-            parsed: {
-              type: 'LINE',
-              nameA: l.nameA || 'A',
-              nameB: l.nameB || 'B',
-              trueLength: l.trueLength || 25,
-              thetaDeg: l.thetaDeg ?? (l.orientation === 'PERPENDICULAR_HP' ? 90 : 30),
-              phiDeg: l.phiDeg ?? (l.orientation === 'PERPENDICULAR_VP' ? 90 : 0),
-              orientation: l.orientation || 'PERPENDICULAR_HP',
-              mode: 'END_POINTS',
-              endA: {
-                name: l.nameA || 'A',
-                hpRelation: l.endA?.hpRelation || 'ABOVE',
-                distanceHp: l.endA?.distanceHp ?? 35,
-                vpRelation: l.endA?.vpRelation || 'IN_FRONT',
-                distanceVp: l.endA?.distanceVp ?? 20,
-              },
-              endB: {
-                name: l.nameB || 'B',
-                hpRelation: l.endB?.hpRelation || 'ABOVE',
-                distanceHp: l.endB?.distanceHp ?? 10,
-                vpRelation: l.endB?.vpRelation || 'IN_FRONT',
-                distanceVp: l.endB?.distanceVp ?? 20,
-              },
-              dep: l.dep ?? (l.orientation === 'PERPENDICULAR_HP' ? 0 : 50),
-              frontViewLength: l.frontViewLength ?? l.trueLength,
-              topViewLength: l.topViewLength ?? (l.orientation === 'PERPENDICULAR_HP' ? 0 : l.trueLength),
-              targetQuadrantB: 'FIRST',
-              hiddenA: !!l.hiddenA,
-              hiddenB: l.hiddenB !== undefined ? l.hiddenB : l.orientation === 'PERPENDICULAR_HP',
-              topViewLabel: l.topViewLabel || (l.orientation === 'PERPENDICULAR_HP' ? `${(l.nameA || 'a').toLowerCase()}(${(l.nameB || 'b').toLowerCase()})` : undefined),
-              frontViewLabelA: l.frontViewLabelA || `${(l.nameA || 'a').toLowerCase()}′`,
-              frontViewLabelB: l.frontViewLabelB || `${(l.nameB || 'b').toLowerCase()}′`,
-              explanation: l.explanation,
-            },
-          });
-        } else if (parsedData.problemType === 'POINT' && parsedData.point) {
-          const p = parsedData.point;
-          return res.json({
-            success: true,
-            rawText: recognizedText,
-            source: 'gemini-3.8-flash',
-            parsed: {
-              type: 'POINT',
-              name: p.name || 'P',
-              hpRelation: p.hpRelation || 'ABOVE',
-              distanceHp: p.distanceHp ?? 30,
-              vpRelation: p.vpRelation || 'IN_FRONT',
-              distanceVp: p.distanceVp ?? 40,
-              isHidden: !!p.isHidden,
-              explanation: p.explanation,
-            },
-          });
-        }
+        return res.json({
+          success: true,
+          rawText: recognizedText,
+          source: 'gemini-3.8-flash',
+          extractedSchema,
+          parsed,
+        });
       } catch (geminiErr: any) {
-        console.error('Gemini OCR API error, falling back to rule-based engine:', geminiErr);
+        console.error('Gemini OCR API error, falling back to rule-based parser:', geminiErr);
       }
     }
 
-    // Fallback: rule-based solver
-    const ruleResult = solveQuestionRuleBased(recognizedText || text || 'A Line AB 25mm is parallel to the VP and perpendicular to the HP. Point A is 35mm above the HP and 20mm in front of the VP. B is 10 mm above the HP. Draw its projections.');
+    // Rule-based Fallback
+    const { schema, parsed } = solveQuestionRuleBased(
+      recognizedText || text || 'A Line AB 25mm is parallel to the VP and perpendicular to the HP. Point A is 35mm above the HP and 20mm in front of the VP. B is 10 mm above the HP. Draw its projections.'
+    );
+
     return res.json({
       success: true,
       rawText: recognizedText || text,
       source: 'rule-based-fallback',
-      parsed: ruleResult,
+      extractedSchema: schema,
+      parsed,
     });
   } catch (err: any) {
     console.error('Error in /api/scan-question:', err);

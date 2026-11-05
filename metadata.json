@@ -1,7 +1,9 @@
 {
   "name": "EDraw — Interactive Engineering Drawing Simulator",
   "description": "Interactive Engineering Drawing learning platform for 3D spatial visualization and 2D orthographic projections of Points and Straight Lines relative to HP and VP.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": [
+    "camera"
+  ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]

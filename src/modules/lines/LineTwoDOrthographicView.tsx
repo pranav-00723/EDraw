@@ -424,132 +424,309 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
               >
                 Top View (HP)
               </text>
+
+              {/* Standard Textbook VP / HP notations next to reference projector */}
+              <text
+                x={aFrontSvg.x - 44}
+                y={originY - 8}
+                fill={isDark ? '#e2e8f0' : '#0f172a'}
+                fontSize="13"
+                fontFamily="'JetBrains Mono', monospace"
+                fontWeight="bold"
+              >
+                VP
+              </text>
+              <text
+                x={aFrontSvg.x - 44}
+                y={originY + 18}
+                fill={isDark ? '#e2e8f0' : '#0f172a'}
+                fontSize="13"
+                fontFamily="'JetBrains Mono', monospace"
+                fontWeight="bold"
+              >
+                HP
+              </text>
             </g>
 
-            {/* 3. End Projectors (aa' and bb') - Continuous thin solid lines, 1.0px */}
+            {/* 3. End Projectors - Continuous thin solid line */}
             <g className="end-projectors">
-              {/* Projector of End A: connects a' (front) to a (top) continuously */}
-              <line
-                x1={aFrontSvg.x}
-                y1={aFrontSvg.y}
-                x2={aTopSvg.x}
-                y2={aTopSvg.y}
-                stroke={isDark ? '#94a3b8' : '#64748b'}
-                strokeWidth="1.0"
-              />
+              {line.orientation === 'PERPENDICULAR_HP' ? (
+                /* Single continuous vertical projector for perpendicular line */
+                <line
+                  x1={aFrontSvg.x}
+                  y1={Math.min(aFrontSvg.y, bFrontSvg.y) - 20}
+                  x2={aTopSvg.x}
+                  y2={aTopSvg.y + 20}
+                  stroke={isDark ? '#94a3b8' : '#64748b'}
+                  strokeWidth="1.0"
+                />
+              ) : (
+                <>
+                  {/* Projector of End A: connects a' (front) to a (top) continuously */}
+                  <line
+                    x1={aFrontSvg.x}
+                    y1={aFrontSvg.y}
+                    x2={aTopSvg.x}
+                    y2={aTopSvg.y}
+                    stroke={isDark ? '#94a3b8' : '#64748b'}
+                    strokeWidth="1.0"
+                  />
 
-              {/* Projector of End B: connects b' (front) to b (top) continuously */}
-              <line
-                x1={bFrontSvg.x}
-                y1={bFrontSvg.y}
-                x2={bTopSvg.x}
-                y2={bTopSvg.y}
-                stroke={isDark ? '#94a3b8' : '#64748b'}
-                strokeWidth="1.0"
-              />
+                  {/* Projector of End B: connects b' (front) to b (top) continuously */}
+                  <line
+                    x1={bFrontSvg.x}
+                    y1={bFrontSvg.y}
+                    x2={bTopSvg.x}
+                    y2={bTopSvg.y}
+                    stroke={isDark ? '#94a3b8' : '#64748b'}
+                    strokeWidth="1.0"
+                  />
+                </>
+              )}
             </g>
 
-            {/* Dynamic Perpendicular Distances of End A from XY */}
+            {/* Dynamic Perpendicular Distances / Dimensions */}
             {showDimensions && (
               <g className="end-a-xy-dimensions">
-                {/* Elevation distance of a' from XY (|zA|) */}
-                {Math.abs(line.aFront.y) > 2 && (
-                  <g>
-                    {/* Extension lines */}
-                    <line
-                      x1={aFrontSvg.x - 30}
-                      y1={originY}
-                      x2={aFrontSvg.x - 8}
-                      y2={originY}
-                      stroke={vpColor}
-                      strokeWidth="0.7"
-                      opacity="0.4"
-                    />
-                    <line
-                      x1={aFrontSvg.x - 30}
-                      y1={aFrontSvg.y}
-                      x2={aFrontSvg.x - 8}
-                      y2={aFrontSvg.y}
-                      stroke={vpColor}
-                      strokeWidth="0.7"
-                      opacity="0.4"
-                    />
-                    {/* Dimension line with outward arrows */}
-                    <line
-                      x1={aFrontSvg.x - 22}
-                      y1={originY}
-                      x2={aFrontSvg.x - 22}
-                      y2={aFrontSvg.y}
-                      stroke={vpColor}
-                      strokeWidth="0.9"
-                      markerStart="url(#dim-vp-start)"
-                      markerEnd="url(#dim-vp-end)"
-                    />
-                    <text
-                      x={aFrontSvg.x - 26}
-                      y={(originY + aFrontSvg.y) / 2 + 4}
-                      fill={vpColor}
-                      fontSize="9.5"
-                      fontFamily="'JetBrains Mono', monospace"
-                      fontWeight="bold"
-                      textAnchor="end"
-                    >
-                      {Math.abs(line.input.endA.distanceHp).toFixed(1)} mm
-                    </text>
-                  </g>
-                )}
+                {line.orientation === 'PERPENDICULAR_HP' ? (
+                  /* Dedicated 3-Tier Dimensioning for Lines Perpendicular to HP (BIS SP 46 Standard) */
+                  (() => {
+                    const topFvY = Math.min(aFrontSvg.y, bFrontSvg.y);
+                    const botFvY = Math.max(aFrontSvg.y, bFrontSvg.y);
+                    const dimX = aFrontSvg.x - 22;
+                    const extLeftX = aFrontSvg.x - 30;
+                    const extRightX = aFrontSvg.x - 5;
+                    const lowerHeight = Math.min(Math.abs(line.zA), Math.abs(line.zB));
+                    const topDepth = Math.abs(line.yA);
 
-                {/* Plan distance of a from XY (|yA|) */}
-                {Math.abs(line.aTop.y) > 2 && (
-                  <g>
-                    {/* Extension lines */}
-                    <line
-                      x1={aTopSvg.x - 30}
-                      y1={originY}
-                      x2={aTopSvg.x - 8}
-                      y2={originY}
-                      stroke={hpColor}
-                      strokeWidth="0.7"
-                      opacity="0.4"
-                    />
-                    <line
-                      x1={aTopSvg.x - 30}
-                      y1={aTopSvg.y}
-                      x2={aTopSvg.x - 8}
-                      y2={aTopSvg.y}
-                      stroke={hpColor}
-                      strokeWidth="0.7"
-                      opacity="0.4"
-                    />
-                    {/* Dimension line with outward arrows */}
-                    <line
-                      x1={aTopSvg.x - 22}
-                      y1={originY}
-                      x2={aTopSvg.x - 22}
-                      y2={aTopSvg.y}
-                      stroke={hpColor}
-                      strokeWidth="0.9"
-                      markerStart="url(#dim-hp-start)"
-                      markerEnd="url(#dim-hp-end)"
-                    />
-                    <text
-                      x={aTopSvg.x - 26}
-                      y={(originY + aTopSvg.y) / 2 + 4}
-                      fill={hpColor}
-                      fontSize="9.5"
-                      fontFamily="'JetBrains Mono', monospace"
-                      fontWeight="bold"
-                      textAnchor="end"
-                    >
-                      {Math.abs(line.input.endA.distanceVp).toFixed(1)} mm
-                    </text>
-                  </g>
+                    return (
+                      <g className="perp-hp-dimensions">
+                        {/* 4 Horizontal Extension Lines out to the left */}
+                        {/* Extension at top end of front view (e.g. a') */}
+                        <line
+                          x1={extLeftX}
+                          y1={topFvY}
+                          x2={extRightX}
+                          y2={topFvY}
+                          stroke={isDark ? '#94a3b8' : '#64748b'}
+                          strokeWidth="0.75"
+                          opacity="0.6"
+                        />
+                        {/* Extension at bottom end of front view (e.g. b') */}
+                        <line
+                          x1={extLeftX}
+                          y1={botFvY}
+                          x2={extRightX}
+                          y2={botFvY}
+                          stroke={isDark ? '#94a3b8' : '#64748b'}
+                          strokeWidth="0.75"
+                          opacity="0.6"
+                        />
+                        {/* Extension at XY ground line */}
+                        <line
+                          x1={extLeftX}
+                          y1={originY}
+                          x2={extRightX}
+                          y2={originY}
+                          stroke={isDark ? '#94a3b8' : '#64748b'}
+                          strokeWidth="0.75"
+                          opacity="0.6"
+                        />
+                        {/* Extension at top view point a(b) */}
+                        <line
+                          x1={extLeftX}
+                          y1={aTopSvg.y}
+                          x2={extRightX}
+                          y2={aTopSvg.y}
+                          stroke={isDark ? '#94a3b8' : '#64748b'}
+                          strokeWidth="0.75"
+                          opacity="0.6"
+                        />
+
+                        {/* Dimension 1: True Length along front view (e.g. 25 mm) */}
+                        <line
+                          x1={dimX}
+                          y1={topFvY}
+                          x2={dimX}
+                          y2={botFvY}
+                          stroke={isDark ? '#94a3b8' : '#64748b'}
+                          strokeWidth="1.0"
+                          markerStart="url(#dim-arrow-start)"
+                          markerEnd="url(#dim-arrow-end)"
+                        />
+                        <text
+                          x={dimX - 6}
+                          y={(topFvY + botFvY) / 2 + 4}
+                          fill={isDark ? '#e2e8f0' : '#0f172a'}
+                          fontSize="11"
+                          fontFamily="'JetBrains Mono', monospace"
+                          fontWeight="bold"
+                          textAnchor="end"
+                        >
+                          {line.trueLength.toFixed(0)}
+                        </text>
+
+                        {/* Dimension 2: Height of lower end above HP (e.g. 10 mm) */}
+                        {lowerHeight > 1 && (
+                          <g>
+                            <line
+                              x1={dimX}
+                              y1={botFvY}
+                              x2={dimX}
+                              y2={originY}
+                              stroke={isDark ? '#94a3b8' : '#64748b'}
+                              strokeWidth="1.0"
+                              markerStart="url(#dim-arrow-start)"
+                              markerEnd="url(#dim-arrow-end)"
+                            />
+                            <text
+                              x={dimX - 6}
+                              y={(botFvY + originY) / 2 + 4}
+                              fill={isDark ? '#e2e8f0' : '#0f172a'}
+                              fontSize="11"
+                              fontFamily="'JetBrains Mono', monospace"
+                              fontWeight="bold"
+                              textAnchor="end"
+                            >
+                              {lowerHeight.toFixed(0)}
+                            </text>
+                          </g>
+                        )}
+
+                        {/* Dimension 3: Depth of Top View point in front of VP (e.g. 20 mm) */}
+                        {topDepth > 1 && (
+                          <g>
+                            <line
+                              x1={dimX}
+                              y1={originY}
+                              x2={dimX}
+                              y2={aTopSvg.y}
+                              stroke={isDark ? '#94a3b8' : '#64748b'}
+                              strokeWidth="1.0"
+                              markerStart="url(#dim-arrow-start)"
+                              markerEnd="url(#dim-arrow-end)"
+                            />
+                            <text
+                              x={dimX - 6}
+                              y={(originY + aTopSvg.y) / 2 + 4}
+                              fill={isDark ? '#e2e8f0' : '#0f172a'}
+                              fontSize="11"
+                              fontFamily="'JetBrains Mono', monospace"
+                              fontWeight="bold"
+                              textAnchor="end"
+                            >
+                              {topDepth.toFixed(0)}
+                            </text>
+                          </g>
+                        )}
+                      </g>
+                    );
+                  })()
+                ) : (
+                  <>
+                    {/* Elevation distance of a' from XY (|zA|) */}
+                    {Math.abs(line.aFront.y) > 2 && (
+                      <g>
+                        {/* Extension lines */}
+                        <line
+                          x1={aFrontSvg.x - 30}
+                          y1={originY}
+                          x2={aFrontSvg.x - 8}
+                          y2={originY}
+                          stroke={vpColor}
+                          strokeWidth="0.7"
+                          opacity="0.4"
+                        />
+                        <line
+                          x1={aFrontSvg.x - 30}
+                          y1={aFrontSvg.y}
+                          x2={aFrontSvg.x - 8}
+                          y2={aFrontSvg.y}
+                          stroke={vpColor}
+                          strokeWidth="0.7"
+                          opacity="0.4"
+                        />
+                        {/* Dimension line with outward arrows */}
+                        <line
+                          x1={aFrontSvg.x - 22}
+                          y1={originY}
+                          x2={aFrontSvg.x - 22}
+                          y2={aFrontSvg.y}
+                          stroke={vpColor}
+                          strokeWidth="0.9"
+                          markerStart="url(#dim-vp-start)"
+                          markerEnd="url(#dim-vp-end)"
+                        />
+                        <text
+                          x={aFrontSvg.x - 26}
+                          y={(originY + aFrontSvg.y) / 2 + 4}
+                          fill={vpColor}
+                          fontSize="9.5"
+                          fontFamily="'JetBrains Mono', monospace"
+                          fontWeight="bold"
+                          textAnchor="end"
+                        >
+                          {Math.abs(line.input.endA.distanceHp).toFixed(1)} mm
+                        </text>
+                      </g>
+                    )}
+
+                    {/* Plan distance of a from XY (|yA|) */}
+                    {Math.abs(line.aTop.y) > 2 && (
+                      <g>
+                        {/* Extension lines */}
+                        <line
+                          x1={aTopSvg.x - 30}
+                          y1={originY}
+                          x2={aTopSvg.x - 8}
+                          y2={originY}
+                          stroke={hpColor}
+                          strokeWidth="0.7"
+                          opacity="0.4"
+                        />
+                        <line
+                          x1={aTopSvg.x - 30}
+                          y1={aTopSvg.y}
+                          x2={aTopSvg.x - 8}
+                          y2={aTopSvg.y}
+                          stroke={hpColor}
+                          strokeWidth="0.7"
+                          opacity="0.4"
+                        />
+                        {/* Dimension line with outward arrows */}
+                        <line
+                          x1={aTopSvg.x - 22}
+                          y1={originY}
+                          x2={aTopSvg.x - 22}
+                          y2={aTopSvg.y}
+                          stroke={hpColor}
+                          strokeWidth="0.9"
+                          markerStart="url(#dim-hp-start)"
+                          markerEnd="url(#dim-hp-end)"
+                        />
+                        <text
+                          x={aTopSvg.x - 26}
+                          y={(originY + aTopSvg.y) / 2 + 4}
+                          fill={hpColor}
+                          fontSize="9.5"
+                          fontFamily="'JetBrains Mono', monospace"
+                          fontWeight="bold"
+                          textAnchor="end"
+                        >
+                          {Math.abs(line.input.endA.distanceVp).toFixed(1)} mm
+                        </text>
+                      </g>
+                    )}
+                  </>
                 )}
               </g>
             )}
 
             {/* 4. Rotating Line Method Constructions (True Length Lines & Arcs) */}
-            {showRotationArcs && (
+            {showRotationArcs &&
+              line.orientation !== 'PERPENDICULAR_HP' &&
+              line.orientation !== 'PERPENDICULAR_VP' &&
+              line.orientation !== 'PARALLEL_BOTH' && (
               <g className="rotating-line-construction">
                 {/* Elevation True Length line: a'b1' - always labeled as True Length (TL) */}
                 <line
@@ -723,80 +900,151 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
 
             {/* 5. Front View (Elevation) Line: a'b' */}
             <g className="front-view">
-              <line
-                x1={aFrontSvg.x}
-                y1={aFrontSvg.y}
-                x2={bFrontSvg.x}
-                y2={bFrontSvg.y}
-                stroke={vpColor}
-                strokeWidth="2.5"
-                strokeLinecap="round"
-              />
+              {line.orientation === 'PERPENDICULAR_VP' ? (
+                /* Front view collapses to a single point for line perpendicular to VP */
+                <g className="front-view-point">
+                  <circle cx={aFrontSvg.x} cy={aFrontSvg.y} r="2.2" fill={vpColor} />
+                  <text
+                    x={aFrontSvg.x + 8}
+                    y={aFrontSvg.y + 4}
+                    fill={vpColor}
+                    fontSize="13"
+                    fontWeight="bold"
+                    fontFamily="'Space Grotesk', sans-serif"
+                  >
+                    {line.aFront.label}
+                  </text>
+                </g>
+              ) : line.orientation === 'PERPENDICULAR_HP' ? (
+                /* Front view is a vertical line of True Length with clear a' and b' markers */
+                <g className="front-view-perp-hp">
+                  <line
+                    x1={aFrontSvg.x}
+                    y1={aFrontSvg.y}
+                    x2={bFrontSvg.x}
+                    y2={bFrontSvg.y}
+                    stroke={vpColor}
+                    strokeWidth="2.8"
+                    strokeLinecap="round"
+                  />
+                  <circle cx={aFrontSvg.x} cy={aFrontSvg.y} r="2.2" fill={vpColor} />
+                  <circle cx={bFrontSvg.x} cy={bFrontSvg.y} r="2.2" fill={vpColor} />
 
-              {/* End Point Markers for Front View - crisp proportional size */}
-              <circle cx={aFrontSvg.x} cy={aFrontSvg.y} r="2.2" fill={vpColor} />
-              <circle cx={bFrontSvg.x} cy={bFrontSvg.y} r="2.2" fill={vpColor} />
+                  {/* Upper end label (a' if zA >= zB, otherwise b') positioned to the right */}
+                  <text
+                    x={aFrontSvg.x + 8}
+                    y={aFrontSvg.y + (line.zA >= line.zB ? -2 : 4)}
+                    fill={vpColor}
+                    fontSize="13"
+                    fontWeight="bold"
+                    fontFamily="'Space Grotesk', sans-serif"
+                  >
+                    {line.aFront.label}
+                  </text>
 
-              {/* Text Labels */}
-              <text
-                x={aFrontSvg.x - 12}
-                y={aFrontSvg.y - 8}
-                fill={vpColor}
-                fontSize="12.5"
-                fontWeight="bold"
-                fontFamily="'Space Grotesk', sans-serif"
-              >
-                {line.aFront.label}
-              </text>
-              <text
-                x={bFrontSvg.x + 8}
-                y={bFrontSvg.y - 8}
-                fill={vpColor}
-                fontSize="12.5"
-                fontWeight="bold"
-                fontFamily="'Space Grotesk', sans-serif"
-              >
-                {line.bFront.label}
-              </text>
+                  {/* Lower end label (b' if zA >= zB, otherwise a') positioned to the right */}
+                  <text
+                    x={bFrontSvg.x + 8}
+                    y={bFrontSvg.y + (line.zA >= line.zB ? 4 : -2)}
+                    fill={vpColor}
+                    fontSize="13"
+                    fontWeight="bold"
+                    fontFamily="'Space Grotesk', sans-serif"
+                  >
+                    {line.bFront.label}
+                  </text>
+                </g>
+              ) : (
+                /* Standard general line front view */
+                <>
+                  <line
+                    x1={aFrontSvg.x}
+                    y1={aFrontSvg.y}
+                    x2={bFrontSvg.x}
+                    y2={bFrontSvg.y}
+                    stroke={vpColor}
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                  />
+                  <circle cx={aFrontSvg.x} cy={aFrontSvg.y} r="2.2" fill={vpColor} />
+                  <circle cx={bFrontSvg.x} cy={bFrontSvg.y} r="2.2" fill={vpColor} />
+                  <text
+                    x={aFrontSvg.x - 12}
+                    y={aFrontSvg.y - 8}
+                    fill={vpColor}
+                    fontSize="12.5"
+                    fontWeight="bold"
+                    fontFamily="'Space Grotesk', sans-serif"
+                  >
+                    {line.aFront.label}
+                  </text>
+                  <text
+                    x={bFrontSvg.x + 8}
+                    y={bFrontSvg.y - 8}
+                    fill={vpColor}
+                    fontSize="12.5"
+                    fontWeight="bold"
+                    fontFamily="'Space Grotesk', sans-serif"
+                  >
+                    {line.bFront.label}
+                  </text>
+                </>
+              )}
             </g>
 
             {/* 6. Top View (Plan) Line: ab */}
             <g className="top-view">
-              <line
-                x1={aTopSvg.x}
-                y1={aTopSvg.y}
-                x2={bTopSvg.x}
-                y2={bTopSvg.y}
-                stroke={hpColor}
-                strokeWidth="2.5"
-                strokeLinecap="round"
-              />
-
-              {/* End Point Markers for Top View - crisp proportional size */}
-              <circle cx={aTopSvg.x} cy={aTopSvg.y} r="2.2" fill={hpColor} />
-              <circle cx={bTopSvg.x} cy={bTopSvg.y} r="2.2" fill={hpColor} />
-
-              {/* Text Labels */}
-              <text
-                x={aTopSvg.x - 12}
-                y={aTopSvg.y + 16}
-                fill={hpColor}
-                fontSize="12.5"
-                fontWeight="bold"
-                fontFamily="'Space Grotesk', sans-serif"
-              >
-                {line.aTop.label}
-              </text>
-              <text
-                x={bTopSvg.x + 8}
-                y={bTopSvg.y + 16}
-                fill={hpColor}
-                fontSize="12.5"
-                fontWeight="bold"
-                fontFamily="'Space Grotesk', sans-serif"
-              >
-                {line.bTop.label}
-              </text>
+              {line.orientation === 'PERPENDICULAR_HP' ? (
+                /* Top view collapses to a single point with bracket notation a(b) */
+                <g className="top-view-point">
+                  <circle cx={aTopSvg.x} cy={aTopSvg.y} r="2.4" fill={hpColor} />
+                  <text
+                    x={aTopSvg.x + 8}
+                    y={aTopSvg.y + 4}
+                    fill={hpColor}
+                    fontSize="13"
+                    fontWeight="bold"
+                    fontFamily="'Space Grotesk', sans-serif"
+                  >
+                    {line.aTop.label}
+                  </text>
+                </g>
+              ) : (
+                /* Standard general line top view */
+                <>
+                  <line
+                    x1={aTopSvg.x}
+                    y1={aTopSvg.y}
+                    x2={bTopSvg.x}
+                    y2={bTopSvg.y}
+                    stroke={hpColor}
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                  />
+                  <circle cx={aTopSvg.x} cy={aTopSvg.y} r="2.2" fill={hpColor} />
+                  <circle cx={bTopSvg.x} cy={bTopSvg.y} r="2.2" fill={hpColor} />
+                  <text
+                    x={aTopSvg.x - 12}
+                    y={aTopSvg.y + 16}
+                    fill={hpColor}
+                    fontSize="12.5"
+                    fontWeight="bold"
+                    fontFamily="'Space Grotesk', sans-serif"
+                  >
+                    {line.aTop.label}
+                  </text>
+                  <text
+                    x={bTopSvg.x + 8}
+                    y={bTopSvg.y + 16}
+                    fill={hpColor}
+                    fontSize="12.5"
+                    fontWeight="bold"
+                    fontFamily="'Space Grotesk', sans-serif"
+                  >
+                    {line.bTop.label}
+                  </text>
+                </>
+              )}
             </g>
 
             {/* 7. Traces (HT & VT) */}

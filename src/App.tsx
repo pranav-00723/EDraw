@@ -60,6 +60,9 @@ export default function App() {
     }
   };
 
+  const [pendingScannedLine, setPendingScannedLine] = useState<any>(null);
+  const [pendingScannedPoint, setPendingScannedPoint] = useState<any>(null);
+
   return (
     <div
       className={`min-h-screen ${
@@ -99,6 +102,7 @@ export default function App() {
               onChangeHpColor={setHpColor}
               onChangeVpColor={setVpColor}
               isDark={isDark}
+              initialPointInput={pendingScannedPoint || undefined}
             />
           )}
 
@@ -109,6 +113,7 @@ export default function App() {
               onChangeHpColor={setHpColor}
               onChangeVpColor={setVpColor}
               isDark={isDark}
+              initialLineInput={pendingScannedLine || undefined}
             />
           )}
         </main>
@@ -133,10 +138,12 @@ export default function App() {
         isOpen={isGlobalScanOpen}
         onClose={() => setIsGlobalScanOpen(false)}
         isDark={isDark}
-        onApplyPoint={() => {
+        onApplyPoint={(scannedPt) => {
+          setPendingScannedPoint(scannedPt);
           navigateTo('/projection-of-points');
         }}
-        onApplyLine={() => {
+        onApplyLine={(scannedLn) => {
+          setPendingScannedLine(scannedLn);
           navigateTo('/projection-of-lines');
         }}
       />

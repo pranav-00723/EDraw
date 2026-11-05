@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { LineProblemInput } from '../../types/lines';
 import { computeLineProjection } from '../../utils/linesMath';
 import { LineInputForm } from './LineInputForm';
@@ -20,6 +20,7 @@ interface LinesModuleProps {
   onChangeHpColor: (c: string) => void;
   onChangeVpColor: (c: string) => void;
   isDark?: boolean;
+  initialLineInput?: LineProblemInput;
 }
 
 const DEFAULT_LINE_INPUT: LineProblemInput = {
@@ -58,10 +59,17 @@ export const LinesModule: React.FC<LinesModuleProps> = ({
   onChangeHpColor,
   onChangeVpColor,
   isDark = false,
+  initialLineInput,
 }) => {
-  const [input, setInput] = useState<LineProblemInput>(DEFAULT_LINE_INPUT);
+  const [input, setInput] = useState<LineProblemInput>(initialLineInput || DEFAULT_LINE_INPUT);
   const [activeTab, setActiveTab] = useState<'both' | '3d' | '2d'>('both');
   const [isScanModalOpen, setIsScanModalOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (initialLineInput) {
+      setInput(initialLineInput);
+    }
+  }, [initialLineInput]);
 
   // Reactively compute all 3D coordinates, projections, lengths, angles, and traces
   const computedLine = useMemo(() => {

@@ -343,63 +343,83 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
     root.add(labelB3D);
 
     // 6. Front View (Elevation) on VP: a′b′
-    const fvCurve = new THREE.LineCurve3(posA_VP, posB_VP);
-    const fvTubeGeo = new THREE.TubeGeometry(fvCurve, 20, 1.0, 8, false);
-    const fvMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(vpColor),
-      roughness: 0.3,
-    });
-    const fvMesh = new THREE.Mesh(fvTubeGeo, fvMat);
-    root.add(fvMesh);
-
-    // Spheres for a' and b' on VP - reduced size
     const projGeo = new THREE.SphereGeometry(1.2, 12, 12);
     const fvMarkerMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(vpColor) });
 
-    const markerA_VP = new THREE.Mesh(projGeo, fvMarkerMat);
-    markerA_VP.position.copy(posA_VP);
-    root.add(markerA_VP);
+    if (posA_VP.distanceTo(posB_VP) > 0.5) {
+      const fvCurve = new THREE.LineCurve3(posA_VP, posB_VP);
+      const fvTubeGeo = new THREE.TubeGeometry(fvCurve, 20, 1.0, 8, false);
+      const fvMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(vpColor),
+        roughness: 0.3,
+      });
+      const fvMesh = new THREE.Mesh(fvTubeGeo, fvMat);
+      root.add(fvMesh);
 
-    const markerB_VP = new THREE.Mesh(projGeo, fvMarkerMat);
-    markerB_VP.position.copy(posB_VP);
-    root.add(markerB_VP);
+      const markerA_VP = new THREE.Mesh(projGeo, fvMarkerMat);
+      markerA_VP.position.copy(posA_VP);
+      root.add(markerA_VP);
 
-    const labelA_VP = createTextSprite(line.aFront.label, vpColor, 26);
-    labelA_VP.position.set(posA_VP.x - 6, posA_VP.y + 6, 2);
-    root.add(labelA_VP);
+      const markerB_VP = new THREE.Mesh(projGeo, fvMarkerMat);
+      markerB_VP.position.copy(posB_VP);
+      root.add(markerB_VP);
 
-    const labelB_VP = createTextSprite(line.bFront.label, vpColor, 26);
-    labelB_VP.position.set(posB_VP.x + 6, posB_VP.y + 6, 2);
-    root.add(labelB_VP);
+      const labelA_VP = createTextSprite(line.aFront.label, vpColor, 26);
+      labelA_VP.position.set(posA_VP.x - 6, posA_VP.y + 6, 2);
+      root.add(labelA_VP);
+
+      const labelB_VP = createTextSprite(line.bFront.label, vpColor, 26);
+      labelB_VP.position.set(posB_VP.x + 6, posB_VP.y + 6, 2);
+      root.add(labelB_VP);
+    } else {
+      // Front view is a single point (Perpendicular to VP)
+      const marker_VP = new THREE.Mesh(projGeo, fvMarkerMat);
+      marker_VP.position.copy(posA_VP);
+      root.add(marker_VP);
+
+      const label_VP = createTextSprite(line.aFront.label, vpColor, 26);
+      label_VP.position.set(posA_VP.x + 8, posA_VP.y + 4, 2);
+      root.add(label_VP);
+    }
 
     // 7. Top View (Plan) on HP: ab
-    const tvCurve = new THREE.LineCurve3(posA_HP, posB_HP);
-    const tvTubeGeo = new THREE.TubeGeometry(tvCurve, 20, 1.1, 8, false);
-    const tvMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(hpColor),
-      roughness: 0.3,
-    });
-    const tvMesh = new THREE.Mesh(tvTubeGeo, tvMat);
-    root.add(tvMesh);
-
-    // Spheres for a and b on HP
     const tvMarkerMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(hpColor) });
 
-    const markerA_HP = new THREE.Mesh(projGeo, tvMarkerMat);
-    markerA_HP.position.copy(posA_HP);
-    root.add(markerA_HP);
+    if (posA_HP.distanceTo(posB_HP) > 0.5) {
+      const tvCurve = new THREE.LineCurve3(posA_HP, posB_HP);
+      const tvTubeGeo = new THREE.TubeGeometry(tvCurve, 20, 1.1, 8, false);
+      const tvMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(hpColor),
+        roughness: 0.3,
+      });
+      const tvMesh = new THREE.Mesh(tvTubeGeo, tvMat);
+      root.add(tvMesh);
 
-    const markerB_HP = new THREE.Mesh(projGeo, tvMarkerMat);
-    markerB_HP.position.copy(posB_HP);
-    root.add(markerB_HP);
+      const markerA_HP = new THREE.Mesh(projGeo, tvMarkerMat);
+      markerA_HP.position.copy(posA_HP);
+      root.add(markerA_HP);
 
-    const labelA_HP = createTextSprite(line.aTop.label, hpColor, 26);
-    labelA_HP.position.set(posA_HP.x - 6, 2, posA_HP.z + 6);
-    root.add(labelA_HP);
+      const markerB_HP = new THREE.Mesh(projGeo, tvMarkerMat);
+      markerB_HP.position.copy(posB_HP);
+      root.add(markerB_HP);
 
-    const labelB_HP = createTextSprite(line.bTop.label, hpColor, 26);
-    labelB_HP.position.set(posB_HP.x + 6, 2, posB_HP.z + 6);
-    root.add(labelB_HP);
+      const labelA_HP = createTextSprite(line.aTop.label, hpColor, 26);
+      labelA_HP.position.set(posA_HP.x - 6, 2, posA_HP.z + 6);
+      root.add(labelA_HP);
+
+      const labelB_HP = createTextSprite(line.bTop.label, hpColor, 26);
+      labelB_HP.position.set(posB_HP.x + 6, 2, posB_HP.z + 6);
+      root.add(labelB_HP);
+    } else {
+      // Top view is a single point (Perpendicular to HP, e.g. a(b))
+      const marker_HP = new THREE.Mesh(projGeo, tvMarkerMat);
+      marker_HP.position.copy(posA_HP);
+      root.add(marker_HP);
+
+      const label_HP = createTextSprite(line.aTop.label, hpColor, 26);
+      label_HP.position.set(posA_HP.x + 8, 2, posA_HP.z + 4);
+      root.add(label_HP);
+    }
 
     // 8. Orthogonal Projector Lines (dashed or thin lines)
     const projectorMat = new THREE.LineDashedMaterial({

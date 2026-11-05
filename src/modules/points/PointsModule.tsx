@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { PointInput, PresetProblem } from '../../types/projection';
 import { computePointCoordinates } from '../../utils/projectionMath';
 import { PointInputForm } from '../../components/PointInputForm';
@@ -20,6 +20,7 @@ interface PointsModuleProps {
   onChangeHpColor: (c: string) => void;
   onChangeVpColor: (c: string) => void;
   isDark?: boolean;
+  initialPointInput?: PointInput;
 }
 
 export const PointsModule: React.FC<PointsModuleProps> = ({
@@ -28,11 +29,12 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
   onChangeHpColor,
   onChangeVpColor,
   isDark = false,
+  initialPointInput,
 }) => {
   // Active Points state
   // Default to standard initial problem: Point A (30 mm above HP, 40 mm in front of VP)
   const [points, setPoints] = useState<PointInput[]>([
-    {
+    initialPointInput || {
       id: 'pt-default-1',
       name: 'A',
       color: '#2563eb',
@@ -44,6 +46,13 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
       showOptionalX: false,
     },
   ]);
+
+  useEffect(() => {
+    if (initialPointInput) {
+      setPoints([initialPointInput]);
+      setSelectedPointId(initialPointInput.id);
+    }
+  }, [initialPointInput]);
 
   const [selectedPointId, setSelectedPointId] = useState<string | null>('pt-default-1');
   const [activeTab, setActiveTab] = useState<'both' | '3d' | '2d'>('both');

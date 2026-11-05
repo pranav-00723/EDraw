@@ -244,6 +244,13 @@ export function computeLineProjection(input: LineProblemInput): ComputedLine {
   const isHiddenA = !!input.hiddenA;
   const isHiddenB = !!input.hiddenB;
 
+  const isPerpHP =
+    Math.abs(thetaDeg - 90) < 0.5 ||
+    (Math.abs(deltaX) < 1e-4 && Math.abs(deltaY) < 1e-4 && Math.abs(deltaZ) > 1e-4);
+  const isPerpVP =
+    Math.abs(phiDeg - 90) < 0.5 ||
+    (Math.abs(deltaX) < 1e-4 && Math.abs(deltaZ) < 1e-4 && Math.abs(deltaY) > 1e-4);
+
   const rawAFv = `${nameA.toLowerCase()}′`;
   const rawATv = `${nameA.toLowerCase()}`;
   const rawBFv = `${nameB.toLowerCase()}′`;
@@ -251,11 +258,49 @@ export function computeLineProjection(input: LineProblemInput): ComputedLine {
   const rawB1Fv = `${nameB.toLowerCase()}₁′`;
   const rawB2Tv = `${nameB.toLowerCase()}₂`;
 
-  const aFront = { x: xA, y: zA, label: isHiddenA ? `(${rawAFv})` : rawAFv };
-  const bFront = { x: xB, y: zB, label: isHiddenB ? `(${rawBFv})` : rawBFv };
+  // For Line Perpendicular to HP:
+  // Looking from above, the point with higher elevation (zA vs zB) is visible,
+  // and the lower point is hidden underneath, rendered in standard bracket notation e.g. a(b)
+  let topViewCombinedLabel = rawATv;
+  if (isPerpHP) {
+    topViewCombinedLabel =
+      zA >= zB
+        ? `${nameA.toLowerCase()}(${nameB.toLowerCase()})`
+        : `${nameB.toLowerCase()}(${nameA.toLowerCase()})`;
+  }
 
-  const aTop = { x: xA, y: -yA, label: isHiddenA ? `(${rawATv})` : rawATv };
-  const bTop = { x: xB, y: -yB, label: isHiddenB ? `(${rawBTv})` : rawBTv };
+  // For Line Perpendicular to VP:
+  // Looking from front, the point further in front of VP (yA vs yB) is visible,
+  // and the point behind is hidden behind it, rendered as a′(b′)
+  let frontViewCombinedLabel = rawAFv;
+  if (isPerpVP) {
+    frontViewCombinedLabel =
+      yA >= yB
+        ? `${nameA.toLowerCase()}′(${nameB.toLowerCase()}′)`
+        : `${nameB.toLowerCase()}′(${nameA.toLowerCase()}′)`;
+  }
+
+  const aFront = {
+    x: xA,
+    y: zA,
+    label: isPerpVP ? frontViewCombinedLabel : isHiddenA ? `(${rawAFv})` : rawAFv,
+  };
+  const bFront = {
+    x: xB,
+    y: zB,
+    label: isPerpVP ? frontViewCombinedLabel : isHiddenB ? `(${rawBFv})` : rawBFv,
+  };
+
+  const aTop = {
+    x: xA,
+    y: -yA,
+    label: isPerpHP ? topViewCombinedLabel : isHiddenA ? `(${rawATv})` : rawATv,
+  };
+  const bTop = {
+    x: xB,
+    y: -yB,
+    label: isPerpHP ? topViewCombinedLabel : isHiddenB ? `(${rawBTv})` : rawBTv,
+  };
 
   // Rotating Line Method Arc Destinations (True Length representations)
   // b1': In front view on locus of b' (y = zB) at distance PL along x from A
@@ -348,16 +393,16 @@ export function computeLineProjection(input: LineProblemInput): ComputedLine {
   let orientationDesc =
     'General oblique line. Both front and top views are shorter than true length (EL < TL and PL < TL), and inclined to XY at apparent angles α and β.';
 
-  if (isTheta90) {
+  if (isTheta90 || isPerpHP) {
     orientation = 'PERPENDICULAR_HP';
     orientationTitle = 'Line Perpendicular to HP & Parallel to VP';
     orientationDesc =
-      'Front view (a′b′) shows True Length perpendicular to XY. Top view (a, b) reduces to a single point.';
-  } else if (isPhi90) {
+      'Front view (a′b′) shows True Length perpendicular to XY. Top view (a, b) reduces to a single coincident point with bracket notation a(b).';
+  } else if (isPhi90 || isPerpVP) {
     orientation = 'PERPENDICULAR_VP';
     orientationTitle = 'Line Perpendicular to VP & Parallel to HP';
     orientationDesc =
-      'Top view (ab) shows True Length perpendicular to XY. Front view (a′, b′) reduces to a single point.';
+      'Top view (ab) shows True Length perpendicular to XY. Front view (a′, b′) reduces to a single coincident point with bracket notation a′(b′).';
   } else if (isThetaZero && isPhiZero) {
     orientation = 'PARALLEL_BOTH';
     orientationTitle = 'Line Parallel to Both HP and VP';
@@ -619,6 +664,39 @@ export const SAMPLE_LINE_PROBLEMS: SampleLineProblem[] = [
       trueLength: 74.3,
       thetaDeg: 32.5,
       phiDeg: 23.8,
+      endBQuadrant: 'ABOVE_FRONT',
+    },
+  },
+  {
+    id: 'sample-line-perp-hp',
+    title: 'Textbook Problem: Line AB Perpendicular to HP & Parallel to VP (TL=25mm)',
+    difficulty: 'Basic',
+    badge: 'Perpendicular Line',
+    description:
+      'A line AB 25mm is parallel to the VP and perpendicular to the HP. Point A is 35mm above the HP and 20mm in front of the VP. B is 10 mm above the HP. Top view projects to a single coincident point a(b) 20mm in front of VP; front view is a 25mm vertical true length line.',
+    input: {
+      mode: 'END_POINTS',
+      nameA: 'A',
+      nameB: 'B',
+      color: '#2563eb',
+      endA: {
+        name: 'A',
+        hpRelation: 'ABOVE',
+        distanceHp: 35,
+        vpRelation: 'IN_FRONT',
+        distanceVp: 20,
+      },
+      endB: {
+        name: 'B',
+        hpRelation: 'ABOVE',
+        distanceHp: 10,
+        vpRelation: 'IN_FRONT',
+        distanceVp: 20,
+      },
+      dep: 0,
+      trueLength: 25,
+      thetaDeg: 90,
+      phiDeg: 0,
       endBQuadrant: 'ABOVE_FRONT',
     },
   },

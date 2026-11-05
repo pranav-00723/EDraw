@@ -422,7 +422,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
       // Labels on HP
       if (showLabels) {
         // Label HP
-        const hpLabel = createTextSprite('HP (Horizontal Plane)', {
+        const hpLabel = createTextSprite('Top View (HP)', {
           fontsize: 24,
           textColor: hpColor,
           backgroundColor: isDark ? 'rgba(15, 23, 42, 0.85)' : 'rgba(255, 255, 255, 0.9)',
@@ -498,7 +498,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
 
       // Labels on VP
       if (showLabels) {
-        const vpLabel = createTextSprite('VP (Vertical Plane)', {
+        const vpLabel = createTextSprite('Front View (VP)', {
           fontsize: 24,
           textColor: vpColor,
           backgroundColor: isDark ? 'rgba(15, 23, 42, 0.85)' : 'rgba(255, 255, 255, 0.9)',
@@ -626,19 +626,14 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
     }
   }, [planeBounds, showHp, showVp, showAxes, showLabels, showQuadrants, isDark, hpColor, vpColor]);
 
-  // Handle HP 90° Clockwise Unfolding
+  // Handle HP 90° Clockwise Unfolding (around reference line XY)
   useEffect(() => {
     if (!foldGroupRef.current) return;
-    // Clockwise rotation around X axis:
-    // When HP is viewed along -X (from right to left looking at origin),
-    // clockwise rotation rotates +Z (in front of VP) downwards to -Y,
-    // and -Z (behind VP) upwards to +Y!
-    // In Three.js coordinate system (Right Hand Rule along +X):
-    // Rotation angle around +X:
-    // A positive rotation around +X rotates +Z towards +Y (counter-clockwise).
-    // Clockwise rotation (standard engineering drawing convention) rotates +Z downwards towards -Y:
-    // Therefore angle = - radians(unfoldAngle)
-    const rad = (-unfoldAngle * Math.PI) / 180;
+    // Clockwise rotation around X axis (First-Angle Projection standard):
+    // As unfoldAngle increases from 0° to 90°, the portion in front of VP (+Z)
+    // rotates DOWNWARDS towards -Y (below XY), and the portion behind VP (-Z)
+    // rotates UPWARDS towards +Y (above XY).
+    const rad = (unfoldAngle * Math.PI) / 180;
     foldGroupRef.current.rotation.x = rad;
   }, [unfoldAngle]);
 
@@ -663,11 +658,11 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
       const posY = pt.z;
       const posZ = pt.y;
 
-      // 1. Point 3D Mesh (Glowing Sphere with halo ring)
+      // 1. Point 3D Mesh (Glowing Sphere with halo ring - reduced, proportional size)
       const pointRoot = new THREE.Group();
       pointRoot.userData = { pointId: pt.id, pointData: pt };
 
-      const sphereGeo = new THREE.SphereGeometry(isSelected ? 3.4 : 2.6, 32, 32);
+      const sphereGeo = new THREE.SphereGeometry(isSelected ? 1.8 : 1.4, 24, 24);
       const sphereMat = new THREE.MeshStandardMaterial({
         color: pt.color,
         roughness: 0.15,
@@ -681,7 +676,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
 
       // Selection Halo
       if (isSelected) {
-        const ringGeo = new THREE.RingGeometry(4.2, 5.0, 32);
+        const ringGeo = new THREE.RingGeometry(2.3, 2.8, 32);
         const ringMat = new THREE.MeshBasicMaterial({
           color: pt.color,
           side: THREE.DoubleSide,
@@ -697,21 +692,21 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
       // Point Label (A, B, etc.)
       if (showLabels) {
         const pointLabel = createTextSprite(`Point ${pt.name}`, {
-          fontsize: 26,
+          fontsize: 24,
           textColor: pt.color,
           backgroundColor: isDark ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.95)',
           borderColor: pt.color,
-          borderThickness: 2.5,
+          borderThickness: 2,
         });
-        pointLabel.position.set(posX, posY + 7, posZ);
+        pointLabel.position.set(posX, posY + 6, posZ);
         pointRoot.add(pointLabel);
       }
 
-      // 2. PROJECTION ONTO VP (Front View Point a')
+      // 2. PROJECTION ONTO VP (Front View Point a') — Unified point color pt.color
       // Projection of point perpendicular to VP lands at (X, Y, 0)
-      const fvGeo = new THREE.SphereGeometry(1.9, 24, 24);
+      const fvGeo = new THREE.SphereGeometry(1.1, 16, 16);
       const fvMat = new THREE.MeshStandardMaterial({
-        color: vpColor,
+        color: pt.color,
         roughness: 0.2,
         metalness: 0.7,
       });
@@ -721,20 +716,20 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
 
       if (showLabels) {
         const fvLabel = createTextSprite(pt.frontViewLabel, {
-          fontsize: 22,
+          fontsize: 20,
           textColor: vpColor,
           backgroundColor: isDark ? 'rgba(15, 23, 42, 0.85)' : 'rgba(255, 255, 255, 0.9)',
           borderColor: vpColor,
         });
-        fvLabel.position.set(posX + 6, posY + 4, 1);
+        fvLabel.position.set(posX + 5, posY + 3, 1);
         pointRoot.add(fvLabel);
       }
 
-      // 3. PROJECTION ONTO HP (Top View Point a)
+      // 3. PROJECTION ONTO HP (Top View Point a) — Unified point color pt.color
       // Projection of point perpendicular to HP lands at (X, 0, Z)
-      const tvGeo = new THREE.SphereGeometry(1.9, 24, 24);
+      const tvGeo = new THREE.SphereGeometry(1.1, 16, 16);
       const tvMat = new THREE.MeshStandardMaterial({
-        color: hpColor,
+        color: pt.color,
         roughness: 0.2,
         metalness: 0.7,
       });
@@ -744,18 +739,18 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
 
       if (showLabels) {
         const tvLabel = createTextSprite(pt.topViewLabel, {
-          fontsize: 22,
+          fontsize: 20,
           textColor: hpColor,
           backgroundColor: isDark ? 'rgba(15, 23, 42, 0.85)' : 'rgba(255, 255, 255, 0.9)',
           borderColor: hpColor,
         });
-        tvLabel.position.set(posX + 6, 1, posZ + 5);
+        tvLabel.position.set(posX + 5, 1, posZ + 4);
         pointRoot.add(tvLabel);
       }
 
       // 4. Ground Line Reference Intersection point (X, 0, 0)
       const refMesh = new THREE.Mesh(
-        new THREE.SphereGeometry(1.2, 16, 16),
+        new THREE.SphereGeometry(0.8, 12, 12),
         new THREE.MeshBasicMaterial({ color: isDark ? 0x94a3b8 : 0x475569 })
       );
       refMesh.position.set(posX, 0, 0);

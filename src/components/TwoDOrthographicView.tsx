@@ -188,19 +188,6 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
 
         {/* Toolbar Buttons */}
         <div className="flex items-center gap-1.5 text-xs">
-          <button
-            onClick={() => setShowGrid(!showGrid)}
-            className={`p-1.5 rounded transition ${
-              showGrid
-                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-            }`}
-            title="Toggle Engineering Grid"
-          >
-            <Grid className="w-3.5 h-3.5" />
-          </button>
-
-          <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
 
           <button
             onClick={() => setZoom((z) => Math.min(z + 0.2, 4))}
@@ -276,49 +263,30 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
           }}
         >
           <defs>
-            {/* Engineering Dimension Arrowheads */}
+            {/* Engineering Dimension Arrowheads - Pointing outward towards extension lines */}
             <marker
               id="dim-arrow-start"
               viewBox="0 0 10 10"
-              refX="1"
+              refX="0"
               refY="5"
-              markerWidth="6"
-              markerHeight="6"
-              orient="auto-start-reverse"
+              markerWidth="5"
+              markerHeight="5"
+              orient="auto"
             >
               <path d="M 10 2 L 0 5 L 10 8 z" fill={colors.dimension} />
             </marker>
             <marker
               id="dim-arrow-end"
               viewBox="0 0 10 10"
-              refX="9"
+              refX="10"
               refY="5"
-              markerWidth="6"
-              markerHeight="6"
-              orient="auto-start-reverse"
+              markerWidth="5"
+              markerHeight="5"
+              orient="auto"
             >
               <path d="M 0 2 L 10 5 L 0 8 z" fill={colors.dimension} />
             </marker>
-            {/* Fine Grid Pattern */}
-            <pattern
-              id="eng-grid"
-              width="20"
-              height="20"
-              patternUnits="userSpaceOnUse"
-            >
-              <path
-                d="M 20 0 L 0 0 0 20"
-                fill="none"
-                stroke={colors.grid}
-                strokeWidth="0.75"
-              />
-            </pattern>
           </defs>
-
-          {/* Grid Background */}
-          {showGrid && (
-            <rect width={viewWidth} height={viewHeight} fill="url(#eng-grid)" />
-          )}
 
           {/* Outer Border / Sheet Frame */}
           <rect
@@ -331,49 +299,60 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
             strokeWidth="1.5"
           />
 
-          {/* Upper Sheet Label: Above XY Line */}
-          <text
-            x="28"
-            y="35"
-            fill={colors.textMuted}
-            fontSize="10"
-            fontFamily="monospace"
-            fontWeight="bold"
-            letterSpacing="1"
-          >
-            ZONE 1: ABOVE REFERENCE LINE (XY)
-          </text>
-          <text
-            x="28"
-            y="48"
-            fill={colors.textMuted}
-            fontSize="9"
-            fontFamily="sans-serif"
-          >
-            [Front View if Above HP | Top View if Behind VP]
-          </text>
+          {/* PERSISTENT PROJECTION PLANE BOUNDARIES & EXPLICIT LABELS */}
+          {/* Upper Zone: Front View (VP) Plane Boundary Outline */}
+          <rect
+            x="24"
+            y="24"
+            width={viewWidth - 48}
+            height={Math.max(10, originY + pan.y - 28)}
+            fill={isDark ? 'rgba(220, 38, 38, 0.03)' : 'rgba(220, 38, 38, 0.02)'}
+            stroke={vpColor}
+            strokeWidth="1.2"
+            strokeDasharray="6,4"
+            opacity="0.5"
+            rx="4"
+          />
+          <g transform="translate(32, 40)">
+            <rect x="0" y="-12" width="105" height="18" rx="3" fill={isDark ? '#1e1b2e' : '#fee2e2'} stroke={vpColor} strokeWidth="0.8" opacity="0.9" />
+            <text
+              x="6"
+              y="1"
+              fill={vpColor}
+              fontSize="10"
+              fontFamily="monospace"
+              fontWeight="bold"
+            >
+              Front View (VP)
+            </text>
+          </g>
 
-          {/* Lower Sheet Label: Below XY Line */}
-          <text
-            x="28"
-            y={viewHeight - 55}
-            fill={colors.textMuted}
-            fontSize="10"
-            fontFamily="monospace"
-            fontWeight="bold"
-            letterSpacing="1"
-          >
-            ZONE 2: BELOW REFERENCE LINE (XY)
-          </text>
-          <text
-            x="28"
-            y={viewHeight - 42}
-            fill={colors.textMuted}
-            fontSize="9"
-            fontFamily="sans-serif"
-          >
-            [Front View if Below HP | Top View if In Front of VP]
-          </text>
+          {/* Lower Zone: Top View (HP) Plane Boundary Outline */}
+          <rect
+            x="24"
+            y={originY + pan.y + 4}
+            width={viewWidth - 48}
+            height={Math.max(10, viewHeight - (originY + pan.y) - 28)}
+            fill={isDark ? 'rgba(37, 99, 235, 0.03)' : 'rgba(37, 99, 235, 0.02)'}
+            stroke={hpColor}
+            strokeWidth="1.2"
+            strokeDasharray="6,4"
+            opacity="0.5"
+            rx="4"
+          />
+          <g transform={`translate(32, ${originY + pan.y + 22})`}>
+            <rect x="0" y="-12" width="105" height="18" rx="3" fill={isDark ? '#172554' : '#dbeafe'} stroke={hpColor} strokeWidth="0.8" opacity="0.9" />
+            <text
+              x="6"
+              y="1"
+              fill={hpColor}
+              fontSize="10"
+              fontFamily="monospace"
+              fontWeight="bold"
+            >
+              Top View (HP)
+            </text>
+          </g>
 
           {/* REFERENCE GROUND LINE (X - Y) */}
           {/* Thin but distinctively visible reference line */}
@@ -456,58 +435,58 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
                 className="cursor-pointer"
                 onClick={() => onSelectPoint && onSelectPoint(pt.id)}
               >
-                {/* 1. The aa' Projector Line: Solid line connecting a' and a, sized to match dimension line thickness */}
+                {/* 1. The aa' Projector Line: Continuous thin solid line connecting a' and a */}
                 <line
                   x1={svgX}
                   y1={Math.min(svgFvY, svgTvY, svgGroundY)}
                   x2={svgX}
                   y2={Math.max(svgFvY, svgTvY, svgGroundY)}
-                  stroke={isSelected ? pt.color : (isDark ? '#cbd5e1' : '#334155')}
-                  strokeWidth="1.2"
+                  stroke={isSelected ? pt.color : (isDark ? '#94a3b8' : '#64748b')}
+                  strokeWidth="1.0"
                 />
 
                 {/* Ground Line Intersection marker */}
                 <circle
                   cx={svgX}
                   cy={svgGroundY}
-                  r="2"
+                  r="1.5"
                   fill={colors.xyLine}
                 />
 
-                {/* 2. FRONT VIEW POINT (a' or A') */}
+                {/* 2. FRONT VIEW POINT (a' or A') — Unified point color pt.color, crisp reduced radius */}
                 <g>
                   {/* Subtle target crosshair */}
                   <line
-                    x1={svgX - 5}
+                    x1={svgX - 3.5}
                     y1={svgFvY}
-                    x2={svgX + 5}
+                    x2={svgX + 3.5}
                     y2={svgFvY}
-                    stroke={vpColor}
-                    strokeWidth="1"
+                    stroke={pt.color}
+                    strokeWidth="0.8"
                   />
                   <line
                     x1={svgX}
-                    y1={svgFvY - 5}
+                    y1={svgFvY - 3.5}
                     x2={svgX}
-                    y2={svgFvY + 5}
-                    stroke={vpColor}
-                    strokeWidth="1"
+                    y2={svgFvY + 3.5}
+                    stroke={pt.color}
+                    strokeWidth="0.8"
                   />
-                  {/* Main Point Marker */}
+                  {/* Main Point Marker Dot (Crisp, reduced size, identical color across views) */}
                   <circle
                     cx={svgX}
                     cy={svgFvY}
-                    r={isSelected ? '4.5' : '3.5'}
-                    fill={vpColor}
+                    r={isSelected ? '2.8' : '2.0'}
+                    fill={pt.color}
                     stroke="#ffffff"
-                    strokeWidth="1.5"
+                    strokeWidth="1.0"
                   />
-                  {/* Label: a' with prime symbol */}
+                  {/* Label: a' (or bracketed (a') if hidden) */}
                   <text
-                    x={svgX - 8}
-                    y={svgFvY + (pt.frontViewY >= 0 ? -6 : 14)}
+                    x={svgX - 7}
+                    y={svgFvY + (pt.frontViewY >= 0 ? -5 : 13)}
                     fill={vpColor}
-                    fontSize="13"
+                    fontSize="12"
                     fontFamily="monospace"
                     fontWeight="bold"
                     textAnchor="end"
@@ -518,39 +497,40 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
                   </text>
                 </g>
 
-                {/* 3. TOP VIEW POINT (a or A) if not coinciding */}
+                {/* 3. TOP VIEW POINT (a or A) if not coinciding — Unified point color pt.color, crisp reduced radius */}
                 {!viewsCoincide && (
                   <g>
                     <line
-                      x1={svgX - 5}
+                      x1={svgX - 3.5}
                       y1={svgTvY}
-                      x2={svgX + 5}
+                      x2={svgX + 3.5}
                       y2={svgTvY}
-                      stroke={hpColor}
-                      strokeWidth="1"
+                      stroke={pt.color}
+                      strokeWidth="0.8"
                     />
                     <line
                       x1={svgX}
-                      y1={svgTvY - 5}
+                      y1={svgTvY - 3.5}
                       x2={svgX}
-                      y2={svgTvY + 5}
-                      stroke={hpColor}
-                      strokeWidth="1"
+                      y2={svgTvY + 3.5}
+                      stroke={pt.color}
+                      strokeWidth="0.8"
                     />
+                    {/* Main Point Marker Dot (Identical unified color pt.color) */}
                     <circle
                       cx={svgX}
                       cy={svgTvY}
-                      r={isSelected ? '4.5' : '3.5'}
-                      fill={hpColor}
+                      r={isSelected ? '2.8' : '2.0'}
+                      fill={pt.color}
                       stroke="#ffffff"
-                      strokeWidth="1.5"
+                      strokeWidth="1.0"
                     />
-                    {/* Label: a */}
+                    {/* Label: a (or bracketed (a) if hidden) */}
                     <text
-                      x={svgX - 8}
-                      y={svgTvY + (pt.topViewY >= 0 ? -6 : 14)}
+                      x={svgX - 7}
+                      y={svgTvY + (pt.topViewY >= 0 ? -5 : 13)}
                       fill={hpColor}
-                      fontSize="13"
+                      fontSize="12"
                       fontFamily="monospace"
                       fontWeight="bold"
                       textAnchor="end"

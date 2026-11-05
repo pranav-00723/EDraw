@@ -286,11 +286,11 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
     root.add(yLabel);
 
     // Plane Labels
-    const hpLabelSprite = createTextSprite('HORIZONTAL PLANE (HP)', hpColor, 20);
+    const hpLabelSprite = createTextSprite('TOP VIEW (HP)', hpColor, 20);
     hpLabelSprite.position.set(130, 2, 70);
     root.add(hpLabelSprite);
 
-    const vpLabelSprite = createTextSprite('VERTICAL PLANE (VP)', vpColor, 20);
+    const vpLabelSprite = createTextSprite('FRONT VIEW (VP)', vpColor, 20);
     vpLabelSprite.position.set(130, 70, 2);
     root.add(vpLabelSprite);
 
@@ -309,7 +309,7 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
 
     // 5. Line AB in Space (Thick tube / line)
     const lineCurve = new THREE.LineCurve3(posA3D, posB3D);
-    const lineTubeGeo = new THREE.TubeGeometry(lineCurve, 20, 1.4, 8, false);
+    const lineTubeGeo = new THREE.TubeGeometry(lineCurve, 20, 1.2, 8, false);
     const lineTubeMat = new THREE.MeshStandardMaterial({
       color: 0x10b981, // Emerald green for line in space
       roughness: 0.2,
@@ -318,8 +318,8 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
     const lineMesh = new THREE.Mesh(lineTubeGeo, lineTubeMat);
     root.add(lineMesh);
 
-    // Spheres for Ends A and B in Space
-    const endGeo = new THREE.SphereGeometry(2.4, 16, 16);
+    // Spheres for Ends A and B in Space - reduced size
+    const endGeo = new THREE.SphereGeometry(1.6, 16, 16);
     const endMat = new THREE.MeshStandardMaterial({
       color: 0x10b981,
       roughness: 0.1,
@@ -344,7 +344,7 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
 
     // 6. Front View (Elevation) on VP: a′b′
     const fvCurve = new THREE.LineCurve3(posA_VP, posB_VP);
-    const fvTubeGeo = new THREE.TubeGeometry(fvCurve, 20, 1.1, 8, false);
+    const fvTubeGeo = new THREE.TubeGeometry(fvCurve, 20, 1.0, 8, false);
     const fvMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color(vpColor),
       roughness: 0.3,
@@ -352,8 +352,8 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
     const fvMesh = new THREE.Mesh(fvTubeGeo, fvMat);
     root.add(fvMesh);
 
-    // Spheres for a' and b' on VP
-    const projGeo = new THREE.SphereGeometry(1.8, 12, 12);
+    // Spheres for a' and b' on VP - reduced size
+    const projGeo = new THREE.SphereGeometry(1.2, 12, 12);
     const fvMarkerMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(vpColor) });
 
     const markerA_VP = new THREE.Mesh(projGeo, fvMarkerMat);

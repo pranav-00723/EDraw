@@ -241,11 +241,21 @@ export function computeLineProjection(input: LineProblemInput): ComputedLine {
   // When HP rotates 90 deg clockwise around XY:
   // Points in front of VP (+y) fall BELOW XY (y_2D = -y)
   // Points behind VP (-y) fall ABOVE XY (y_2D = -(-y) = +|y|)
-  const aFront = { x: xA, y: zA, label: `${nameA.toLowerCase()}′` };
-  const bFront = { x: xB, y: zB, label: `${nameB.toLowerCase()}′` };
+  const isHiddenA = !!input.hiddenA;
+  const isHiddenB = !!input.hiddenB;
 
-  const aTop = { x: xA, y: -yA, label: `${nameA.toLowerCase()}` };
-  const bTop = { x: xB, y: -yB, label: `${nameB.toLowerCase()}` };
+  const rawAFv = `${nameA.toLowerCase()}′`;
+  const rawATv = `${nameA.toLowerCase()}`;
+  const rawBFv = `${nameB.toLowerCase()}′`;
+  const rawBTv = `${nameB.toLowerCase()}`;
+  const rawB1Fv = `${nameB.toLowerCase()}₁′`;
+  const rawB2Tv = `${nameB.toLowerCase()}₂`;
+
+  const aFront = { x: xA, y: zA, label: isHiddenA ? `(${rawAFv})` : rawAFv };
+  const bFront = { x: xB, y: zB, label: isHiddenB ? `(${rawBFv})` : rawBFv };
+
+  const aTop = { x: xA, y: -yA, label: isHiddenA ? `(${rawATv})` : rawATv };
+  const bTop = { x: xB, y: -yB, label: isHiddenB ? `(${rawBTv})` : rawBTv };
 
   // Rotating Line Method Arc Destinations (True Length representations)
   // b1': In front view on locus of b' (y = zB) at distance PL along x from A
@@ -253,7 +263,7 @@ export function computeLineProjection(input: LineProblemInput): ComputedLine {
   const b1Front = {
     x: xA + topViewLength,
     y: zB,
-    label: `${nameB.toLowerCase()}₁′`,
+    label: isHiddenB ? `(${rawB1Fv})` : rawB1Fv,
   };
 
   // b2: In top view on locus of b (y = -yB) at distance EL along x from A
@@ -261,7 +271,7 @@ export function computeLineProjection(input: LineProblemInput): ComputedLine {
   const b2Top = {
     x: xA + frontViewLength,
     y: -yB,
-    label: `${nameB.toLowerCase()}₂`,
+    label: isHiddenB ? `(${rawB2Tv})` : rawB2Tv,
   };
 
   // Calculate Traces (HT and VT)
@@ -370,6 +380,9 @@ export function computeLineProjection(input: LineProblemInput): ComputedLine {
     nameA,
     nameB,
     color,
+    input,
+    hiddenA: isHiddenA,
+    hiddenB: isHiddenB,
     xA,
     yA,
     zA,

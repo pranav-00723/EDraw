@@ -51,6 +51,8 @@ export interface LineProblemInput {
   alphaDeg?: number;       // Apparent angle of front view with XY (degrees)
   betaDeg?: number;        // Apparent angle of top view with XY (degrees)
   targetQuadrantB?: TargetQuadrantB; // Quadrant i, ii, iii, or iv for End B
+  hiddenA?: boolean; // When true, rendered in brackets e.g. (a) or (a′)
+  hiddenB?: boolean; // When true, rendered in brackets e.g. (b) or (b′)
 }
 
 export interface QuadrantSolutionItem {
@@ -86,6 +88,9 @@ export interface ComputedLine {
   nameA: string;
   nameB: string;
   color: string;
+  input: LineProblemInput;
+  hiddenA?: boolean;
+  hiddenB?: boolean;
 
   // 3D coordinates (mm)
   // End A

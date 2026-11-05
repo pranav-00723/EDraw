@@ -11,6 +11,8 @@ import { LineQuadrantCard, LineParametersCard } from './LineResultCard';
 import { LineThreeDView } from './LineThreeDView';
 import { LineTwoDOrthographicView } from './LineTwoDOrthographicView';
 import { LineTheoryPanel } from './LineTheoryPanel';
+import { ScanQuestionModal } from '../../components/ScanQuestionModal';
+import { Sparkles } from 'lucide-react';
 
 interface LinesModuleProps {
   hpColor: string;
@@ -59,6 +61,7 @@ export const LinesModule: React.FC<LinesModuleProps> = ({
 }) => {
   const [input, setInput] = useState<LineProblemInput>(DEFAULT_LINE_INPUT);
   const [activeTab, setActiveTab] = useState<'both' | '3d' | '2d'>('both');
+  const [isScanModalOpen, setIsScanModalOpen] = useState<boolean>(false);
 
   // Reactively compute all 3D coordinates, projections, lengths, angles, and traces
   const computedLine = useMemo(() => {
@@ -95,8 +98,19 @@ export const LinesModule: React.FC<LinesModuleProps> = ({
           </p>
         </div>
 
-        {/* View Layout Tabs */}
-        <div className="flex items-center p-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-medium">
+        <div className="flex items-center gap-2">
+          {/* Scan Question Button */}
+          <button
+            onClick={() => setIsScanModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-semibold shadow-xs cursor-pointer transition"
+            title="Scan or paste textbook question to solve automatically"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+            <span>Scan Q ➔ Ans</span>
+          </button>
+
+          {/* View Layout Tabs */}
+          <div className="flex items-center p-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-medium">
           <button
             onClick={() => setActiveTab('both')}
             className={`px-3 py-1.5 rounded-md transition ${
@@ -129,6 +143,7 @@ export const LinesModule: React.FC<LinesModuleProps> = ({
           </button>
         </div>
       </div>
+    </div>
 
       {/* Main Grid: Form on Left, Output Views on Right */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -233,6 +248,20 @@ export const LinesModule: React.FC<LinesModuleProps> = ({
           />
         </div>
       </div>
+
+      {/* Multimodal Scan Question Parser Modal */}
+      <ScanQuestionModal
+        isOpen={isScanModalOpen}
+        onClose={() => setIsScanModalOpen(false)}
+        initialTopic="lines"
+        isDark={isDark}
+        onApplyPoint={() => {
+          // If a point is parsed while in lines module
+        }}
+        onApplyLine={(scannedLine) => {
+          setInput(scannedLine);
+        }}
+      />
     </div>
   );
 };

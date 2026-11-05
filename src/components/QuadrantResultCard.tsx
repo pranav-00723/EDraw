@@ -24,35 +24,31 @@ export const PointQuadrantCard: React.FC<QuadrantCardProps> = ({
 }) => {
   if (!point) return null;
 
-  // Evaluate matching rule
-  const isAbove = point.z > 0;
-  const isBelow = point.z < 0;
-  const isOnHp = point.z === 0;
-
-  const isInFront = point.y > 0;
-  const isBehind = point.y < 0;
-  const isOnVp = point.y === 0;
-
-  const isQ1 = isAbove && isInFront;
-  const isQ2 = isAbove && isBehind;
-  const isQ3 = isBelow && isBehind;
-  const isQ4 = isBelow && isInFront;
+  const validQuads = point.validQuadrants || [1];
+  const isQ1 = validQuads.includes(1);
+  const isQ2 = validQuads.includes(2);
+  const isQ3 = validQuads.includes(3);
+  const isQ4 = validQuads.includes(4);
 
   let resultingQuadrantName = '';
-  if (isQ1) {
+  if (validQuads.length === 4) {
+    resultingQuadrantName = 'Quadrants 1, 2, 3, 4 (On XY Line)';
+  } else if (validQuads.includes(1) && validQuads.includes(4)) {
+    resultingQuadrantName = 'Quadrants 1 & 4 (On HP, In Front of VP)';
+  } else if (validQuads.includes(2) && validQuads.includes(3)) {
+    resultingQuadrantName = 'Quadrants 2 & 3 (On HP, Behind VP)';
+  } else if (validQuads.includes(1) && validQuads.includes(2)) {
+    resultingQuadrantName = 'Quadrants 1 & 2 (On VP, Above HP)';
+  } else if (validQuads.includes(3) && validQuads.includes(4)) {
+    resultingQuadrantName = 'Quadrants 3 & 4 (On VP, Below HP)';
+  } else if (validQuads.includes(1)) {
     resultingQuadrantName = '1st Quadrant';
-  } else if (isQ2) {
+  } else if (validQuads.includes(2)) {
     resultingQuadrantName = '2nd Quadrant';
-  } else if (isQ3) {
+  } else if (validQuads.includes(3)) {
     resultingQuadrantName = '3rd Quadrant';
-  } else if (isQ4) {
+  } else if (validQuads.includes(4)) {
     resultingQuadrantName = '4th Quadrant';
-  } else if (isOnHp && isOnVp) {
-    resultingQuadrantName = 'On XY Ground Line';
-  } else if (isOnHp) {
-    resultingQuadrantName = 'On HP Boundary';
-  } else if (isOnVp) {
-    resultingQuadrantName = 'On VP Boundary';
   }
 
   return (

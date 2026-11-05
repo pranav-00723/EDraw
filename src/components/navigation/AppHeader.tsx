@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Compass, Ruler, Square, Box, Layers, Moon, Sun, LayoutDashboard, ChevronRight } from 'lucide-react';
+import { Compass, Ruler, Square, Box, Layers, Moon, Sun, LayoutDashboard, ChevronRight, Sparkles } from 'lucide-react';
 import { PlaneColorPicker } from '../PlaneColorPicker';
 import { AppRoute } from '../../types/modules';
 
@@ -18,6 +18,7 @@ interface AppHeaderProps {
   onResetColors: () => void;
   isDark: boolean;
   onToggleTheme: () => void;
+  onOpenScanModal?: () => void;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
@@ -30,6 +31,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   onResetColors,
   isDark,
   onToggleTheme,
+  onOpenScanModal,
 }) => {
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md px-4 sm:px-6 py-2.5 shadow-xs">
@@ -99,8 +101,19 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           </button>
         </nav>
 
-        {/* Right Tools: Plane Colors & Theme Toggle */}
+        {/* Right Tools: Scan Q, Plane Colors & Theme Toggle */}
         <div className="flex items-center gap-2">
+          {onOpenScanModal && (
+            <button
+              onClick={onOpenScanModal}
+              className="px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              title="Scan textbook question to generate answer"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              <span className="hidden sm:inline">Scan Q ➔ Ans</span>
+            </button>
+          )}
+
           {/* Custom Plane Colors Selector */}
           <PlaneColorPicker
             hpColor={hpColor}

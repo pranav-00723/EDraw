@@ -324,6 +324,28 @@ export const LineInputForm: React.FC<LineInputFormProps> = ({
             </div>
           </div>
         </div>
+
+        {/* End A & End B Hidden Bracket Notation Toggles */}
+        <div className="pt-2 border-t border-slate-200/60 dark:border-slate-800/60 flex flex-col gap-1.5">
+          <label className="flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={!!input.hiddenA}
+              onChange={(e) => updateField('hiddenA', e.target.checked)}
+              className="w-3.5 h-3.5 rounded border-slate-300 accent-blue-600 cursor-pointer"
+            />
+            <span>End {input.nameA} is Hidden / Obstructed (bracket notation: ({input.nameA.toLowerCase()}), ({input.nameA.toLowerCase()}′))</span>
+          </label>
+          <label className="flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={!!input.hiddenB}
+              onChange={(e) => updateField('hiddenB', e.target.checked)}
+              className="w-3.5 h-3.5 rounded border-slate-300 accent-blue-600 cursor-pointer"
+            />
+            <span>End {input.nameB} is Hidden / Obstructed (bracket notation: ({input.nameB.toLowerCase()}), ({input.nameB.toLowerCase()}′))</span>
+          </label>
+        </div>
       </div>
 
       {/* MODE 1: APPARENT VALUES (WHEN TRUE LENGTH IS NOT GIVEN) */}

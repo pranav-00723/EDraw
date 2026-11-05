@@ -9,10 +9,12 @@ import { AppHeader } from './components/navigation/AppHeader';
 import { DashboardView } from './components/navigation/DashboardView';
 import { PointsModule } from './modules/points/PointsModule';
 import { LinesModule } from './modules/lines/LinesModule';
+import { ScanQuestionModal } from './components/ScanQuestionModal';
 
 export default function App() {
   // Theme state
   const [isDark, setIsDark] = useState<boolean>(false);
+  const [isGlobalScanOpen, setIsGlobalScanOpen] = useState<boolean>(false);
 
   // Plane Colors state (HP & VP) shared across all modules
   const [hpColor, setHpColor] = useState<string>('#2563eb');
@@ -76,6 +78,7 @@ export default function App() {
           onResetColors={handleResetColors}
           isDark={isDark}
           onToggleTheme={() => setIsDark(!isDark)}
+          onOpenScanModal={() => setIsGlobalScanOpen(true)}
         />
 
         {/* Dynamic Route View */}
@@ -124,6 +127,19 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Global Multimodal Scan Question Parser Modal */}
+      <ScanQuestionModal
+        isOpen={isGlobalScanOpen}
+        onClose={() => setIsGlobalScanOpen(false)}
+        isDark={isDark}
+        onApplyPoint={() => {
+          navigateTo('/projection-of-points');
+        }}
+        onApplyLine={() => {
+          navigateTo('/projection-of-lines');
+        }}
+      />
     </div>
   );
 }

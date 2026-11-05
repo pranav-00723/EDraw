@@ -199,32 +199,32 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
       name: 'Reference Projector',
       instrument: 'T-Square & Set Square (2H Pencil for projector, HB Pencil for points)',
       title: 'Step 1: Draw XY Ground Line & Reference End A Projector',
-      description: `Draw the horizontal reference line XY. Erect a thin vertical projector at End A (${line.nameA}). Mark the Front View (Elevation) a′ at distance |zA| = ${Math.abs(line.zA)} mm ${line.zA >= 0 ? 'above' : 'below'} XY. Mark the Top View (Plan) a at distance |yA| = ${Math.abs(line.yA)} mm ${line.yA >= 0 ? 'below' : 'above'} XY.`,
-      keyTakeaway: 'The Front View (a′) and Top View (a) always lie on the exact same vertical projector perpendicular to XY.',
+      description: `Draw the horizontal reference line XY. Erect a thin continuous vertical projector at End A (${line.nameA}). Mark the Front View (Elevation) ${line.aFront.label} at distance |zA| = ${Math.abs(line.input.endA.distanceHp).toFixed(1)} mm ${line.input.endA.hpRelation}. Mark the Top View (Plan) ${line.aTop.label} at distance |yA| = ${Math.abs(line.input.endA.distanceVp).toFixed(1)} mm ${line.input.endA.vpRelation}.`,
+      keyTakeaway: 'The Front View (a′) and Top View (a) strictly lie on the exact same continuous vertical projector perpendicular to XY.',
     },
     {
       num: 2,
-      name: 'Loci of End B',
-      instrument: 'T-Square & Parallel Ruler (2H Pencil, Long Dashed Lines)',
-      title: 'Step 2: Establish the Parallel Locus Lines for End B',
-      description: `Draw horizontal dashed lines parallel to XY: the Locus of b′ across the elevation plane at height ${Math.abs(line.zB)} mm, and the Locus of b across the plan plane at depth ${Math.abs(line.yB)} mm. Distance Between Projectors (DEP) is ${line.dep.toFixed(1)} mm along XY.`,
-      keyTakeaway: 'As a straight line rotates in space keeping one end fixed, its other end always moves along horizontal locus lines parallel to the ground line.',
+      name: 'TL & Locus Cutting',
+      instrument: 'Drafting Compass & Protractor (Radius = True Length TL)',
+      title: 'Step 2: Apply True Inclinations (θ, φ) & Cut TL Arcs to Establish Loci',
+      description: `From Front View base point ${line.aFront.label}, draw the horizontal reference line, apply True Inclination with HP (${Math.abs(line.thetaDeg) >= 0.5 ? `θ = ${line.thetaDeg.toFixed(1)}°` : 'parallel to HP'}), and cut the arc using True Length (TL = ${line.trueLength.toFixed(1)} mm) to locate ${line.b1Front.label} and establish the Locus of ${line.nameB.toLowerCase()}′. Similarly, from Top View base point ${line.aTop.label}, apply True Inclination with VP (${Math.abs(line.phiDeg) >= 0.5 ? `φ = ${line.phiDeg.toFixed(1)}°` : 'parallel to VP'}) using True Length (TL) to locate ${line.b2Top.label} and establish the Locus of ${line.nameB.toLowerCase()}.`,
+      keyTakeaway: 'Establishing loci using True Length and true inclination angles (a′ ➔ HL and a ➔ TL/Locus) fixes the horizontal boundaries for End B.',
     },
     {
       num: 3,
-      name: 'True Length Arcs',
-      instrument: 'Drafting Compass (Radius = True Length TL)',
-      title: 'Step 3: Rotating Line Construction for True Length & True Angles',
-      description: `With center a′ and compass radius equal to True Length (${line.trueLength.toFixed(1)} mm), swing a rotating arc cutting the locus of b′ at b₁′. The angle of a′b₁′ with XY gives the true inclination θ = ${line.thetaDeg.toFixed(1)}° to HP. Similarly, in plan with center a and radius ${line.trueLength.toFixed(1)} mm, swing an arc to cut the locus of b at b₂. The angle of ab₂ with XY gives the true inclination φ = ${line.phiDeg.toFixed(1)}° to VP.`,
+      name: 'Rotating Views',
+      instrument: 'Drafting Compass (Radius = Apparent Lengths)',
+      title: 'Step 3: Project & Rotate Construction Lines to Cut Loci',
+      description: `Project ${line.b1Front.label} down to the horizontal reference through a to obtain the plan length ab₁, and project ${line.b2Top.label} up to the reference through a′ to obtain the elevation length a′b₂′. With centers a and a′, swing rotating arcs to intersect the respective locus lines, locating the final projections ${line.bTop.label} and ${line.bFront.label}.`,
       keyTakeaway: 'True Length is only visible when the line is made parallel to a reference plane. The rotating line method swings the line parallel to find true length and true angles.',
     },
     {
       num: 4,
       name: 'Final Views & Projector',
-      instrument: 'HB Pencil & Straightedge (Thick Dark Line for Views)',
+      instrument: 'HB Pencil & Straightedge (Thick Continuous Line for Views)',
       title: 'Step 4: Draw Final Elevation, Plan, and End Projector Alignment',
-      description: `Join a′b′ with a thick continuous line to obtain the final Elevation (Front View = ${line.frontViewLength.toFixed(1)} mm at apparent angle α = ${line.alphaDeg.toFixed(1)}°). Join ab with a thick continuous line to obtain the final Plan (Top View = ${line.topViewLength.toFixed(1)} mm at apparent angle β = ${line.betaDeg.toFixed(1)}°). Notice that b′ and b terminate on the exact same vertical projector perpendicular to XY!`,
-      keyTakeaway: 'Orthographic Invariant: The end projections b′ (elevation) and b (plan) must strictly align on one common vertical projector line perpendicular to XY.',
+      description: `Join ${line.aFront.label}${line.bFront.label} with a thick continuous line to obtain the final Elevation (Front View = ${line.frontViewLength.toFixed(1)} mm at apparent angle α = ${line.alphaDeg.toFixed(1)}°). Join ${line.aTop.label}${line.bTop.label} with a thick continuous line to obtain the final Plan (Top View = ${line.topViewLength.toFixed(1)} mm at apparent angle β = ${line.betaDeg.toFixed(1)}°). Draw the continuous thin vertical projector between ${line.bFront.label} and ${line.bTop.label} to verify they strictly align on one projector!`,
+      keyTakeaway: 'Orthographic Invariant: The end projections b′ (elevation) and b (plan) must strictly align on one common continuous vertical projector line perpendicular to XY.',
     },
   ];
 
@@ -283,13 +283,20 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
             </feMerge>
           </filter>
 
-          {/* Arrow Markers */}
-          <marker id="arrow-dim" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-            <path d="M 0 1 L 7 4 L 0 7 z" fill="#60a5fa" />
+          {/* Outward Pointing Dimension Line Arrow Markers */}
+          <marker id="dim-arrow-start" viewBox="0 0 10 10" refX="0" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+            <path d="M 10 2 L 0 5 L 10 8 z" fill="#60a5fa" />
           </marker>
-          <marker id="arrow-amber" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-            <path d="M 0 1 L 7 4 L 0 7 z" fill="#f59e0b" />
+          <marker id="dim-arrow-end" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+            <path d="M 0 2 L 10 5 L 0 8 z" fill="#60a5fa" />
           </marker>
+          <marker id="dim-amber-start" viewBox="0 0 10 10" refX="0" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+            <path d="M 10 2 L 0 5 L 10 8 z" fill="#f59e0b" />
+          </marker>
+          <marker id="dim-amber-end" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+            <path d="M 0 2 L 10 5 L 0 8 z" fill="#f59e0b" />
+          </marker>
+
           {/* Cutting Arc Direction Arrow Markers */}
           <marker id="arrow-arc-purple" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
             <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#c084fc" />
@@ -353,15 +360,14 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
         {/* ============================================================== */}
         {/* STAGE 1 ELEMENTS: Reference End Projector and Points a' and a */}
         {/* ============================================================== */}
-        {/* Reference End Projector Line (Vertical, passing through XY) */}
+        {/* Reference End Projector Line (Continuous thin vertical line passing through XY) */}
         <line
           x1={originX}
           y1={Math.min(ptAFront.y, groundY) - 35}
           x2={originX}
           y2={Math.max(ptATop.y, groundY) + 35}
           stroke="#94a3b8"
-          strokeWidth="1.2"
-          strokeDasharray="4,3"
+          strokeWidth="1.0"
         />
 
         {/* Dimension Lines for a' (Elevation distance from XY) */}
@@ -374,8 +380,8 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
               y2={ptAFront.y}
               stroke="#f87171"
               strokeWidth="1"
-              markerStart="url(#arrow-dim)"
-              markerEnd="url(#arrow-dim)"
+              markerStart="url(#dim-arrow-start)"
+              markerEnd="url(#dim-arrow-end)"
             />
             <line x1={originX - 30} y1={groundY} x2={originX - 10} y2={groundY} stroke="#f87171" strokeWidth="0.8" opacity="0.5" />
             <line x1={originX - 30} y1={ptAFront.y} x2={originX - 10} y2={ptAFront.y} stroke="#f87171" strokeWidth="0.8" opacity="0.5" />
@@ -387,7 +393,7 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
               fontFamily="monospace"
               textAnchor="end"
             >
-              {Math.abs(line.zA)} mm
+              {Math.abs(line.input.endA.distanceHp).toFixed(1)} mm
             </text>
           </g>
         )}
@@ -402,8 +408,8 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
               y2={ptATop.y}
               stroke="#60a5fa"
               strokeWidth="1"
-              markerStart="url(#arrow-dim)"
-              markerEnd="url(#arrow-dim)"
+              markerStart="url(#dim-arrow-start)"
+              markerEnd="url(#dim-arrow-end)"
             />
             <line x1={originX - 30} y1={ptATop.y} x2={originX - 10} y2={ptATop.y} stroke="#60a5fa" strokeWidth="0.8" opacity="0.5" />
             <text
@@ -414,7 +420,7 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
               fontFamily="monospace"
               textAnchor="end"
             >
-              {Math.abs(line.yA)} mm
+              {Math.abs(line.input.endA.distanceVp).toFixed(1)} mm
             </text>
           </g>
         )}
@@ -423,62 +429,145 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
         <circle
           cx={ptAFront.x}
           cy={ptAFront.y}
-          r={isCompact ? 4 : 5.5}
+          r={isCompact ? 2.5 : 3.2}
           fill="#ef4444"
           stroke="#ffffff"
-          strokeWidth="1.5"
-          filter="url(#glow-red)"
+          strokeWidth="1.2"
         />
         <text
           x={ptAFront.x - 12}
           y={ptAFront.y - 8}
           fill="#fca5a5"
-          fontSize={isCompact ? '12' : '14'}
+          fontSize={isCompact ? '11' : '13'}
           fontWeight="bold"
           fontFamily="monospace"
         >
-          {line.nameA.toLowerCase()}′
+          {line.aFront.label}
         </text>
 
         {/* Point a (Plan Point) */}
         <circle
           cx={ptATop.x}
           cy={ptATop.y}
-          r={isCompact ? 4 : 5.5}
+          r={isCompact ? 2.5 : 3.2}
           fill="#3b82f6"
           stroke="#ffffff"
-          strokeWidth="1.5"
-          filter="url(#glow-blue)"
+          strokeWidth="1.2"
         />
         <text
           x={ptATop.x - 12}
           y={ptATop.y + 16}
           fill="#93c5fd"
-          fontSize={isCompact ? '12' : '14'}
+          fontSize={isCompact ? '11' : '13'}
           fontWeight="bold"
           fontFamily="monospace"
         >
-          {line.nameA.toLowerCase()}
+          {line.aTop.label}
         </text>
 
         {/* ============================================================== */}
-        {/* STAGE 2 ELEMENTS: Locus Lines of End B */}
+        {/* STAGE 2 ELEMENTS: True Length & Locus Cutting Construction (Step 2) */}
         {/* ============================================================== */}
         {stageNum >= 2 && (
           <g>
-            {/* Locus Line of b' (Horizontal at ptBFront.y) - Noticeable visibility */}
+            {/* Horizontal Reference Line from a' */}
+            <line
+              x1={ptAFront.x}
+              y1={ptAFront.y}
+              x2={ptB1Front.x + 30}
+              y2={ptAFront.y}
+              stroke="#94a3b8"
+              strokeWidth="0.9"
+              strokeDasharray="4,3"
+              opacity="0.6"
+            />
+
+            {/* Horizontal Reference Line from a */}
+            <line
+              x1={ptATop.x}
+              y1={ptATop.y}
+              x2={ptB2Top.x + 30}
+              y2={ptATop.y}
+              stroke="#94a3b8"
+              strokeWidth="0.9"
+              strokeDasharray="4,3"
+              opacity="0.6"
+            />
+
+            {/* Step 2 Construction: True Length line a'b1' at True Angle θ cutting Locus of b' */}
+            <line
+              x1={ptAFront.x}
+              y1={ptAFront.y}
+              x2={ptB1Front.x}
+              y2={ptB1Front.y}
+              stroke="#c084fc"
+              strokeWidth="1.8"
+              strokeDasharray={stageNum === 2 ? 'none' : '4,3'}
+            />
+            <circle cx={ptB1Front.x} cy={ptB1Front.y} r={isCompact ? 2.5 : 3.2} fill="#c084fc" stroke="#ffffff" strokeWidth="1" />
+            <text
+              x={ptB1Front.x + 8}
+              y={ptB1Front.y - 6}
+              fill="#e9d5ff"
+              fontSize={isCompact ? '10' : '11.5'}
+              fontWeight="bold"
+              fontFamily="monospace"
+            >
+              {line.b1Front.label} (True Length TL = {line.trueLength.toFixed(1)} mm)
+            </text>
+
+            {/* Cutting Arc from a' to Locus of b' */}
+            <path
+              d={`M ${ptAFront.x + radiusTL} ${ptAFront.y} A ${radiusTL} ${radiusTL} 0 0 ${
+                ptB1Front.y < ptAFront.y ? 0 : 1
+              } ${ptB1Front.x} ${ptB1Front.y}`}
+              fill="none"
+              stroke="#a855f7"
+              strokeWidth="1.4"
+              strokeDasharray="4,3"
+              markerEnd="url(#arrow-arc-purple)"
+              opacity="0.8"
+            />
+
+            {/* Conditional True Inclination Arc θ at a' */}
+            {Math.abs(line.thetaDeg) >= 0.5 && !isCompact && (
+              <g>
+                <path
+                  d={`M ${ptAFront.x + 32} ${ptAFront.y} A 32 32 0 0 ${
+                    ptB1Front.y < ptAFront.y ? '0' : '1'
+                  } ${ptAFront.x + 32 * Math.cos((line.thetaDeg * Math.PI) / 180)} ${
+                    ptAFront.y - 32 * Math.sin((line.thetaDeg * Math.PI) / 180)
+                  }`}
+                  fill="none"
+                  stroke="#c084fc"
+                  strokeWidth="1.2"
+                />
+                <text
+                  x={ptAFront.x + 38}
+                  y={ptAFront.y - 8}
+                  fill="#e9d5ff"
+                  fontSize="10"
+                  fontWeight="bold"
+                  fontFamily="monospace"
+                >
+                  θ = {line.thetaDeg.toFixed(1)}°
+                </text>
+              </g>
+            )}
+
+            {/* Locus Line of b' established by a' -> TL/Arc cutting */}
             <line
               x1={locusStartX}
-              y1={ptBFront.y}
+              y1={ptB1Front.y}
               x2={locusEndX}
-              y2={ptBFront.y}
+              y2={ptB1Front.y}
               stroke="#f59e0b"
-              strokeWidth="1.6"
+              strokeWidth="1.4"
               strokeDasharray="8,4"
-              opacity={stageNum === 2 ? 0.95 : 0.78}
+              opacity={stageNum === 2 ? 0.95 : 0.75}
             />
             {/* Locus b' label badge */}
-            <g transform={`translate(${locusEndX + 6}, ${ptBFront.y - 8})`}>
+            <g transform={`translate(${locusEndX + 6}, ${ptB1Front.y - 8})`}>
               <rect x="0" y="0" width={isCompact ? 68 : 88} height="16" rx="3" fill="#451a03" stroke="#b45309" strokeWidth="0.8" opacity="0.9" />
               <text
                 x="4"
@@ -492,19 +581,80 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
               </text>
             </g>
 
-            {/* Locus Line of b (Horizontal at ptBTop.y) - Noticeable visibility */}
+            {/* Step 2 Construction: True Length line ab2 at True Angle φ cutting Locus of b */}
+            <line
+              x1={ptATop.x}
+              y1={ptATop.y}
+              x2={ptB2Top.x}
+              y2={ptB2Top.y}
+              stroke="#34d399"
+              strokeWidth="1.8"
+              strokeDasharray={stageNum === 2 ? 'none' : '4,3'}
+            />
+            <circle cx={ptB2Top.x} cy={ptB2Top.y} r={isCompact ? 2.5 : 3.2} fill="#34d399" stroke="#ffffff" strokeWidth="1" />
+            <text
+              x={ptB2Top.x + 8}
+              y={ptB2Top.y + 14}
+              fill="#a7f3d0"
+              fontSize={isCompact ? '10' : '11.5'}
+              fontWeight="bold"
+              fontFamily="monospace"
+            >
+              {line.b2Top.label} (True Length TL = {line.trueLength.toFixed(1)} mm)
+            </text>
+
+            {/* Cutting Arc from a to Locus of b */}
+            <path
+              d={`M ${ptATop.x + radiusTLPlan} ${ptATop.y} A ${radiusTLPlan} ${radiusTLPlan} 0 0 ${
+                ptB2Top.y > ptATop.y ? 1 : 0
+              } ${ptB2Top.x} ${ptB2Top.y}`}
+              fill="none"
+              stroke="#10b981"
+              strokeWidth="1.4"
+              strokeDasharray="4,3"
+              markerEnd="url(#arrow-arc-emerald)"
+              opacity="0.8"
+            />
+
+            {/* Conditional True Inclination Arc φ at a */}
+            {Math.abs(line.phiDeg) >= 0.5 && !isCompact && (
+              <g>
+                <path
+                  d={`M ${ptATop.x + 32} ${ptATop.y} A 32 32 0 0 ${
+                    ptB2Top.y > ptATop.y ? '1' : '0'
+                  } ${ptATop.x + 32 * Math.cos((line.phiDeg * Math.PI) / 180)} ${
+                    ptATop.y + 32 * Math.sin((line.phiDeg * Math.PI) / 180)
+                  }`}
+                  fill="none"
+                  stroke="#34d399"
+                  strokeWidth="1.2"
+                />
+                <text
+                  x={ptATop.x + 38}
+                  y={ptATop.y + 16}
+                  fill="#a7f3d0"
+                  fontSize="10"
+                  fontWeight="bold"
+                  fontFamily="monospace"
+                >
+                  φ = {line.phiDeg.toFixed(1)}°
+                </text>
+              </g>
+            )}
+
+            {/* Locus Line of b established by a -> TL/Arc cutting */}
             <line
               x1={locusStartX}
-              y1={ptBTop.y}
+              y1={ptB2Top.y}
               x2={locusEndX}
-              y2={ptBTop.y}
+              y2={ptB2Top.y}
               stroke="#06b6d4"
-              strokeWidth="1.6"
+              strokeWidth="1.4"
               strokeDasharray="8,4"
-              opacity={stageNum === 2 ? 0.95 : 0.78}
+              opacity={stageNum === 2 ? 0.95 : 0.75}
             />
             {/* Locus b label badge */}
-            <g transform={`translate(${locusEndX + 6}, ${ptBTop.y - 8})`}>
+            <g transform={`translate(${locusEndX + 6}, ${ptB2Top.y - 8})`}>
               <rect x="0" y="0" width={isCompact ? 68 : 88} height="16" rx="3" fill="#083344" stroke="#0e7490" strokeWidth="0.8" opacity="0.9" />
               <text
                 x="4"
@@ -527,11 +677,11 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
                   x2={endProjectorX}
                   y2={groundY}
                   stroke="#38bdf8"
-                  strokeWidth="3.2"
+                  strokeWidth="2.5"
                   opacity="0.85"
                 />
-                <circle cx={originX} cy={groundY} r="3" fill="#38bdf8" />
-                <circle cx={endProjectorX} cy={groundY} r="3" fill="#38bdf8" />
+                <circle cx={originX} cy={groundY} r="2.5" fill="#38bdf8" />
+                <circle cx={endProjectorX} cy={groundY} r="2.5" fill="#38bdf8" />
                 <text
                   x={(originX + endProjectorX) / 2}
                   y={groundY - 7}
@@ -857,21 +1007,20 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
         {/* ============================================================== */}
         {stageNum === 4 && (
           <g>
-            {/* Common End Projector Line Connecting b' and b */}
+            {/* Common End Projector Line Connecting b' and b - Continuous thin solid line */}
             <line
               x1={endProjectorX}
               y1={Math.min(ptBFront.y, groundY) - 30}
               x2={endProjectorX}
               y2={Math.max(ptBTop.y, groundY) + 30}
               stroke="#e2e8f0"
-              strokeWidth="1.8"
-              strokeDasharray="5,3"
+              strokeWidth="1.0"
             />
 
             {/* Collinearity Alignment Badge on End Projector */}
             {!isCompact && (
               <g>
-                <circle cx={endProjectorX} cy={groundY} r="4" fill="#38bdf8" stroke="#ffffff" strokeWidth="1" />
+                <circle cx={endProjectorX} cy={groundY} r="2.5" fill="#38bdf8" stroke="#ffffff" strokeWidth="1" />
                 <text
                   x={endProjectorX + 8}
                   y={groundY - 10}
@@ -892,28 +1041,27 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
               x2={ptBFront.x}
               y2={ptBFront.y}
               stroke="#ef4444"
-              strokeWidth={isCompact ? '2.5' : '3.4'}
+              strokeWidth={isCompact ? '2.5' : '3.0'}
               filter="url(#glow-red)"
             />
             {/* Point b' */}
             <circle
               cx={ptBFront.x}
               cy={ptBFront.y}
-              r={isCompact ? 4.5 : 6}
+              r={isCompact ? 2.5 : 3.2}
               fill="#ef4444"
               stroke="#ffffff"
-              strokeWidth="2"
-              filter="url(#glow-red)"
+              strokeWidth="1.2"
             />
             <text
-              x={ptBFront.x + 10}
+              x={ptBFront.x + 8}
               y={ptBFront.y - 8}
               fill="#f87171"
-              fontSize={isCompact ? '12' : '15'}
+              fontSize={isCompact ? '11' : '13'}
               fontWeight="bold"
               fontFamily="monospace"
             >
-              {line.nameB.toLowerCase()}′
+              {line.bFront.label}
             </text>
 
             {/* Apparent Angle α Arc */}
@@ -939,28 +1087,27 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
               x2={ptBTop.x}
               y2={ptBTop.y}
               stroke="#3b82f6"
-              strokeWidth={isCompact ? '2.5' : '3.4'}
+              strokeWidth={isCompact ? '2.5' : '3.0'}
               filter="url(#glow-blue)"
             />
             {/* Point b */}
             <circle
               cx={ptBTop.x}
               cy={ptBTop.y}
-              r={isCompact ? 4.5 : 6}
+              r={isCompact ? 2.5 : 3.2}
               fill="#3b82f6"
               stroke="#ffffff"
-              strokeWidth="2"
-              filter="url(#glow-blue)"
+              strokeWidth="1.2"
             />
             <text
-              x={ptBTop.x + 10}
-              y={ptBTop.y + 18}
+              x={ptBTop.x + 8}
+              y={ptBTop.y + 16}
               fill="#60a5fa"
-              fontSize={isCompact ? '12' : '15'}
+              fontSize={isCompact ? '11' : '13'}
               fontWeight="bold"
               fontFamily="monospace"
             >
-              {line.nameB.toLowerCase()}
+              {line.bTop.label}
             </text>
 
             {/* Apparent Angle β Arc */}

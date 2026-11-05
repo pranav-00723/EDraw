@@ -11,6 +11,8 @@ import { ThreeDView } from '../../components/ThreeDView';
 import { TwoDOrthographicView } from '../../components/TwoDOrthographicView';
 import { ExplanationPanel } from '../../components/ExplanationPanel';
 import { PointQuadrantCard, PointParametersCard } from '../../components/QuadrantResultCard';
+import { ScanQuestionModal } from '../../components/ScanQuestionModal';
+import { Sparkles } from 'lucide-react';
 
 interface PointsModuleProps {
   hpColor: string;
@@ -45,6 +47,7 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
 
   const [selectedPointId, setSelectedPointId] = useState<string | null>('pt-default-1');
   const [activeTab, setActiveTab] = useState<'both' | '3d' | '2d'>('both');
+  const [isScanModalOpen, setIsScanModalOpen] = useState<boolean>(false);
 
   // Compute all points coordinates and projections
   const computedPoints = useMemo(() => {
@@ -123,38 +126,50 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
           </p>
         </div>
 
-        {/* View Layout Tabs */}
-        <div className="flex items-center p-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-medium">
+        <div className="flex items-center gap-2">
+          {/* Scan Question Button */}
           <button
-            onClick={() => setActiveTab('both')}
-            className={`px-3 py-1.5 rounded-md transition ${
-              activeTab === 'both'
-                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs font-bold'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-            }`}
+            onClick={() => setIsScanModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-semibold shadow-xs cursor-pointer transition"
+            title="Scan or paste textbook question to solve automatically"
           >
-            Dual View (3D + 2D)
+            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+            <span>Scan Q ➔ Ans</span>
           </button>
-          <button
-            onClick={() => setActiveTab('3d')}
-            className={`px-3 py-1.5 rounded-md transition ${
-              activeTab === '3d'
-                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs font-bold'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-            }`}
-          >
-            3D Cartesian
-          </button>
-          <button
-            onClick={() => setActiveTab('2d')}
-            className={`px-3 py-1.5 rounded-md transition ${
-              activeTab === '2d'
-                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs font-bold'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-            }`}
-          >
-            2D Orthographic
-          </button>
+
+          {/* View Layout Tabs */}
+          <div className="flex items-center p-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-medium">
+            <button
+              onClick={() => setActiveTab('both')}
+              className={`px-3 py-1.5 rounded-md transition ${
+                activeTab === 'both'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs font-bold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              }`}
+            >
+              Dual View (3D + 2D)
+            </button>
+            <button
+              onClick={() => setActiveTab('3d')}
+              className={`px-3 py-1.5 rounded-md transition ${
+                activeTab === '3d'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs font-bold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              }`}
+            >
+              3D Cartesian
+            </button>
+            <button
+              onClick={() => setActiveTab('2d')}
+              className={`px-3 py-1.5 rounded-md transition ${
+                activeTab === '2d'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs font-bold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              }`}
+            >
+              2D Orthographic
+            </button>
+          </div>
         </div>
       </div>
 
@@ -273,6 +288,20 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
           />
         </div>
       </div>
+
+      {/* Multimodal Scan Question Parser Modal */}
+      <ScanQuestionModal
+        isOpen={isScanModalOpen}
+        onClose={() => setIsScanModalOpen(false)}
+        initialTopic="points"
+        isDark={isDark}
+        onApplyPoint={(scannedPoint) => {
+          handleAddPoint(scannedPoint);
+        }}
+        onApplyLine={() => {
+          // If user scanned a line while in points module, inform or apply
+        }}
+      />
     </div>
   );
 };

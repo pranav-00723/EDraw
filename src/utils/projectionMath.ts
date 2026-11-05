@@ -108,6 +108,7 @@ export function computePointCoordinates(input: PointInput): ComputedPoint {
   let quadrant: QuadrantType;
   let quadrantTitle: string;
   let explanation: string;
+  let validQuadrants: number[] = [1];
 
   const isAbove = z > 0;
   const isBelow = z < 0;
@@ -119,50 +120,62 @@ export function computePointCoordinates(input: PointInput): ComputedPoint {
 
   const pName = (input.name.trim() || 'P').toUpperCase();
   const pNameLower = (input.name.trim() || 'p').toLowerCase();
-  const fvName = `${pNameLower}′`;
-  const tvName = pNameLower;
+  const isHidden = !!input.isHidden;
+  const rawFvName = `${pNameLower}′`;
+  const rawTvName = pNameLower;
+  const fvName = isHidden ? `(${rawFvName})` : rawFvName;
+  const tvName = isHidden ? `(${rawTvName})` : rawTvName;
 
   if (isOnHp && isOnVp) {
     quadrant = 'ON_BOTH_XY';
-    quadrantTitle = 'On both HP and VP (On Reference Line XY)';
-    explanation = `Point ${pName} lies simultaneously on the Horizontal Plane (HP) and Vertical Plane (VP). Therefore, it lies directly on reference line XY. Both its Front View (${fvName}) and Top View (${tvName}) coincide on the XY line.`;
+    validQuadrants = [1, 2, 3, 4];
+    quadrantTitle = 'On HP & On VP (XY Line — Valid across Quadrants 1, 2, 3, 4)';
+    explanation = `Point ${pName} lies simultaneously on the Horizontal Plane (HP) and Vertical Plane (VP) along the reference line XY (HP = 0, VP = 0). It is considered valid across all Quadrants (1, 2, 3, 4). Both Front View (${fvName}) and Top View (${tvName}) coincide directly on the XY line.`;
   } else if (isOnHp) {
     if (isInFront) {
       quadrant = 'ON_HP_IN_FRONT';
-      quadrantTitle = 'On HP & In Front of VP (Plane Boundary)';
-      explanation = `Point ${pName} lies on HP and ${distVp} mm in front of VP. Because it is on HP, its Front View (${fvName}) lies on the reference line XY. Because it is in front of VP, when HP is rotated 90° clockwise, its Top View (${tvName}) lies ${distVp} mm BELOW the reference line XY.`;
+      validQuadrants = [1, 4];
+      quadrantTitle = 'On HP, In Front of VP (Valid in Quadrants 1 & 4)';
+      explanation = `Point ${pName} lies on HP (HP = 0) and ${distVp} mm in front of VP (IFVP > 0). It forms the boundary between the 1st and 4th quadrants and is valid in Quadrants (1, 4). Front View (${fvName}) lies on reference line XY, and Top View (${tvName}) lies ${distVp} mm BELOW XY.`;
     } else {
       quadrant = 'ON_HP_BEHIND';
-      quadrantTitle = 'On HP & Behind VP (Plane Boundary)';
-      explanation = `Point ${pName} lies on HP and ${distVp} mm behind VP. Because it is on HP, its Front View (${fvName}) lies on the reference line XY. Because it is behind VP, when HP is rotated 90° clockwise, its Top View (${tvName}) lies ${distVp} mm ABOVE the reference line XY.`;
+      validQuadrants = [2, 3];
+      quadrantTitle = 'On HP, Behind VP (Valid in Quadrants 2 & 3)';
+      explanation = `Point ${pName} lies on HP (HP = 0) and ${distVp} mm behind VP (BVP > 0). It forms the boundary between the 2nd and 3rd quadrants and is valid in Quadrants (2, 3). Front View (${fvName}) lies on reference line XY, and Top View (${tvName}) lies ${distVp} mm ABOVE XY.`;
     }
   } else if (isOnVp) {
     if (isAbove) {
       quadrant = 'ON_VP_ABOVE';
-      quadrantTitle = 'On VP & Above HP (Plane Boundary)';
-      explanation = `Point ${pName} lies on VP and ${distHp} mm above HP. Because it is ${distHp} mm above HP, its Front View (${fvName}) lies ${distHp} mm ABOVE the reference line XY. Because it lies directly on VP, its Top View (${tvName}) lies on the reference line XY.`;
+      validQuadrants = [1, 2];
+      quadrantTitle = 'On VP, Above HP (Valid in Quadrants 1 & 2)';
+      explanation = `Point ${pName} lies on VP (VP = 0) and ${distHp} mm above HP (AHP > 0). It forms the boundary between the 1st and 2nd quadrants and is valid in Quadrants (1, 2). Front View (${fvName}) lies ${distHp} mm ABOVE XY, and Top View (${tvName}) lies on reference line XY.`;
     } else {
       quadrant = 'ON_VP_BELOW';
-      quadrantTitle = 'On VP & Below HP (Plane Boundary)';
-      explanation = `Point ${pName} lies on VP and ${distHp} mm below HP. Because it is ${distHp} mm below HP, its Front View (${fvName}) lies ${distHp} mm BELOW the reference line XY. Because it lies directly on VP, its Top View (${tvName}) lies on the reference line XY.`;
+      validQuadrants = [3, 4];
+      quadrantTitle = 'On VP, Below HP (Valid in Quadrants 3 & 4)';
+      explanation = `Point ${pName} lies on VP (VP = 0) and ${distHp} mm below HP (BHP > 0). It forms the boundary between the 3rd and 4th quadrants and is valid in Quadrants (3, 4). Front View (${fvName}) lies ${distHp} mm BELOW XY, and Top View (${tvName}) lies on reference line XY.`;
     }
   } else if (isAbove && isInFront) {
     quadrant = 'FIRST';
+    validQuadrants = [1];
     quadrantTitle = 'First Quadrant (Above HP & In Front of VP)';
-    explanation = `Point ${pName} is ${distHp} mm above HP and ${distVp} mm in front of VP. It lies in the 1st Quadrant. The Front View (${fvName}) is ${distHp} mm ABOVE the XY line. When HP rotates 90° clockwise, the Top View (${tvName}) rotates downwards, landing ${distVp} mm BELOW the XY line.`;
+    explanation = `Point ${pName} is ${distHp} mm above HP and ${distVp} mm in front of VP. It lies strictly in the 1st Quadrant. Front View (${fvName}) is ${distHp} mm ABOVE XY; Top View (${tvName}) is ${distVp} mm BELOW XY.`;
   } else if (isAbove && isBehind) {
     quadrant = 'SECOND';
+    validQuadrants = [2];
     quadrantTitle = 'Second Quadrant (Above HP & Behind VP)';
-    explanation = `Point ${pName} is ${distHp} mm above HP and ${distVp} mm behind VP. It lies in the 2nd Quadrant. The Front View (${fvName}) is ${distHp} mm ABOVE the XY line. When HP rotates 90° clockwise, the portion behind VP rotates upwards, so the Top View (${tvName}) also lands ${distVp} mm ABOVE the XY line (both views are above XY).`;
+    explanation = `Point ${pName} is ${distHp} mm above HP and ${distVp} mm behind VP. It lies strictly in the 2nd Quadrant. Front View (${fvName}) is ${distHp} mm ABOVE XY; Top View (${tvName}) is also ${distVp} mm ABOVE XY (both views above XY).`;
   } else if (isBelow && isBehind) {
     quadrant = 'THIRD';
+    validQuadrants = [3];
     quadrantTitle = 'Third Quadrant (Below HP & Behind VP)';
-    explanation = `Point ${pName} is ${distHp} mm below HP and ${distVp} mm behind VP. It lies in the 3rd Quadrant. The Front View (${fvName}) is ${distHp} mm BELOW the XY line. The Top View (${tvName}) rotates upwards with HP, landing ${distVp} mm ABOVE the XY line (standard Third Angle projection arrangement).`;
+    explanation = `Point ${pName} is ${distHp} mm below HP and ${distVp} mm behind VP. It lies strictly in the 3rd Quadrant. Front View (${fvName}) is ${distHp} mm BELOW XY; Top View (${tvName}) is ${distVp} mm ABOVE XY.`;
   } else {
     // isBelow && isInFront
     quadrant = 'FOURTH';
+    validQuadrants = [4];
     quadrantTitle = 'Fourth Quadrant (Below HP & In Front of VP)';
-    explanation = `Point ${pName} is ${distHp} mm below HP and ${distVp} mm in front of VP. It lies in the 4th Quadrant. The Front View (${fvName}) is ${distHp} mm BELOW the XY line. The Top View (${tvName}) also rotates downwards with HP, landing ${distVp} mm BELOW the XY line (both views are below XY).`;
+    explanation = `Point ${pName} is ${distHp} mm below HP and ${distVp} mm in front of VP. It lies strictly in the 4th Quadrant. Front View (${fvName}) is ${distHp} mm BELOW XY; Top View (${tvName}) is also ${distVp} mm BELOW XY (both views below XY).`;
   }
 
   // 2D Coordinates relative to XY line (mm):
@@ -191,6 +204,7 @@ export function computePointCoordinates(input: PointInput): ComputedPoint {
     id: input.id,
     name: pName,
     color: input.color || POINT_COLORS[0],
+    isHidden,
     x,
     y,
     z,
@@ -201,6 +215,7 @@ export function computePointCoordinates(input: PointInput): ComputedPoint {
     quadrant,
     quadrantTitle,
     explanation,
+    validQuadrants,
     frontViewY,
     frontViewLabel: fvName,
     frontViewDesc,

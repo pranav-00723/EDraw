@@ -240,37 +240,33 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
               transformOrigin: 'center center',
             }}
           >
-            {/* Engineering Grid Pattern */}
+            {/* Definitions */}
             <defs>
-              <pattern id="smallGridLines" width="12" height="12" patternUnits="userSpaceOnUse">
-                <path
-                  d="M 12 0 L 0 0 0 12"
-                  fill="none"
-                  stroke={isDark ? '#1e293b' : '#f1f5f9'}
-                  strokeWidth="0.6"
-                />
-              </pattern>
-              <pattern id="mainGridLines" width="60" height="60" patternUnits="userSpaceOnUse">
-                <rect width="60" height="60" fill="url(#smallGridLines)" />
-                <path
-                  d="M 60 0 L 0 0 0 60"
-                  fill="none"
-                  stroke={isDark ? '#334155' : '#e2e8f0'}
-                  strokeWidth="0.8"
-                />
-              </pattern>
-              {/* Arrow Markers for Dimension Lines */}
-              <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill={isDark ? '#94a3b8' : '#64748b'} />
+              {/* Outward pointing arrow markers for Dimension Lines */}
+              <marker id="dim-arrow-start" viewBox="0 0 10 10" refX="0" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+                <path d="M 10 2 L 0 5 L 10 8 z" fill={isDark ? '#94a3b8' : '#64748b'} />
+              </marker>
+              <marker id="dim-arrow-end" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+                <path d="M 0 2 L 10 5 L 0 8 z" fill={isDark ? '#94a3b8' : '#64748b'} />
+              </marker>
+              {/* Specific outward markers for End A dimensions */}
+              <marker id="dim-vp-start" viewBox="0 0 10 10" refX="0" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+                <path d="M 10 2 L 0 5 L 10 8 z" fill={vpColor} />
+              </marker>
+              <marker id="dim-vp-end" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+                <path d="M 0 2 L 10 5 L 0 8 z" fill={vpColor} />
+              </marker>
+              <marker id="dim-hp-start" viewBox="0 0 10 10" refX="0" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+                <path d="M 10 2 L 0 5 L 10 8 z" fill={hpColor} />
+              </marker>
+              <marker id="dim-hp-end" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+                <path d="M 0 2 L 10 5 L 0 8 z" fill={hpColor} />
               </marker>
               {/* Arrow Marker for Cutting/Rotating Arcs */}
               <marker id="arc-arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
                 <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#a855f7" />
               </marker>
             </defs>
-
-            {/* Grid Background */}
-            <rect width={baseWidth} height={baseHeight} fill="url(#mainGridLines)" />
 
             {/* 1. Locus Lines (Horizontal dashed reference lines - clearly visible) */}
             {showLocus && (
@@ -282,9 +278,9 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   x2={baseWidth - 40}
                   y2={aFrontSvg.y}
                   stroke={vpColor}
-                  strokeWidth="1.4"
+                  strokeWidth="1.2"
                   strokeDasharray="8,4"
-                  opacity="0.75"
+                  opacity="0.65"
                 />
                 <text
                   x={baseWidth - 45}
@@ -306,9 +302,9 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   x2={baseWidth - 40}
                   y2={bFrontSvg.y}
                   stroke={vpColor}
-                  strokeWidth="1.4"
+                  strokeWidth="1.2"
                   strokeDasharray="8,4"
-                  opacity="0.75"
+                  opacity="0.65"
                 />
                 <text
                   x={baseWidth - 45}
@@ -330,9 +326,9 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   x2={baseWidth - 40}
                   y2={aTopSvg.y}
                   stroke={hpColor}
-                  strokeWidth="1.4"
+                  strokeWidth="1.2"
                   strokeDasharray="8,4"
-                  opacity="0.75"
+                  opacity="0.65"
                 />
                 <text
                   x={baseWidth - 45}
@@ -354,9 +350,9 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   x2={baseWidth - 40}
                   y2={bTopSvg.y}
                   stroke={hpColor}
-                  strokeWidth="1.4"
+                  strokeWidth="1.2"
                   strokeDasharray="8,4"
-                  opacity="0.75"
+                  opacity="0.65"
                 />
                 <text
                   x={baseWidth - 45}
@@ -373,7 +369,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
               </g>
             )}
 
-            {/* 2. Ground Reference Line (XY Line) - Thin, distinctively visible */}
+            {/* 2. Ground Reference Line (XY Line) */}
             <g className="xy-ground-line">
               <line
                 x1={30}
@@ -405,16 +401,17 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                 Y
               </text>
 
-              {/* Plane indication watermark text */}
+              {/* Explicit Persistent Plane Labels */}
               <text
                 x={70}
                 y={originY - 14}
                 fill={vpColor}
                 fontSize="10"
                 fontFamily="'JetBrains Mono', monospace"
-                opacity="0.6"
+                fontWeight="600"
+                opacity="0.75"
               >
-                VP (Front View)
+                Front View (VP)
               </text>
               <text
                 x={70}
@@ -422,39 +419,139 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                 fill={hpColor}
                 fontSize="10"
                 fontFamily="'JetBrains Mono', monospace"
-                opacity="0.6"
+                fontWeight="600"
+                opacity="0.75"
               >
-                HP (Top View)
+                Top View (HP)
               </text>
             </g>
 
-            {/* 3. End Projectors (aa' and bb') - Solid thin line, 1.2px */}
+            {/* 3. End Projectors (aa' and bb') - Continuous thin solid lines, 1.0px */}
             <g className="end-projectors">
-              {/* Projector of End A: connects a' (front) to a (top) */}
+              {/* Projector of End A: connects a' (front) to a (top) continuously */}
               <line
                 x1={aFrontSvg.x}
                 y1={aFrontSvg.y}
                 x2={aTopSvg.x}
                 y2={aTopSvg.y}
                 stroke={isDark ? '#94a3b8' : '#64748b'}
-                strokeWidth="1.2"
+                strokeWidth="1.0"
               />
 
-              {/* Projector of End B: connects b' (front) to b (top) */}
+              {/* Projector of End B: connects b' (front) to b (top) continuously */}
               <line
                 x1={bFrontSvg.x}
                 y1={bFrontSvg.y}
                 x2={bTopSvg.x}
                 y2={bTopSvg.y}
                 stroke={isDark ? '#94a3b8' : '#64748b'}
-                strokeWidth="1.2"
+                strokeWidth="1.0"
               />
             </g>
+
+            {/* Dynamic Perpendicular Distances of End A from XY */}
+            {showDimensions && (
+              <g className="end-a-xy-dimensions">
+                {/* Elevation distance of a' from XY (|zA|) */}
+                {Math.abs(line.aFront.y) > 2 && (
+                  <g>
+                    {/* Extension lines */}
+                    <line
+                      x1={aFrontSvg.x - 30}
+                      y1={originY}
+                      x2={aFrontSvg.x - 8}
+                      y2={originY}
+                      stroke={vpColor}
+                      strokeWidth="0.7"
+                      opacity="0.4"
+                    />
+                    <line
+                      x1={aFrontSvg.x - 30}
+                      y1={aFrontSvg.y}
+                      x2={aFrontSvg.x - 8}
+                      y2={aFrontSvg.y}
+                      stroke={vpColor}
+                      strokeWidth="0.7"
+                      opacity="0.4"
+                    />
+                    {/* Dimension line with outward arrows */}
+                    <line
+                      x1={aFrontSvg.x - 22}
+                      y1={originY}
+                      x2={aFrontSvg.x - 22}
+                      y2={aFrontSvg.y}
+                      stroke={vpColor}
+                      strokeWidth="0.9"
+                      markerStart="url(#dim-vp-start)"
+                      markerEnd="url(#dim-vp-end)"
+                    />
+                    <text
+                      x={aFrontSvg.x - 26}
+                      y={(originY + aFrontSvg.y) / 2 + 4}
+                      fill={vpColor}
+                      fontSize="9.5"
+                      fontFamily="'JetBrains Mono', monospace"
+                      fontWeight="bold"
+                      textAnchor="end"
+                    >
+                      {Math.abs(line.input.endA.distanceHp).toFixed(1)} mm
+                    </text>
+                  </g>
+                )}
+
+                {/* Plan distance of a from XY (|yA|) */}
+                {Math.abs(line.aTop.y) > 2 && (
+                  <g>
+                    {/* Extension lines */}
+                    <line
+                      x1={aTopSvg.x - 30}
+                      y1={originY}
+                      x2={aTopSvg.x - 8}
+                      y2={originY}
+                      stroke={hpColor}
+                      strokeWidth="0.7"
+                      opacity="0.4"
+                    />
+                    <line
+                      x1={aTopSvg.x - 30}
+                      y1={aTopSvg.y}
+                      x2={aTopSvg.x - 8}
+                      y2={aTopSvg.y}
+                      stroke={hpColor}
+                      strokeWidth="0.7"
+                      opacity="0.4"
+                    />
+                    {/* Dimension line with outward arrows */}
+                    <line
+                      x1={aTopSvg.x - 22}
+                      y1={originY}
+                      x2={aTopSvg.x - 22}
+                      y2={aTopSvg.y}
+                      stroke={hpColor}
+                      strokeWidth="0.9"
+                      markerStart="url(#dim-hp-start)"
+                      markerEnd="url(#dim-hp-end)"
+                    />
+                    <text
+                      x={aTopSvg.x - 26}
+                      y={(originY + aTopSvg.y) / 2 + 4}
+                      fill={hpColor}
+                      fontSize="9.5"
+                      fontFamily="'JetBrains Mono', monospace"
+                      fontWeight="bold"
+                      textAnchor="end"
+                    >
+                      {Math.abs(line.input.endA.distanceVp).toFixed(1)} mm
+                    </text>
+                  </g>
+                )}
+              </g>
+            )}
 
             {/* 4. Rotating Line Method Constructions (True Length Lines & Arcs) */}
             {showRotationArcs && (
               <g className="rotating-line-construction">
-                {/* Elevation True Length line: a'b1' showing True Length & theta */}
+                {/* Elevation True Length line: a'b1' - always labeled as True Length (TL) */}
                 <line
                   x1={aFrontSvg.x}
                   y1={aFrontSvg.y}
@@ -464,7 +561,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   strokeWidth="1.5"
                   strokeDasharray="4,3"
                 />
-                <circle cx={b1FrontSvg.x} cy={b1FrontSvg.y} r="3" fill="#8b5cf6" />
+                <circle cx={b1FrontSvg.x} cy={b1FrontSvg.y} r="2.4" fill="#8b5cf6" />
                 <text
                   x={b1FrontSvg.x + 5}
                   y={b1FrontSvg.y - 4}
@@ -473,10 +570,36 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   fontWeight="bold"
                   fontFamily="'Space Grotesk', sans-serif"
                 >
-                  {line.b1Front.label} (TL={line.trueLength.toFixed(1)}mm, θ={line.thetaDeg.toFixed(1)}°)
+                  {line.b1Front.label} (True Length TL={line.trueLength.toFixed(1)}mm{Math.abs(line.thetaDeg) >= 0.5 ? `, θ=${line.thetaDeg.toFixed(1)}°` : ''})
                 </text>
 
-                {/* Plan True Length line: ab2 showing True Length & phi */}
+                {/* Conditional Angle Arc θ at a' (only if inclined to HP) */}
+                {Math.abs(line.thetaDeg) >= 0.5 && (
+                  <g>
+                    <path
+                      d={`M ${aFrontSvg.x + 28} ${aFrontSvg.y} A 28 28 0 0 ${
+                        b1FrontSvg.y < aFrontSvg.y ? 0 : 1
+                      } ${aFrontSvg.x + 28 * Math.cos((line.thetaDeg * Math.PI) / 180)} ${
+                        aFrontSvg.y - 28 * Math.sin((line.thetaDeg * Math.PI) / 180)
+                      }`}
+                      fill="none"
+                      stroke="#8b5cf6"
+                      strokeWidth="1.2"
+                    />
+                    <text
+                      x={aFrontSvg.x + 34}
+                      y={aFrontSvg.y - 8}
+                      fill="#8b5cf6"
+                      fontSize="9.5"
+                      fontFamily="'JetBrains Mono', monospace"
+                      fontWeight="bold"
+                    >
+                      θ={line.thetaDeg.toFixed(1)}°
+                    </text>
+                  </g>
+                )}
+
+                {/* Plan True Length line: ab2 - always labeled as True Length (TL) */}
                 <line
                   x1={aTopSvg.x}
                   y1={aTopSvg.y}
@@ -486,7 +609,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   strokeWidth="1.5"
                   strokeDasharray="4,3"
                 />
-                <circle cx={b2TopSvg.x} cy={b2TopSvg.y} r="3" fill="#8b5cf6" />
+                <circle cx={b2TopSvg.x} cy={b2TopSvg.y} r="2.4" fill="#8b5cf6" />
                 <text
                   x={b2TopSvg.x + 5}
                   y={b2TopSvg.y + 12}
@@ -495,8 +618,34 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   fontWeight="bold"
                   fontFamily="'Space Grotesk', sans-serif"
                 >
-                  {line.b2Top.label} (TL={line.trueLength.toFixed(1)}mm, φ={line.phiDeg.toFixed(1)}°)
+                  {line.b2Top.label} (True Length TL={line.trueLength.toFixed(1)}mm{Math.abs(line.phiDeg) >= 0.5 ? `, φ=${line.phiDeg.toFixed(1)}°` : ''})
                 </text>
+
+                {/* Conditional Angle Arc φ at a (only if inclined to VP) */}
+                {Math.abs(line.phiDeg) >= 0.5 && (
+                  <g>
+                    <path
+                      d={`M ${aTopSvg.x + 28} ${aTopSvg.y} A 28 28 0 0 ${
+                        b2TopSvg.y > aTopSvg.y ? 1 : 0
+                      } ${aTopSvg.x + 28 * Math.cos((line.phiDeg * Math.PI) / 180)} ${
+                        aTopSvg.y + 28 * Math.sin((line.phiDeg * Math.PI) / 180)
+                      }`}
+                      fill="none"
+                      stroke="#8b5cf6"
+                      strokeWidth="1.2"
+                    />
+                    <text
+                      x={aTopSvg.x + 34}
+                      y={aTopSvg.y + 16}
+                      fill="#8b5cf6"
+                      fontSize="9.5"
+                      fontFamily="'JetBrains Mono', monospace"
+                      fontWeight="bold"
+                    >
+                      φ={line.phiDeg.toFixed(1)}°
+                    </text>
+                  </g>
+                )}
 
                 {/* Projector from b1 in plan up to b1' on locus of b' */}
                 <line
@@ -505,10 +654,10 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   x2={b1FrontSvg.x}
                   y2={b1FrontSvg.y}
                   stroke="#c084fc"
-                  strokeWidth="1"
+                  strokeWidth="0.9"
                   strokeDasharray="2,2"
                 />
-                <circle cx={toSvgX(line.xA + line.topViewLength)} cy={aTopSvg.y} r="2.5" fill="#c084fc" />
+                <circle cx={toSvgX(line.xA + line.topViewLength)} cy={aTopSvg.y} r="2" fill="#c084fc" />
 
                 {/* Projector from b2' in elevation down to b2 on locus of b */}
                 <line
@@ -517,10 +666,10 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   x2={b2TopSvg.x}
                   y2={b2TopSvg.y}
                   stroke="#c084fc"
-                  strokeWidth="1"
+                  strokeWidth="0.9"
                   strokeDasharray="2,2"
                 />
-                <circle cx={toSvgX(line.xA + line.frontViewLength)} cy={aFrontSvg.y} r="2.5" fill="#c084fc" />
+                <circle cx={toSvgX(line.xA + line.frontViewLength)} cy={aFrontSvg.y} r="2" fill="#c084fc" />
 
                 {/* Rotating Arc in Elevation: Center a', radius EL, from b' to b2' */}
                 {line.frontViewLength > 1 && (
@@ -529,7 +678,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                       d={`M ${bFrontSvg.x} ${bFrontSvg.y} A ${line.frontViewLength * mmScale} ${line.frontViewLength * mmScale} 0 0 ${bFrontSvg.y < aFrontSvg.y ? 1 : 0} ${toSvgX(line.xA + line.frontViewLength)} ${aFrontSvg.y}`}
                       fill="none"
                       stroke="#a855f7"
-                      strokeWidth="1.4"
+                      strokeWidth="1.3"
                       strokeDasharray="4,2.5"
                       markerEnd="url(#arc-arrow)"
                     />
@@ -553,7 +702,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                       d={`M ${bTopSvg.x} ${bTopSvg.y} A ${line.topViewLength * mmScale} ${line.topViewLength * mmScale} 0 0 ${bTopSvg.y < aTopSvg.y ? 1 : 0} ${toSvgX(line.xA + line.topViewLength)} ${aTopSvg.y}`}
                       fill="none"
                       stroke="#a855f7"
-                      strokeWidth="1.4"
+                      strokeWidth="1.3"
                       strokeDasharray="4,2.5"
                       markerEnd="url(#arc-arrow)"
                     />
@@ -580,20 +729,20 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                 x2={bFrontSvg.x}
                 y2={bFrontSvg.y}
                 stroke={vpColor}
-                strokeWidth="2.8"
+                strokeWidth="2.5"
                 strokeLinecap="round"
               />
 
-              {/* End Point Markers for Front View */}
-              <circle cx={aFrontSvg.x} cy={aFrontSvg.y} r="4" fill={vpColor} />
-              <circle cx={bFrontSvg.x} cy={bFrontSvg.y} r="4" fill={vpColor} />
+              {/* End Point Markers for Front View - crisp proportional size */}
+              <circle cx={aFrontSvg.x} cy={aFrontSvg.y} r="2.2" fill={vpColor} />
+              <circle cx={bFrontSvg.x} cy={bFrontSvg.y} r="2.2" fill={vpColor} />
 
               {/* Text Labels */}
               <text
                 x={aFrontSvg.x - 12}
                 y={aFrontSvg.y - 8}
                 fill={vpColor}
-                fontSize="13"
+                fontSize="12.5"
                 fontWeight="bold"
                 fontFamily="'Space Grotesk', sans-serif"
               >
@@ -603,7 +752,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                 x={bFrontSvg.x + 8}
                 y={bFrontSvg.y - 8}
                 fill={vpColor}
-                fontSize="13"
+                fontSize="12.5"
                 fontWeight="bold"
                 fontFamily="'Space Grotesk', sans-serif"
               >
@@ -619,20 +768,20 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                 x2={bTopSvg.x}
                 y2={bTopSvg.y}
                 stroke={hpColor}
-                strokeWidth="2.8"
+                strokeWidth="2.5"
                 strokeLinecap="round"
               />
 
-              {/* End Point Markers for Top View */}
-              <circle cx={aTopSvg.x} cy={aTopSvg.y} r="4" fill={hpColor} />
-              <circle cx={bTopSvg.x} cy={bTopSvg.y} r="4" fill={hpColor} />
+              {/* End Point Markers for Top View - crisp proportional size */}
+              <circle cx={aTopSvg.x} cy={aTopSvg.y} r="2.2" fill={hpColor} />
+              <circle cx={bTopSvg.x} cy={bTopSvg.y} r="2.2" fill={hpColor} />
 
               {/* Text Labels */}
               <text
                 x={aTopSvg.x - 12}
                 y={aTopSvg.y + 16}
                 fill={hpColor}
-                fontSize="13"
+                fontSize="12.5"
                 fontWeight="bold"
                 fontFamily="'Space Grotesk', sans-serif"
               >
@@ -642,7 +791,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                 x={bTopSvg.x + 8}
                 y={bTopSvg.y + 16}
                 fill={hpColor}
-                fontSize="13"
+                fontSize="12.5"
                 fontWeight="bold"
                 fontFamily="'Space Grotesk', sans-serif"
               >
@@ -750,8 +899,8 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                     y2={originY + 6}
                     stroke={isDark ? '#94a3b8' : '#64748b'}
                     strokeWidth="0.9"
-                    markerStart="url(#arrow)"
-                    markerEnd="url(#arrow)"
+                    markerStart="url(#dim-arrow-start)"
+                    markerEnd="url(#dim-arrow-end)"
                   />
                   <text
                     x={(aFrontSvg.x + bFrontSvg.x) / 2}

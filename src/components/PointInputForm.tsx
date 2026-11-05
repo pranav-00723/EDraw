@@ -68,6 +68,9 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
   const [showOptionalX, setShowOptionalX] = useState<boolean>(false);
   const [coordX, setCoordX] = useState<string>('0');
 
+  // Hidden Point Bracket Notation
+  const [isHidden, setIsHidden] = useState<boolean>(false);
+
   // Error messages
   const [nameError, setNameError] = useState<string | null>(null);
   const [hpError, setHpError] = useState<string | null>(null);
@@ -81,6 +84,7 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
       setEditingId(pt.id);
       setName(pt.name);
       setColor(pt.color);
+      setIsHidden(!!pt.isHidden);
       setOnHp(pt.hpRelation === 'ON');
       if (pt.hpRelation !== 'ON') {
         setHpChoice(pt.hpRelation);
@@ -112,6 +116,7 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
     setEditingId(null);
     setName(getNextAvailableName());
     setColor(POINT_COLORS[points.length % POINT_COLORS.length]);
+    setIsHidden(false);
     setOnHp(false);
     setHpChoice('ABOVE');
     setDistanceHp('30');
@@ -194,6 +199,7 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
       distanceVp: distVpNum,
       x: xVal,
       showOptionalX,
+      isHidden,
     };
 
     if (editingId) {
@@ -571,6 +577,19 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
               </span>
             </div>
           )}
+        </div>
+
+        {/* 5. HIDDEN POINT BRACKET NOTATION TOGGLE */}
+        <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+          <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700 dark:text-slate-300">
+            <input
+              type="checkbox"
+              checked={isHidden}
+              onChange={(e) => setIsHidden(e.target.checked)}
+              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
+            />
+            <span>Point is Hidden / Obstructed (display in brackets: ({name.toLowerCase()}), ({name.toLowerCase()}′))</span>
+          </label>
         </div>
 
         {/* Action Buttons: Add/Update Point & Generate */}

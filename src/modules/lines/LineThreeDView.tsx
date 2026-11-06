@@ -31,57 +31,68 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const [webGlAvailable, setWebGlAvailable] = useState<boolean>(true);
 
   // Interaction tracking
   const isDraggingRef = useRef<boolean>(false);
   const prevMousePos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const cameraTarget = useRef<THREE.Vector3>(new THREE.Vector3(40, 20, 20));
 
-  // Initialize Three.js scene
+  // Initialize Three.js scene once
   useEffect(() => {
     if (!mountRef.current) return;
 
-    const width = mountRef.current.clientWidth;
+    const width = mountRef.current.clientWidth || 600;
     const height = 480;
 
-    const scene = new THREE.Scene();
-    sceneRef.current = scene;
-    scene.background = new THREE.Color(isDark ? 0x090d16 : 0xf8fafc);
-
-    const camera = new THREE.PerspectiveCamera(45, width / height, 1, 3000);
-    cameraRef.current = camera;
-    camera.position.set(160, 140, 200);
-    camera.lookAt(cameraTarget.current);
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    rendererRef.current = renderer;
-    renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-
-    mountRef.current.replaceChildren(renderer.domElement);
-
-    // Lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, isDark ? 0.8 : 0.95);
-    scene.add(ambientLight);
-
-    const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.7);
-    dirLight1.position.set(150, 200, 150);
-    scene.add(dirLight1);
-
-    const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
-    dirLight2.position.set(-150, -100, -100);
-    scene.add(dirLight2);
-
+    let renderer: THREE.WebGLRenderer;
+    let dom: HTMLElement;
     let animationId: number;
-    const render = () => {
-      animationId = requestAnimationFrame(render);
-      renderer.render(scene, camera);
-    };
-    render();
+
+    try {
+      const scene = new THREE.Scene();
+      sceneRef.current = scene;
+      scene.background = new THREE.Color(isDark ? 0x090d16 : 0xf8fafc);
+
+      const camera = new THREE.PerspectiveCamera(45, width / height, 1, 3000);
+      cameraRef.current = camera;
+      camera.position.set(160, 140, 200);
+      camera.lookAt(cameraTarget.current);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'default' });
+      rendererRef.current = renderer;
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+      dom = renderer.domElement;
+      mountRef.current.replaceChildren(dom);
+
+      // Lights
+      const ambientLight = new THREE.AmbientLight(0xffffff, isDark ? 0.8 : 0.95);
+      scene.add(ambientLight);
+
+      const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.7);
+      dirLight1.position.set(150, 200, 150);
+      scene.add(dirLight1);
+
+      const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
+      dirLight2.position.set(-150, -100, -100);
+      scene.add(dirLight2);
+
+      const render = () => {
+        animationId = requestAnimationFrame(render);
+        if (rendererRef.current && sceneRef.current && cameraRef.current) {
+          rendererRef.current.render(sceneRef.current, cameraRef.current);
+        }
+      };
+      render();
+    } catch (err) {
+      console.warn('WebGL init failed in LineThreeDView:', err);
+      setWebGlAvailable(false);
+      return;
+    }
 
     // Mouse handlers for orbit & pan
-    const dom = renderer.domElement;
     const onMouseDown = (e: MouseEvent) => {
       isDraggingRef.current = true;
       prevMousePos.current = { x: e.clientX, y: e.clientY };
@@ -132,7 +143,7 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
 
     const handleResize = () => {
       if (!mountRef.current || !rendererRef.current || !cameraRef.current) return;
-      const w = mountRef.current.clientWidth;
+      const w = mountRef.current.clientWidth || 600;
       cameraRef.current.aspect = w / height;
       cameraRef.current.updateProjectionMatrix();
       rendererRef.current.setSize(w, height);
@@ -141,14 +152,30 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
     window.addEventListener('resize', handleResize);
 
     return () => {
-      cancelAnimationFrame(animationId);
+      if (animationId) cancelAnimationFrame(animationId);
       dom.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
       dom.removeEventListener('wheel', onWheel);
       window.removeEventListener('resize', handleResize);
-      renderer.dispose();
+      try {
+        renderer.forceContextLoss?.();
+        renderer.dispose();
+      } catch {}
+      if (mountRef.current && mountRef.current.contains(dom)) {
+        mountRef.current.removeChild(dom);
+      }
+      rendererRef.current = null;
+      sceneRef.current = null;
+      cameraRef.current = null;
     };
+  }, []);
+
+  // Update background when dark mode changes without destroying WebGL context
+  useEffect(() => {
+    if (sceneRef.current) {
+      sceneRef.current.background = new THREE.Color(isDark ? 0x090d16 : 0xf8fafc);
+    }
   }, [isDark]);
 
   // Update Scene Objects whenever line, colors, or theme change
@@ -181,7 +208,7 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
     const hpMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color(hpColor),
       transparent: true,
-      opacity: isDark ? 0.35 : 0.22,
+      opacity: isDark ? 0.18 : 0.14,
       side: THREE.DoubleSide,
       depthWrite: false,
     });
@@ -190,13 +217,13 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
     hpMesh.position.set(40, 0, 0);
     root.add(hpMesh);
 
-    // HP Edges
+    // HP Edges perimeter frame
     const hpEdges = new THREE.LineSegments(
       new THREE.EdgesGeometry(hpGeo),
       new THREE.LineBasicMaterial({
         color: new THREE.Color(hpColor),
         transparent: true,
-        opacity: 0.8,
+        opacity: 0.7,
         linewidth: 1.5,
       })
     );
@@ -204,19 +231,12 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
     hpEdges.position.set(40, 0, 0);
     root.add(hpEdges);
 
-    // HP Sub-grid
-    const hpGrid = new THREE.GridHelper(planeD, 10, new THREE.Color(hpColor), new THREE.Color(hpColor));
-    (hpGrid.material as THREE.Material).opacity = 0.2;
-    (hpGrid.material as THREE.Material).transparent = true;
-    hpGrid.position.set(40, 0, 0);
-    root.add(hpGrid);
-
     // 2. Vertical Plane (VP) - lies on X-Y plane (in Three.js Z=0)
     const vpGeo = new THREE.PlaneGeometry(planeW, planeH);
     const vpMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color(vpColor),
       transparent: true,
-      opacity: isDark ? 0.32 : 0.18,
+      opacity: isDark ? 0.18 : 0.14,
       side: THREE.DoubleSide,
       depthWrite: false,
     });
@@ -224,26 +244,18 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
     vpMesh.position.set(40, 0, 0);
     root.add(vpMesh);
 
-    // VP Edges
+    // VP Edges perimeter frame
     const vpEdges = new THREE.LineSegments(
       new THREE.EdgesGeometry(vpGeo),
       new THREE.LineBasicMaterial({
         color: new THREE.Color(vpColor),
         transparent: true,
-        opacity: 0.8,
+        opacity: 0.7,
         linewidth: 1.5,
       })
     );
     vpEdges.position.set(40, 0, 0);
     root.add(vpEdges);
-
-    // VP Sub-grid
-    const vpGrid = new THREE.GridHelper(planeH, 10, new THREE.Color(vpColor), new THREE.Color(vpColor));
-    vpGrid.rotation.x = Math.PI / 2;
-    (vpGrid.material as THREE.Material).opacity = 0.2;
-    (vpGrid.material as THREE.Material).transparent = true;
-    vpGrid.position.set(40, 0, 0);
-    root.add(vpGrid);
 
     // 3. Ground Line (XY Line) - intersection of HP & VP
     const xyLineMat = new THREE.LineBasicMaterial({
@@ -308,15 +320,17 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
     const posB_HP = new THREE.Vector3(line.xB, 0, line.yB); // Top view b on HP
 
     // 5. Line AB in Space (Thick tube / line)
-    const lineCurve = new THREE.LineCurve3(posA3D, posB3D);
-    const lineTubeGeo = new THREE.TubeGeometry(lineCurve, 20, 1.2, 8, false);
-    const lineTubeMat = new THREE.MeshStandardMaterial({
-      color: 0x10b981, // Emerald green for line in space
-      roughness: 0.2,
-      metalness: 0.5,
-    });
-    const lineMesh = new THREE.Mesh(lineTubeGeo, lineTubeMat);
-    root.add(lineMesh);
+    if (posA3D.distanceTo(posB3D) > 0.5) {
+      const lineCurve = new THREE.LineCurve3(posA3D, posB3D);
+      const lineTubeGeo = new THREE.TubeGeometry(lineCurve, 20, 1.2, 8, false);
+      const lineTubeMat = new THREE.MeshStandardMaterial({
+        color: 0x10b981, // Emerald green for line in space
+        roughness: 0.2,
+        metalness: 0.5,
+      });
+      const lineMesh = new THREE.Mesh(lineTubeGeo, lineTubeMat);
+      root.add(lineMesh);
+    }
 
     // Spheres for Ends A and B in Space - reduced size
     const endGeo = new THREE.SphereGeometry(1.6, 16, 16);
@@ -421,34 +435,34 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
       root.add(label_HP);
     }
 
-    // 8. Orthogonal Projector Lines (dashed or thin lines)
-    const projectorMat = new THREE.LineDashedMaterial({
+    // 8. Orthogonal Projector Lines (continuous thin lines)
+    const projectorMat = new THREE.LineBasicMaterial({
       color: isDark ? 0x94a3b8 : 0x64748b,
-      dashSize: 3,
-      gapSize: 2,
+      linewidth: 1.0,
+      transparent: true,
+      opacity: 0.8,
     });
 
-    const addDashedLine = (p1: THREE.Vector3, p2: THREE.Vector3) => {
+    const addProjectorLine = (p1: THREE.Vector3, p2: THREE.Vector3) => {
       const geo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
       const line = new THREE.Line(geo, projectorMat);
-      line.computeLineDistances();
       root.add(line);
     };
 
     // Projectors from Space A -> a' and a
-    addDashedLine(posA3D, posA_VP);
-    addDashedLine(posA3D, posA_HP);
+    addProjectorLine(posA3D, posA_VP);
+    addProjectorLine(posA3D, posA_HP);
     // Projectors from Space B -> b' and b
-    addDashedLine(posB3D, posB_VP);
-    addDashedLine(posB3D, posB_HP);
+    addProjectorLine(posB3D, posB_VP);
+    addProjectorLine(posB3D, posB_HP);
 
     // Projectors to XY axis
     const posA_XY = new THREE.Vector3(line.xA, 0, 0);
     const posB_XY = new THREE.Vector3(line.xB, 0, 0);
-    addDashedLine(posA_VP, posA_XY);
-    addDashedLine(posA_HP, posA_XY);
-    addDashedLine(posB_VP, posB_XY);
-    addDashedLine(posB_HP, posB_XY);
+    addProjectorLine(posA_VP, posA_XY);
+    addProjectorLine(posA_HP, posA_XY);
+    addProjectorLine(posB_VP, posB_XY);
+    addProjectorLine(posB_HP, posB_XY);
 
     // 9. Traces (HT & VT) if existing
     if (line.ht.exists) {
@@ -521,7 +535,16 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
   return (
     <div className="relative rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
       {/* 3D Canvas Mount Point */}
-      <div ref={mountRef} className="w-full h-[480px] cursor-grab active:cursor-grabbing" />
+      <div ref={mountRef} className="w-full h-[480px] cursor-grab active:cursor-grabbing">
+        {!webGlAvailable && (
+          <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-900">
+            <p className="text-sm font-semibold">3D WebGL Acceleration Unavailable in this browser view.</p>
+            <p className="text-xs mt-1 max-w-sm">
+              The 2D Orthographic Projection and Rotating Line method views remain fully interactive.
+            </p>
+          </div>
+        )}
+      </div>
 
       {/* Top Left Plane Legend & Color Chooser */}
       <div className="absolute top-3 left-3 flex flex-wrap items-center gap-2 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-mono shadow-xs">

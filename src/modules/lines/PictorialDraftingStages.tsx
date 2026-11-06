@@ -622,7 +622,7 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
         {/* ============================================================== */}
         {stageNum >= 2 && (
           <g>
-            {/* Horizontal Reference Line from a' */}
+            {/* Horizontal Reference Line from a' — continuous thin line */}
             <line
               x1={ptAFront.x}
               y1={ptAFront.y}
@@ -630,11 +630,10 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
               y2={ptAFront.y}
               stroke="#94a3b8"
               strokeWidth="0.9"
-              strokeDasharray="4,3"
               opacity="0.6"
             />
 
-            {/* Horizontal Reference Line from a */}
+            {/* Horizontal Reference Line from a — continuous thin line */}
             <line
               x1={ptATop.x}
               y1={ptATop.y}
@@ -642,11 +641,10 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
               y2={ptATop.y}
               stroke="#94a3b8"
               strokeWidth="0.9"
-              strokeDasharray="4,3"
               opacity="0.6"
             />
 
-            {/* Step 2 Construction: True Length line a'b1' at True Angle θ cutting Locus of b' */}
+            {/* Step 2 Construction: True Length line a'b1' at True Angle θ cutting Locus of b' (solid continuous line) */}
             <line
               x1={ptAFront.x}
               y1={ptAFront.y}
@@ -654,7 +652,6 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
               y2={ptB1Front.y}
               stroke="#c084fc"
               strokeWidth="1.8"
-              strokeDasharray={stageNum === 2 ? 'none' : '4,3'}
             />
             <circle cx={ptB1Front.x} cy={ptB1Front.y} r={isCompact ? 2.5 : 3.2} fill="#c084fc" stroke="#ffffff" strokeWidth="1" />
             <text
@@ -668,7 +665,7 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
               {line.b1Front.label} (True Length TL = {line.trueLength.toFixed(1)} mm)
             </text>
 
-            {/* Cutting Arc from a' to Locus of b' */}
+            {/* Cutting Arc from a' to Locus of b' (continuous thin arc) */}
             <path
               d={`M ${ptAFront.x + radiusTL} ${ptAFront.y} A ${radiusTL} ${radiusTL} 0 0 ${
                 ptB1Front.y < ptAFront.y ? 0 : 1
@@ -676,7 +673,6 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
               fill="none"
               stroke="#a855f7"
               strokeWidth="1.4"
-              strokeDasharray="4,3"
               markerEnd="url(#arrow-arc-purple)"
               opacity="0.8"
             />
@@ -733,7 +729,7 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
               </text>
             </g>
 
-            {/* Step 2 Construction: True Length line ab2 at True Angle φ cutting Locus of b */}
+            {/* Step 2 Construction: True Length line ab2 at True Angle φ cutting Locus of b (solid continuous line) */}
             <line
               x1={ptATop.x}
               y1={ptATop.y}
@@ -741,7 +737,6 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
               y2={ptB2Top.y}
               stroke="#34d399"
               strokeWidth="1.8"
-              strokeDasharray={stageNum === 2 ? 'none' : '4,3'}
             />
             <circle cx={ptB2Top.x} cy={ptB2Top.y} r={isCompact ? 2.5 : 3.2} fill="#34d399" stroke="#ffffff" strokeWidth="1" />
             <text
@@ -755,7 +750,7 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
               {line.b2Top.label} (True Length TL = {line.trueLength.toFixed(1)} mm)
             </text>
 
-            {/* Cutting Arc from a to Locus of b */}
+            {/* Cutting Arc from a to Locus of b (continuous thin arc) */}
             <path
               d={`M ${ptATop.x + radiusTLPlan} ${ptATop.y} A ${radiusTLPlan} ${radiusTLPlan} 0 0 ${
                 ptB2Top.y > ptATop.y ? 1 : 0
@@ -763,7 +758,6 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
               fill="none"
               stroke="#10b981"
               strokeWidth="1.4"
-              strokeDasharray="4,3"
               markerEnd="url(#arrow-arc-emerald)"
               opacity="0.8"
             />
@@ -962,7 +956,6 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
                   fill="none"
                   stroke="#a855f7"
                   strokeWidth="1.8"
-                  strokeDasharray="5,4"
                   markerEnd="url(#arrow-arc-purple)"
                   opacity={stageNum === 3 ? 1 : 0.65}
                 />
@@ -992,7 +985,6 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
                     y2={ptB1Front.y}
                     stroke="#c084fc"
                     strokeWidth={stageNum === 3 ? '2.4' : '1.5'}
-                    strokeDasharray={stageNum === 3 ? 'none' : '4,3'}
                   />
                   <circle
                     cx={ptB1Front.x}
@@ -1060,7 +1052,6 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
                   fill="none"
                   stroke="#10b981"
                   strokeWidth="1.8"
-                  strokeDasharray="5,4"
                   markerEnd="url(#arrow-arc-emerald)"
                   opacity={stageNum === 3 ? 1 : 0.65}
                 />
@@ -1090,7 +1081,6 @@ export const PictorialDraftingStages: React.FC<PictorialDraftingStagesProps> = (
                     y2={ptB2Top.y}
                     stroke="#34d399"
                     strokeWidth={stageNum === 3 ? '2.4' : '1.5'}
-                    strokeDasharray={stageNum === 3 ? 'none' : '4,3'}
                   />
                   <circle
                     cx={ptB2Top.x}

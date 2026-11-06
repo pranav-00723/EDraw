@@ -23,7 +23,7 @@ interface PointInputFormProps {
   onSelectPoint: (id: string) => void;
   onResetAll: () => void;
   onLoadPreset: (preset: PresetProblem) => void;
-  onGenerate: () => void;
+  onGenerate?: () => void;
   isDark?: boolean;
   hpColor?: string;
   vpColor?: string;
@@ -206,10 +206,10 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
       onUpdatePoint(pointData);
     } else {
       onAddPoint(pointData);
+      handleResetForm();
     }
 
-    handleResetForm();
-    onGenerate();
+    onGenerate?.();
   };
 
   return (
@@ -592,40 +592,30 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
           </label>
         </div>
 
-        {/* Action Buttons: Add/Update Point & Generate */}
+        {/* Action Buttons: Add/Update Point (all final outputs update immediately) */}
         <div className="flex items-center gap-2 pt-2">
           <button
             type="button"
             onClick={handleSave}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition shadow-sm"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-xs transition shadow-sm cursor-pointer"
           >
             {editingId ? (
               <>
                 <Check className="w-4 h-4" />
-                <span>Update Point {name.toUpperCase()}</span>
+                <span>Update Point {name.toUpperCase()} &amp; Project</span>
               </>
             ) : (
               <>
                 <Plus className="w-4 h-4" />
-                <span>Add Point {name.toUpperCase()}</span>
+                <span>Add Point {name.toUpperCase()} &amp; Project</span>
               </>
             )}
           </button>
 
           <button
             type="button"
-            onClick={onGenerate}
-            className="flex items-center gap-1.5 py-2 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition shadow-sm"
-            title="Recalculate and update 3D & 2D views"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Generate Projection</span>
-          </button>
-
-          <button
-            type="button"
             onClick={onResetAll}
-            className="py-2 px-3 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium text-xs transition"
+            className="py-2.5 px-3 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium text-xs transition cursor-pointer"
             title="Reset all points to default"
           >
             Reset All

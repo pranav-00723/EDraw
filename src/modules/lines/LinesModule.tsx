@@ -12,6 +12,7 @@ import { LineThreeDView } from './LineThreeDView';
 import { LineTwoDOrthographicView } from './LineTwoDOrthographicView';
 import { LineTheoryPanel } from './LineTheoryPanel';
 import { ScanQuestionModal } from '../../components/ScanQuestionModal';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { Sparkles } from 'lucide-react';
 
 interface LinesModuleProps {
@@ -211,14 +212,16 @@ export const LinesModule: React.FC<LinesModuleProps> = ({
                   <span>• Thin XY Line</span>
                 </div>
               </div>
-              <LineThreeDView
-                line={computedLine}
-                hpColor={hpColor}
-                vpColor={vpColor}
-                onChangeHpColor={onChangeHpColor}
-                onChangeVpColor={onChangeVpColor}
-                isDark={isDark}
-              />
+              <ErrorBoundary fallbackTitle="3D Line Simulation Encountered an Issue">
+                <LineThreeDView
+                  line={computedLine}
+                  hpColor={hpColor}
+                  vpColor={vpColor}
+                  onChangeHpColor={onChangeHpColor}
+                  onChangeVpColor={onChangeVpColor}
+                  isDark={isDark}
+                />
+              </ErrorBoundary>
             </div>
           )}
 

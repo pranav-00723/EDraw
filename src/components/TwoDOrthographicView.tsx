@@ -702,20 +702,7 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
           </g>
         </svg>
 
-        {/* Scale & Views Specification Overlay at Bottom-Left */}
-        <div className="absolute bottom-4 left-4 flex flex-col gap-1 p-2 rounded bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-800 text-[10px] font-mono shadow-sm pointer-events-none">
-          <div className="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-300 pb-0.5 border-b border-slate-200 dark:border-slate-800">
-            <span>SCALE {scale.toFixed(1)}:1 (1 mm = {scale.toFixed(1)} px)</span>
-          </div>
-          <div className="flex items-center gap-1.5 font-semibold" style={{ color: vpColor }}>
-            <span className="w-2.5 h-2.5 rounded-full shadow-xs flex-shrink-0" style={{ backgroundColor: vpColor }} />
-            <span>Elevation (Front View): a′</span>
-          </div>
-          <div className="flex items-center gap-1.5 font-semibold" style={{ color: hpColor }}>
-            <span className="w-2.5 h-2.5 rounded-full shadow-xs flex-shrink-0" style={{ backgroundColor: hpColor }} />
-            <span>Plan (Top View): a</span>
-          </div>
-        </div>
+        {/* Lower right title block is retained, lower left overlay removed per user request */}
       </div>
     </div>
   );

@@ -10,6 +10,26 @@ import { DashboardView } from './components/navigation/DashboardView';
 import { PointsModule } from './modules/points/PointsModule';
 import { LinesModule } from './modules/lines/LinesModule';
 import { ScanQuestionModal } from './components/ScanQuestionModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
+
+/**
+ * Resilient route resolution supporting:
+ * - Direct paths: /projection-of-points, /projection-of-lines, /dashboard, /
+ * - Hash routes: #points, #lines, #projection-of-points, #projection-of-lines, #dashboard
+ * - Sandboxed iframes without pushState permissions
+ */
+export const resolveRoute = (input?: string): AppRoute => {
+  const target = (
+    input ||
+    (typeof window !== 'undefined'
+      ? `${window.location.pathname}${window.location.hash}`
+      : '')
+  ).toLowerCase();
+
+  if (target.includes('line')) return '/projection-of-lines';
+  if (target.includes('point')) return '/projection-of-points';
+  return '/dashboard';
+};
 
 export default function App() {
   // Theme state
@@ -25,38 +45,44 @@ export default function App() {
     setVpColor('#dc2626');
   };
 
-  // URL / Route state with popstate listener for clean browser history support
-  const getInitialRoute = (): AppRoute => {
-    if (typeof window === 'undefined') return '/dashboard';
-    const path = window.location.pathname;
-    const hash = window.location.hash;
+  const [currentRoute, setCurrentRoute] = useState<AppRoute>(() => resolveRoute());
 
-    if (path === '/projection-of-points' || hash === '#points') return '/projection-of-points';
-    if (path === '/projection-of-lines' || hash === '#lines') return '/projection-of-lines';
-    if (path === '/dashboard' || hash === '#dashboard') return '/dashboard';
-    // Default to dashboard or points if root
-    return '/dashboard';
-  };
-
-  const [currentRoute, setCurrentRoute] = useState<AppRoute>(getInitialRoute());
-
+  // Listen to both popstate and hashchange events for maximum sandbox/iframe compatibility
   useEffect(() => {
-    const handlePopState = () => {
-      setCurrentRoute(getInitialRoute());
+    const handleRouteSync = () => {
+      setCurrentRoute(resolveRoute());
     };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+
+    window.addEventListener('popstate', handleRouteSync);
+    window.addEventListener('hashchange', handleRouteSync);
+
+    return () => {
+      window.removeEventListener('popstate', handleRouteSync);
+      window.removeEventListener('hashchange', handleRouteSync);
+    };
   }, []);
 
   const navigateTo = (route: AppRoute) => {
-    setCurrentRoute(route);
+    const resolved = resolveRoute(route);
+    setCurrentRoute(resolved);
+
     if (typeof window !== 'undefined') {
       try {
-        window.history.pushState({}, '', route);
-      } catch (e) {
-        // Fallback for sandboxed iframes without pushState permission
-        window.location.hash = route.replace('/', '');
+        window.history.pushState({ route: resolved }, '', resolved);
+      } catch {
+        // Fallback for sandboxed iframes without pushState permissions
       }
+      try {
+        const hashTag =
+          resolved === '/projection-of-lines'
+            ? 'lines'
+            : resolved === '/projection-of-points'
+            ? 'points'
+            : 'dashboard';
+        if (window.location.hash.replace(/^#/, '') !== hashTag) {
+          window.location.hash = hashTag;
+        }
+      } catch {}
     }
   };
 
@@ -84,38 +110,39 @@ export default function App() {
           onOpenScanModal={() => setIsGlobalScanOpen(true)}
         />
 
-        {/* Dynamic Route View */}
+        {/* Dynamic Route View protected by ErrorBoundary */}
         <main>
-          {(currentRoute === '/' || currentRoute === '/dashboard') && (
-            <DashboardView
-              onNavigate={navigateTo}
-              hpColor={hpColor}
-              vpColor={vpColor}
-              isDark={isDark}
-            />
-          )}
-
-          {currentRoute === '/projection-of-points' && (
-            <PointsModule
-              hpColor={hpColor}
-              vpColor={vpColor}
-              onChangeHpColor={setHpColor}
-              onChangeVpColor={setVpColor}
-              isDark={isDark}
-              initialPointInput={pendingScannedPoint || undefined}
-            />
-          )}
-
-          {currentRoute === '/projection-of-lines' && (
-            <LinesModule
-              hpColor={hpColor}
-              vpColor={vpColor}
-              onChangeHpColor={setHpColor}
-              onChangeVpColor={setVpColor}
-              isDark={isDark}
-              initialLineInput={pendingScannedLine || undefined}
-            />
-          )}
+          <ErrorBoundary
+            fallbackTitle="Module Interface Error"
+            onReset={() => navigateTo('/dashboard')}
+          >
+            {currentRoute === '/projection-of-points' ? (
+              <PointsModule
+                hpColor={hpColor}
+                vpColor={vpColor}
+                onChangeHpColor={setHpColor}
+                onChangeVpColor={setVpColor}
+                isDark={isDark}
+                initialPointInput={pendingScannedPoint || undefined}
+              />
+            ) : currentRoute === '/projection-of-lines' ? (
+              <LinesModule
+                hpColor={hpColor}
+                vpColor={vpColor}
+                onChangeHpColor={setHpColor}
+                onChangeVpColor={setVpColor}
+                isDark={isDark}
+                initialLineInput={pendingScannedLine || undefined}
+              />
+            ) : (
+              <DashboardView
+                onNavigate={navigateTo}
+                hpColor={hpColor}
+                vpColor={vpColor}
+                isDark={isDark}
+              />
+            )}
+          </ErrorBoundary>
         </main>
       </div>
 

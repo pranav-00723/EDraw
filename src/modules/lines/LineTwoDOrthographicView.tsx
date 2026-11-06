@@ -736,7 +736,6 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   y2={b1FrontSvg.y}
                   stroke="#8b5cf6"
                   strokeWidth="1.5"
-                  strokeDasharray="4,3"
                 />
                 <circle cx={b1FrontSvg.x} cy={b1FrontSvg.y} r="2.4" fill="#8b5cf6" />
                 <text
@@ -784,7 +783,6 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   y2={b2TopSvg.y}
                   stroke="#8b5cf6"
                   strokeWidth="1.5"
-                  strokeDasharray="4,3"
                 />
                 <circle cx={b2TopSvg.x} cy={b2TopSvg.y} r="2.4" fill="#8b5cf6" />
                 <text
@@ -824,7 +822,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   </g>
                 )}
 
-                {/* Projector from b1 in plan up to b1' on locus of b' */}
+                {/* Projector from b1 in plan up to b1' on locus of b' (continuous thin projector) */}
                 <line
                   x1={toSvgX(line.xA + line.topViewLength)}
                   y1={aTopSvg.y}
@@ -832,11 +830,10 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   y2={b1FrontSvg.y}
                   stroke="#c084fc"
                   strokeWidth="0.9"
-                  strokeDasharray="2,2"
                 />
                 <circle cx={toSvgX(line.xA + line.topViewLength)} cy={aTopSvg.y} r="2" fill="#c084fc" />
 
-                {/* Projector from b2' in elevation down to b2 on locus of b */}
+                {/* Projector from b2' in elevation down to b2 on locus of b (continuous thin projector) */}
                 <line
                   x1={toSvgX(line.xA + line.frontViewLength)}
                   y1={aFrontSvg.y}
@@ -844,7 +841,6 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   y2={b2TopSvg.y}
                   stroke="#c084fc"
                   strokeWidth="0.9"
-                  strokeDasharray="2,2"
                 />
                 <circle cx={toSvgX(line.xA + line.frontViewLength)} cy={aFrontSvg.y} r="2" fill="#c084fc" />
 
@@ -1066,7 +1062,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                       {line.ht.groundProj.label}
                     </text>
 
-                    {/* Projector to h (HT) */}
+                    {/* Projector to h (HT) - continuous thin line */}
                     <line
                       x1={toSvgX(line.ht.groundProj.x)}
                       y1={originY}
@@ -1074,7 +1070,6 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                       y2={toSvgY(line.ht.traceProj.y)}
                       stroke="#f59e0b"
                       strokeWidth="1.0"
-                      strokeDasharray="3,3"
                     />
 
                     {/* h (HT) point */}
@@ -1108,7 +1103,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                       {line.vt.groundProj.label}
                     </text>
 
-                    {/* Projector to v' (VT) */}
+                    {/* Projector to v' (VT) - continuous thin line */}
                     <line
                       x1={toSvgX(line.vt.groundProj.x)}
                       y1={originY}
@@ -1116,7 +1111,6 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                       y2={toSvgY(line.vt.traceProj.y)}
                       stroke="#ea580c"
                       strokeWidth="1.0"
-                      strokeDasharray="3,3"
                     />
 
                     {/* v' (VT) point */}

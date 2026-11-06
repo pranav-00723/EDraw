@@ -143,6 +143,9 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
   const hpGroupRef = useRef<THREE.Group | null>(null);
   const vpGroupRef = useRef<THREE.Group | null>(null);
   const foldGroupRef = useRef<THREE.Group | null>(null); // HP pivot for 90-degree fold animation
+  const spacePointsGroupRef = useRef<THREE.Group | null>(null); // 3D points in space (hidden when folded)
+  const hpProjectionsGroupRef = useRef<THREE.Group | null>(null); // Top view projections on HP (rotates with foldGroup)
+  const vpProjectionsGroupRef = useRef<THREE.Group | null>(null); // Front view projections on VP (fixed on VP)
 
   // Interactive settings state
   const [showHp, setShowHp] = useState(true);
@@ -159,6 +162,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
     screenX: number;
     screenY: number;
   } | null>(null);
+  const [webGlAvailable, setWebGlAvailable] = useState<boolean>(true);
 
   // Soft WebGL detection
   const isSoftwareGlRef = useRef(false);
@@ -168,57 +172,49 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
     const container = containerRef.current;
     if (!container) return;
 
-    // Detect software GL
-    const probeCanvas = document.createElement('canvas');
-    const gl = probeCanvas.getContext('webgl2') || probeCanvas.getContext('webgl');
-    if (gl) {
-      const ext = gl.getExtension('WEBGL_debug_renderer_info');
-      const param = ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER;
-      const gpu = String(gl.getParameter(param));
-      gl.getExtension('WEBGL_lose_context')?.loseContext();
-      isSoftwareGlRef.current = /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
-    }
+    let renderer: THREE.WebGLRenderer;
+    let controls: OrbitControls;
+    let animId = 0;
 
-    const scene = new THREE.Scene();
-    sceneRef.current = scene;
-    scene.background = new THREE.Color(isDark ? 0x090d16 : 0xf8fafc);
+    try {
+      const scene = new THREE.Scene();
+      sceneRef.current = scene;
+      scene.background = new THREE.Color(isDark ? 0x090d16 : 0xf8fafc);
 
-    const width = container.clientWidth || 600;
-    const height = container.clientHeight || 450;
+      const width = container.clientWidth || 600;
+      const height = container.clientHeight || 450;
 
-    const camera = new THREE.PerspectiveCamera(45, width / height, 1, 2000);
-    // Standard Isometric Engineering View: look from front-top-right
-    camera.position.set(130, 95, 160);
-    cameraRef.current = camera;
+      const camera = new THREE.PerspectiveCamera(45, width / height, 1, 2000);
+      camera.position.set(130, 95, 160);
+      cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({
-      antialias: !isSoftwareGlRef.current,
-      powerPreference: 'high-performance',
-      preserveDrawingBuffer: true,
-    });
-    renderer.setSize(width, height);
-    renderer.setPixelRatio(isSoftwareGlRef.current ? 1 : Math.min(window.devicePixelRatio, 2));
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.1;
-    renderer.shadowMap.enabled = !isSoftwareGlRef.current;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        powerPreference: 'default',
+        preserveDrawingBuffer: true,
+      });
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.1;
 
-    container.appendChild(renderer.domElement);
-    rendererRef.current = renderer;
+      container.replaceChildren(renderer.domElement);
+      rendererRef.current = renderer;
 
-    const pmremGenerator = new THREE.PMREMGenerator(renderer);
-    scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
-    pmremGenerator.dispose();
+      try {
+        const pmremGenerator = new THREE.PMREMGenerator(renderer);
+        scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+        pmremGenerator.dispose();
+      } catch {}
 
-    // Controls
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = !isSoftwareGlRef.current;
-    controls.dampingFactor = 0.08;
-    controls.minDistance = 30;
-    controls.maxDistance = 600;
-    controls.target.set(0, 0, 0);
-    controlsRef.current = controls;
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.08;
+      controls.minDistance = 30;
+      controls.maxDistance = 600;
+      controls.target.set(0, 0, 0);
+      controlsRef.current = controls;
 
     // Lighting Rig
     const hemiLight = new THREE.HemisphereLight(0xffffff, 0x64748b, 0.85);
@@ -247,28 +243,44 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
     foldGroup.add(hpGroup);
     hpGroupRef.current = hpGroup;
 
+    // HP Projections Group — attached to foldGroup so top view projections rotate WITH the HP plane!
+    const hpProjectionsGroup = new THREE.Group();
+    foldGroup.add(hpProjectionsGroup);
+    hpProjectionsGroupRef.current = hpProjectionsGroup;
+
     const vpGroup = new THREE.Group();
     scene.add(vpGroup);
     vpGroupRef.current = vpGroup;
+
+    // VP Projections Group — fixed in space on the vertical plane
+    const vpProjectionsGroup = new THREE.Group();
+    scene.add(vpProjectionsGroup);
+    vpProjectionsGroupRef.current = vpProjectionsGroup;
+
+    // 3D Space Points Group — contains the actual point in space and 3D rays (hidden when folded)
+    const spacePointsGroup = new THREE.Group();
+    scene.add(spacePointsGroup);
+    spacePointsGroupRef.current = spacePointsGroup;
 
     const pointsGroup = new THREE.Group();
     scene.add(pointsGroup);
     pointsGroupRef.current = pointsGroup;
 
     // Animation Loop
-    let animId = 0;
     const animate = () => {
       animId = requestAnimationFrame(animate);
-      controls.update();
-      renderer.render(scene, camera);
+      if (controlsRef.current) controlsRef.current.update();
+      if (rendererRef.current && sceneRef.current && cameraRef.current) {
+        rendererRef.current.render(sceneRef.current, cameraRef.current);
+      }
     };
     animate();
 
     // Resize Handler
     const handleResize = () => {
       if (!container || !rendererRef.current || !cameraRef.current) return;
-      const w = container.clientWidth;
-      const h = container.clientHeight;
+      const w = container.clientWidth || 600;
+      const h = container.clientHeight || 450;
       cameraRef.current.aspect = w / h;
       cameraRef.current.updateProjectionMatrix();
       rendererRef.current.setSize(w, h);
@@ -280,12 +292,28 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
     return () => {
       cancelAnimationFrame(animId);
       resizeObserver.disconnect();
-      controls.dispose();
-      renderer.dispose();
-      if (container.contains(renderer.domElement)) {
+      try {
+        if (controlsRef.current) controlsRef.current.dispose();
+        if (rendererRef.current) {
+          rendererRef.current.forceContextLoss?.();
+          rendererRef.current.dispose();
+        }
+      } catch {}
+      if (container && renderer && container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
+      rendererRef.current = null;
+      sceneRef.current = null;
+      cameraRef.current = null;
+      controlsRef.current = null;
     };
+    } catch (err) {
+      console.warn('WebGL context unavailable in ThreeDView:', err);
+      setWebGlAvailable(false);
+      return () => {
+        if (animId) cancelAnimationFrame(animId);
+      };
+    }
   }, []);
 
   // Update Scene background when theme changes
@@ -379,10 +407,10 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
       const hpGeo = new THREE.PlaneGeometry(widthX, depthZ, 8, 8);
       const hpMat = new THREE.MeshPhysicalMaterial({
         color: hpThreeColor,
-        roughness: 0.3,
-        metalness: 0.1,
+        roughness: 0.15,
+        metalness: 0.05,
         transparent: true,
-        opacity: isDark ? 0.38 : 0.25,
+        opacity: isDark ? 0.18 : 0.14,
         side: THREE.DoubleSide,
         depthWrite: false,
       });
@@ -392,32 +420,20 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
       hpMesh.receiveShadow = !isSoftwareGlRef.current;
       hpGroup.add(hpMesh);
 
-      // HP Border wireframe
+      // HP Border perimeter frame
       const hpEdges = new THREE.EdgesGeometry(hpGeo);
       const hpLine = new THREE.LineSegments(
         hpEdges,
         new THREE.LineBasicMaterial({
           color: hpThreeColor,
-          linewidth: 2,
+          linewidth: 1.5,
+          transparent: true,
+          opacity: 0.7,
         })
       );
       hpLine.rotation.x = Math.PI / 2;
       hpLine.position.set(centerX, 0, 0);
       hpGroup.add(hpLine);
-
-      // HP Sub-grid lines (clean rectangular drafting grid)
-      const hpGridGeo = createRectGridGeometry(widthX, depthZ, 20);
-      const hpGrid = new THREE.LineSegments(
-        hpGridGeo,
-        new THREE.LineBasicMaterial({
-          color: isDark ? 0x1e293b : 0xe2e8f0,
-          transparent: true,
-          opacity: 0.75,
-        })
-      );
-      hpGrid.rotation.x = Math.PI / 2;
-      hpGrid.position.set(centerX, 0.05, 0);
-      hpGroup.add(hpGrid);
 
       // Labels on HP
       if (showLabels) {
@@ -459,10 +475,10 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
       const vpGeo = new THREE.PlaneGeometry(widthX, heightY, 8, 8);
       const vpMat = new THREE.MeshPhysicalMaterial({
         color: vpThreeColor,
-        roughness: 0.3,
-        metalness: 0.1,
+        roughness: 0.15,
+        metalness: 0.05,
         transparent: true,
-        opacity: isDark ? 0.38 : 0.25,
+        opacity: isDark ? 0.18 : 0.14,
         side: THREE.DoubleSide,
         depthWrite: false,
       });
@@ -471,30 +487,19 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
       vpMesh.receiveShadow = !isSoftwareGlRef.current;
       vpGroup.add(vpMesh);
 
-      // VP Border
+      // VP Border perimeter frame
       const vpEdges = new THREE.EdgesGeometry(vpGeo);
       const vpLine = new THREE.LineSegments(
         vpEdges,
         new THREE.LineBasicMaterial({
           color: vpThreeColor,
-          linewidth: 2,
+          linewidth: 1.5,
+          transparent: true,
+          opacity: 0.7,
         })
       );
       vpLine.position.set(centerX, 0, 0);
       vpGroup.add(vpLine);
-
-      // VP Grid
-      const vpGridGeo = createRectGridGeometry(widthX, heightY, 20);
-      const vpGrid = new THREE.LineSegments(
-        vpGridGeo,
-        new THREE.LineBasicMaterial({
-          color: isDark ? 0x1e293b : 0xe2e8f0,
-          transparent: true,
-          opacity: 0.75,
-        })
-      );
-      vpGrid.position.set(centerX, 0, -0.05);
-      vpGroup.add(vpGrid);
 
       // Labels on VP
       if (showLabels) {
@@ -635,17 +640,34 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
     // rotates UPWARDS towards +Y (above XY).
     const rad = (unfoldAngle * Math.PI) / 180;
     foldGroupRef.current.rotation.x = rad;
+
+    // When unfold angle > 0 (or folding/folded), hide the 3D space point and rays
+    // so ONLY front view and top view projections are visible.
+    if (spacePointsGroupRef.current) {
+      spacePointsGroupRef.current.visible = unfoldAngle === 0;
+    }
   }, [unfoldAngle]);
 
   // Render Points, Projections, and Dimension Lines in 3D
   useEffect(() => {
-    const pointsGroup = pointsGroupRef.current;
-    if (!pointsGroup) return;
+    const spacePointsGroup = spacePointsGroupRef.current;
+    const hpProjectionsGroup = hpProjectionsGroupRef.current;
+    const vpProjectionsGroup = vpProjectionsGroupRef.current;
+    if (!spacePointsGroup || !hpProjectionsGroup || !vpProjectionsGroup) return;
 
-    while (pointsGroup.children.length > 0) {
-      const obj = pointsGroup.children[0];
-      pointsGroup.remove(obj);
+    // Clear previous children
+    while (spacePointsGroup.children.length > 0) {
+      spacePointsGroup.remove(spacePointsGroup.children[0]);
     }
+    while (hpProjectionsGroup.children.length > 0) {
+      hpProjectionsGroup.remove(hpProjectionsGroup.children[0]);
+    }
+    while (vpProjectionsGroup.children.length > 0) {
+      vpProjectionsGroup.remove(vpProjectionsGroup.children[0]);
+    }
+
+    // Set spacePointsGroup visibility according to unfoldAngle
+    spacePointsGroup.visible = unfoldAngle === 0;
 
     points.forEach((pt) => {
       const isSelected = pt.id === selectedPointId;
@@ -658,9 +680,10 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
       const posY = pt.z;
       const posZ = pt.y;
 
-      // 1. Point 3D Mesh (Glowing Sphere with halo ring - reduced, proportional size)
-      const pointRoot = new THREE.Group();
-      pointRoot.userData = { pointId: pt.id, pointData: pt };
+      // 1. POINT IN 3D SPACE (Glowing Sphere with halo ring)
+      // Placed in spacePointsGroup so it disappears when HP is folded 90°
+      const spacePointGroup = new THREE.Group();
+      spacePointGroup.userData = { pointId: pt.id, pointData: pt, view: 'space' };
 
       const sphereGeo = new THREE.SphereGeometry(isSelected ? 1.8 : 1.4, 24, 24);
       const sphereMat = new THREE.MeshStandardMaterial({
@@ -672,7 +695,8 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
       });
       const sphere = new THREE.Mesh(sphereGeo, sphereMat);
       sphere.position.set(posX, posY, posZ);
-      pointRoot.add(sphere);
+      sphere.userData = { pointId: pt.id, pointData: pt, view: 'space' };
+      spacePointGroup.add(sphere);
 
       // Selection Halo
       if (isSelected) {
@@ -686,10 +710,10 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
         const ring = new THREE.Mesh(ringGeo, ringMat);
         ring.position.set(posX, posY, posZ);
         ring.lookAt(cameraRef.current ? cameraRef.current.position : new THREE.Vector3(100, 100, 100));
-        pointRoot.add(ring);
+        spacePointGroup.add(ring);
       }
 
-      // Point Label (A, B, etc.)
+      // Point Label in 3D Space (Point A, Point B, etc.)
       if (showLabels) {
         const pointLabel = createTextSprite(`Point ${pt.name}`, {
           fontsize: 24,
@@ -699,11 +723,74 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
           borderThickness: 2,
         });
         pointLabel.position.set(posX, posY + 6, posZ);
-        pointRoot.add(pointLabel);
+        spacePointGroup.add(pointLabel);
       }
 
-      // 2. PROJECTION ONTO VP (Front View Point a') — Unified point color pt.color
-      // Projection of point perpendicular to VP lands at (X, Y, 0)
+      // 3D Space Projector Rays (connecting point in space to planes)
+      if (showProjectors) {
+        // Line from Point to VP (perpendicular to VP, along Z) — continuous thin line
+        const toVpGeo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(posX, posY, posZ),
+          new THREE.Vector3(posX, posY, 0),
+        ]);
+        const toVpMat = new THREE.LineBasicMaterial({
+          color: vpColor,
+          linewidth: 1.2,
+          transparent: true,
+          opacity: 0.85,
+        });
+        const toVpLine = new THREE.Line(toVpGeo, toVpMat);
+        spacePointGroup.add(toVpLine);
+
+        // Line from Point to HP (perpendicular to HP, along Y) — continuous thin line
+        const toHpGeo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(posX, posY, posZ),
+          new THREE.Vector3(posX, 0, posZ),
+        ]);
+        const toHpMat = new THREE.LineBasicMaterial({
+          color: hpColor,
+          linewidth: 1.2,
+          transparent: true,
+          opacity: 0.85,
+        });
+        const toHpLine = new THREE.Line(toHpGeo, toHpMat);
+        spacePointGroup.add(toHpLine);
+      }
+
+      // 3D Space Dimension Annotations
+      if (showDimensions) {
+        if (pt.distHp > 0) {
+          const midY = posY / 2;
+          const hpDistSprite = createTextSprite(`${pt.distHp} mm`, {
+            fontsize: 20,
+            textColor: '#0f172a',
+            backgroundColor: 'rgba(254, 240, 138, 0.95)',
+            borderColor: '#eab308',
+          });
+          hpDistSprite.position.set(posX - 8, midY, 0);
+          spacePointGroup.add(hpDistSprite);
+        }
+
+        if (pt.distVp > 0) {
+          const midZ = posZ / 2;
+          const vpDistSprite = createTextSprite(`${pt.distVp} mm`, {
+            fontsize: 20,
+            textColor: '#0f172a',
+            backgroundColor: 'rgba(191, 219, 254, 0.95)',
+            borderColor: '#3b82f6',
+          });
+          vpDistSprite.position.set(posX - 8, 0, midZ);
+          spacePointGroup.add(vpDistSprite);
+        }
+      }
+
+      spacePointsGroup.add(spacePointGroup);
+
+      // 2. PROJECTION ONTO VP (Front View Point a')
+      // Placed in vpProjectionsGroup (always stays stationary on VP)
+      const vpGroupItem = new THREE.Group();
+      vpGroupItem.userData = { pointId: pt.id, pointData: pt, view: 'front' };
+
       const fvGeo = new THREE.SphereGeometry(1.1, 16, 16);
       const fvMat = new THREE.MeshStandardMaterial({
         color: pt.color,
@@ -712,7 +799,8 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
       });
       const fvMesh = new THREE.Mesh(fvGeo, fvMat);
       fvMesh.position.set(posX, posY, 0);
-      pointRoot.add(fvMesh);
+      fvMesh.userData = { pointId: pt.id, pointData: pt, view: 'front' };
+      vpGroupItem.add(fvMesh);
 
       if (showLabels) {
         const fvLabel = createTextSprite(pt.frontViewLabel, {
@@ -722,11 +810,40 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
           borderColor: vpColor,
         });
         fvLabel.position.set(posX + 5, posY + 3, 1);
-        pointRoot.add(fvLabel);
+        vpGroupItem.add(fvLabel);
       }
 
-      // 3. PROJECTION ONTO HP (Top View Point a) — Unified point color pt.color
-      // Projection of point perpendicular to HP lands at (X, 0, Z)
+      // Line on VP from Front View point to Ground Line XY: (posX, posY, 0) -> (posX, 0, 0)
+      if (showProjectors) {
+        const fvToGroundGeo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(posX, posY, 0),
+          new THREE.Vector3(posX, 0, 0),
+        ]);
+        const fvToGroundMat = new THREE.LineBasicMaterial({
+          color: isDark ? 0x94a3b8 : 0x64748b,
+          linewidth: 1.0,
+          transparent: true,
+          opacity: 0.75,
+        });
+        const fvToGroundLine = new THREE.Line(fvToGroundGeo, fvToGroundMat);
+        vpGroupItem.add(fvToGroundLine);
+      }
+
+      // Ground Line Reference Intersection point (posX, 0, 0)
+      const refMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.8, 12, 12),
+        new THREE.MeshBasicMaterial({ color: isDark ? 0x94a3b8 : 0x475569 })
+      );
+      refMesh.position.set(posX, 0, 0);
+      vpGroupItem.add(refMesh);
+
+      vpProjectionsGroup.add(vpGroupItem);
+
+      // 3. PROJECTION ONTO HP (Top View Point a)
+      // Placed in hpProjectionsGroup (child of foldGroup, so it ROTATES WITH HP!)
+      const hpGroupItem = new THREE.Group();
+      hpGroupItem.userData = { pointId: pt.id, pointData: pt, view: 'top' };
+
       const tvGeo = new THREE.SphereGeometry(1.1, 16, 16);
       const tvMat = new THREE.MeshStandardMaterial({
         color: pt.color,
@@ -734,8 +851,9 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
         metalness: 0.7,
       });
       const tvMesh = new THREE.Mesh(tvGeo, tvMat);
-      tvMesh.position.set(posX, 0, posZ);
-      pointRoot.add(tvMesh);
+      tvMesh.position.set(posX, 0.2, posZ);
+      tvMesh.userData = { pointId: pt.id, pointData: pt, view: 'top' };
+      hpGroupItem.add(tvMesh);
 
       if (showLabels) {
         const tvLabel = createTextSprite(pt.topViewLabel, {
@@ -745,123 +863,54 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
           borderColor: hpColor,
         });
         tvLabel.position.set(posX + 5, 1, posZ + 4);
-        pointRoot.add(tvLabel);
+        hpGroupItem.add(tvLabel);
       }
 
-      // 4. Ground Line Reference Intersection point (X, 0, 0)
-      const refMesh = new THREE.Mesh(
-        new THREE.SphereGeometry(0.8, 12, 12),
-        new THREE.MeshBasicMaterial({ color: isDark ? 0x94a3b8 : 0x475569 })
-      );
-      refMesh.position.set(posX, 0, 0);
-      pointRoot.add(refMesh);
-
-      // 5. PROJECTOR LINES (Dashed perpendicular lines in 3D)
+      // Line on HP from Top View point to Ground Line XY: (posX, 0, posZ) -> (posX, 0, 0)
+      // Since it is inside hpProjectionsGroup, as HP unfolds by 90°, this projector line
+      // swings around the XY axis and aligns vertically with fvToGroundLine!
       if (showProjectors) {
-        // Line from Point to VP (perpendicular to VP, along Z)
-        const toVpGeo = new THREE.BufferGeometry().setFromPoints([
-          new THREE.Vector3(posX, posY, posZ),
-          new THREE.Vector3(posX, posY, 0),
-        ]);
-        const toVpMat = new THREE.LineDashedMaterial({
-          color: vpColor,
-          dashSize: 2,
-          gapSize: 1.5,
-          linewidth: 1.5,
-        });
-        const toVpLine = new THREE.Line(toVpGeo, toVpMat);
-        toVpLine.computeLineDistances();
-        pointRoot.add(toVpLine);
-
-        // Line from Point to HP (perpendicular to HP, along Y)
-        const toHpGeo = new THREE.BufferGeometry().setFromPoints([
-          new THREE.Vector3(posX, posY, posZ),
-          new THREE.Vector3(posX, 0, posZ),
-        ]);
-        const toHpMat = new THREE.LineDashedMaterial({
-          color: hpColor,
-          dashSize: 2,
-          gapSize: 1.5,
-          linewidth: 1.5,
-        });
-        const toHpLine = new THREE.Line(toHpGeo, toHpMat);
-        toHpLine.computeLineDistances();
-        pointRoot.add(toHpLine);
-
-        // Line on VP from Front View point to Ground Line XY: (posX, posY, 0) -> (posX, 0, 0)
-        const fvToGroundGeo = new THREE.BufferGeometry().setFromPoints([
-          new THREE.Vector3(posX, posY, 0),
-          new THREE.Vector3(posX, 0, 0),
-        ]);
-        const fvToGroundMat = new THREE.LineDashedMaterial({
-          color: isDark ? 0x94a3b8 : 0x64748b,
-          dashSize: 1.5,
-          gapSize: 1.2,
-          linewidth: 1.2,
-        });
-        const fvToGroundLine = new THREE.Line(fvToGroundGeo, fvToGroundMat);
-        fvToGroundLine.computeLineDistances();
-        pointRoot.add(fvToGroundLine);
-
-        // Line on HP from Top View point to Ground Line XY: (posX, 0, posZ) -> (posX, 0, 0)
         const tvToGroundGeo = new THREE.BufferGeometry().setFromPoints([
-          new THREE.Vector3(posX, 0, posZ),
-          new THREE.Vector3(posX, 0, 0),
+          new THREE.Vector3(posX, 0.1, posZ),
+          new THREE.Vector3(posX, 0.1, 0),
         ]);
-        const tvToGroundMat = new THREE.LineDashedMaterial({
+        const tvToGroundMat = new THREE.LineBasicMaterial({
           color: isDark ? 0x94a3b8 : 0x64748b,
-          dashSize: 1.5,
-          gapSize: 1.2,
-          linewidth: 1.2,
+          linewidth: 1.0,
+          transparent: true,
+          opacity: 0.75,
         });
         const tvToGroundLine = new THREE.Line(tvToGroundGeo, tvToGroundMat);
-        tvToGroundLine.computeLineDistances();
-        pointRoot.add(tvToGroundLine);
+        hpGroupItem.add(tvToGroundLine);
       }
 
-      // 6. DIMENSION ANNOTATIONS IN 3D
-      if (showDimensions) {
-        // Height from HP (along Y axis)
-        if (pt.distHp > 0) {
-          const midY = posY / 2;
-          const hpDistSprite = createTextSprite(`${pt.distHp} mm`, {
-            fontsize: 20,
-            textColor: '#0f172a',
-            backgroundColor: 'rgba(254, 240, 138, 0.95)', // pale yellow
-            borderColor: '#eab308',
-          });
-          hpDistSprite.position.set(posX - 8, midY, 0);
-          pointRoot.add(hpDistSprite);
-        }
-
-        // Distance from VP (along Z axis)
-        if (pt.distVp > 0) {
-          const midZ = posZ / 2;
-          const vpDistSprite = createTextSprite(`${pt.distVp} mm`, {
-            fontsize: 20,
-            textColor: '#0f172a',
-            backgroundColor: 'rgba(191, 219, 254, 0.95)', // pale blue
-            borderColor: '#3b82f6',
-          });
-          vpDistSprite.position.set(posX - 8, 0, midZ);
-          pointRoot.add(vpDistSprite);
-        }
-      }
-
-      pointsGroup.add(pointRoot);
+      hpProjectionsGroup.add(hpGroupItem);
     });
-  }, [points, selectedPointId, showProjectors, showDimensions, showLabels, isDark, hpColor, vpColor]);
+  }, [points, selectedPointId, showProjectors, showDimensions, showLabels, isDark, hpColor, vpColor, unfoldAngle]);
 
   // Raycasting for point hover/click selection
   useEffect(() => {
     const container = containerRef.current;
     const renderer = rendererRef.current;
     const camera = cameraRef.current;
-    const pointsGroup = pointsGroupRef.current;
-    if (!container || !renderer || !camera || !pointsGroup) return;
+    if (!container || !renderer || !camera) return;
 
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
+
+    const getInteractables = (): THREE.Object3D[] => {
+      const interactables: THREE.Object3D[] = [];
+      if (spacePointsGroupRef.current && spacePointsGroupRef.current.visible) {
+        interactables.push(spacePointsGroupRef.current);
+      }
+      if (vpProjectionsGroupRef.current) {
+        interactables.push(vpProjectionsGroupRef.current);
+      }
+      if (hpProjectionsGroupRef.current) {
+        interactables.push(hpProjectionsGroupRef.current);
+      }
+      return interactables;
+    };
 
     const handlePointerMove = (e: MouseEvent) => {
       const rect = container.getBoundingClientRect();
@@ -870,10 +919,10 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
 
       raycaster.setFromCamera(mouse, camera);
 
-      // Check intersection with point objects
-      const intersects = raycaster.intersectObjects(pointsGroup.children, true);
+      // Check intersection with interactive point objects
+      const intersects = raycaster.intersectObjects(getInteractables(), true);
       if (intersects.length > 0) {
-        let parent = intersects[0].object;
+        let parent: THREE.Object3D | null = intersects[0].object;
         while (parent && !parent.userData?.pointData && parent.parent) {
           parent = parent.parent;
         }
@@ -897,9 +946,9 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
       raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObjects(pointsGroup.children, true);
+      const intersects = raycaster.intersectObjects(getInteractables(), true);
       if (intersects.length > 0) {
-        let parent = intersects[0].object;
+        let parent: THREE.Object3D | null = intersects[0].object;
         while (parent && !parent.userData?.pointData && parent.parent) {
           parent = parent.parent;
         }
@@ -982,7 +1031,16 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
   return (
     <div className="relative w-full h-[540px] rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-900/5 shadow-inner">
       {/* 3D Canvas Mount Point */}
-      <div ref={containerRef} className="w-full h-full" />
+      <div ref={containerRef} className="w-full h-full">
+        {!webGlAvailable && (
+          <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-900">
+            <p className="text-sm font-semibold">3D WebGL Acceleration Unavailable in this browser view.</p>
+            <p className="text-xs mt-1 max-w-sm">
+              The 2D Orthographic Projection view remains fully interactive with exact engineering dimensions.
+            </p>
+          </div>
+        )}
+      </div>
 
       {/* Top Header Badge & Legend */}
       <div className="absolute top-3 left-3 flex flex-wrap items-center gap-2 pointer-events-none">

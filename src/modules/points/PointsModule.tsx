@@ -12,6 +12,7 @@ import { TwoDOrthographicView } from '../../components/TwoDOrthographicView';
 import { ExplanationPanel } from '../../components/ExplanationPanel';
 import { PointQuadrantCard, PointParametersCard } from '../../components/QuadrantResultCard';
 import { ScanQuestionModal } from '../../components/ScanQuestionModal';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { Sparkles } from 'lucide-react';
 
 interface PointsModuleProps {
@@ -77,6 +78,7 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
     setPoints((prev) =>
       prev.map((p) => (p.id === updatedPoint.id ? updatedPoint : p))
     );
+    setSelectedPointId(updatedPoint.id);
   };
 
   const handleDeletePoint = (id: string) => {
@@ -249,16 +251,18 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
                   <span>• Thin XY Line</span>
                 </div>
               </div>
-              <ThreeDView
-                points={computedPoints}
-                selectedPointId={selectedPointId}
-                onSelectPoint={setSelectedPointId}
-                hpColor={hpColor}
-                vpColor={vpColor}
-                onChangeHpColor={onChangeHpColor}
-                onChangeVpColor={onChangeVpColor}
-                isDark={isDark}
-              />
+              <ErrorBoundary fallbackTitle="3D Simulation Encountered an Issue">
+                <ThreeDView
+                  points={computedPoints}
+                  selectedPointId={selectedPointId}
+                  onSelectPoint={setSelectedPointId}
+                  hpColor={hpColor}
+                  vpColor={vpColor}
+                  onChangeHpColor={onChangeHpColor}
+                  onChangeVpColor={onChangeVpColor}
+                  isDark={isDark}
+                />
+              </ErrorBoundary>
             </div>
           )}
 

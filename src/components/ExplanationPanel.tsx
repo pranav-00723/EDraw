@@ -119,12 +119,8 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                 <div>
                   <div className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2 font-sans">
                     <span>Point {point.name}</span>
-                    <span
-                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${getBadgeStyle(
-                        point.quadrant
-                      )}`}
-                    >
-                      {point.quadrantTitle}
+                    <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 font-mono">
+                      (Orthographic Projection)
                     </span>
                   </div>
                   <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
@@ -154,48 +150,374 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
               )}
             </div>
 
-            {/* Pictorial 2D Projection Diagram for Selected Point */}
-            <div className="relative w-full h-[180px] rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-[#0b1329] p-2">
-              <svg viewBox="0 0 600 160" className="w-full h-full select-none">
-                {/* Blueprint grid */}
-                <pattern id="point-mini-grid" width="20" height="20" patternUnits="userSpaceOnUse">
-                  <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#16274a" strokeWidth="0.8" opacity="0.6" />
-                </pattern>
-                <rect width="600" height="160" fill="url(#point-mini-grid)" />
+            {/* Pictorial 2D Projection Diagram for Selected Point — White Drawing Sheet */}
+            <div className="relative w-full rounded-xl overflow-hidden border border-slate-300 dark:border-slate-700 bg-white p-2 shadow-sm">
+              <svg viewBox="0 0 660 250" className="w-full h-auto select-none block bg-white" style={{ minHeight: '230px' }}>
+                <defs>
+                  {/* Subtle Technical Drawing Sheet Grid */}
+                  <pattern id="pencil-sheet-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                    <path
+                      d="M 20 0 L 0 0 0 20"
+                      fill="none"
+                      stroke="#f1f5f9"
+                      strokeWidth="0.6"
+                    />
+                  </pattern>
 
-                {/* Ground Line XY */}
-                <line x1={30} y1={80} x2={570} y2={80} stroke="#e2e8f0" strokeWidth="1.8" />
-                <text x={20} y={85} fill="#f1f5f9" fontSize="13" fontWeight="bold" fontFamily="monospace">X</text>
-                <text x={575} y={85} fill="#f1f5f9" fontSize="13" fontWeight="bold" fontFamily="monospace">Y</text>
+                  {/* Pencil Dimension Arrowheads */}
+                  <marker
+                    id="pencil-arrow-start"
+                    viewBox="0 0 10 10"
+                    refX="0"
+                    refY="5"
+                    markerWidth="4.5"
+                    markerHeight="4.5"
+                    orient="auto"
+                  >
+                    <path d="M 10 2 L 0 5 L 10 8 z" fill="#475569" />
+                  </marker>
+                  <marker
+                    id="pencil-arrow-end"
+                    viewBox="0 0 10 10"
+                    refX="10"
+                    refY="5"
+                    markerWidth="4.5"
+                    markerHeight="4.5"
+                    orient="auto"
+                  >
+                    <path d="M 0 2 L 10 5 L 0 8 z" fill="#475569" />
+                  </marker>
+                </defs>
 
-                {/* Projector Line */}
-                <line x1={300} y1={20} x2={300} y2={140} stroke="#64748b" strokeWidth="1.2" strokeDasharray="4,3" />
+                {/* Pure White Drawing Sheet Background */}
+                <rect width="660" height="250" fill="#ffffff" />
+                <rect width="660" height="250" fill="url(#pencil-sheet-grid)" />
 
-                {/* Elevation Point (a') */}
-                {/* point.elevationY: > 0 above XY, < 0 below XY */}
+                {/* Drawing Sheet Outer Border & Inner Margins (Standard Technical Drafting Sheet Border) */}
+                <rect
+                  x="10"
+                  y="10"
+                  width="640"
+                  height="230"
+                  fill="none"
+                  stroke="#1e293b"
+                  strokeWidth="1.2"
+                />
+                <rect
+                  x="14"
+                  y="14"
+                  width="632"
+                  height="222"
+                  fill="none"
+                  stroke="#94a3b8"
+                  strokeWidth="0.6"
+                />
+
+                {/* Reference Ground Line (X - Y) drawn with HB Pencil */}
                 {(() => {
-                  const elevY = 80 - point.frontViewY * 1.5;
-                  const planY = 80 - point.topViewY * 1.5;
+                  const originY = 125;
+                  const projX = 230; // Offset left to leave generous space for annotations on right
+
+                  // Dynamic Scaling: Prevents points going out of bounds for ANY value (>40mm, 80mm, 100mm, etc.)
+                  const maxDist = Math.max(Math.abs(point.frontViewY), Math.abs(point.topViewY), 10);
+                  const availableHalfHeight = 85; // Margins: 125 - 85 = 40px top, 125 + 85 = 210px bottom
+                  const scale = Math.min(1.8, availableHalfHeight / maxDist);
+
+                  const elevY = originY - point.frontViewY * scale;
+                  const planY = originY - point.topViewY * scale;
+                  const viewsCoincide = Math.abs(elevY - planY) < 2.0;
+
+                  // Thin Continuous Projector Line (2H Pencil — No Dotted/Dashed Line!)
+                  const projMinY = Math.min(elevY, planY, originY) - 18;
+                  const projMaxY = Math.max(elevY, planY, originY) + 18;
+
+                  // Clean dark drafting colors for high legibility on white sheet
+                  const textColor = '#0f172a';
+                  const pencilGray = '#475569';
+                  const pencilFaint = '#64748b';
+
+                  // Offsets for dimension lines to avoid overlapping
+                  const dimFvX = projX + 160;
+                  const dimTvX = projX + 195;
+
                   return (
                     <g>
-                      {/* Elevation Point a' */}
-                      <circle cx={300} cy={elevY} r="5" fill="#ef4444" stroke="#fff" strokeWidth="1.5" />
-                      <text x={312} y={elevY + 4} fill="#f87171" fontSize="12" fontWeight="bold" fontFamily="monospace">
-                        {point.frontViewLabel} (Elevation: {point.distHp}mm {point.hpRelation === 'ABOVE' ? 'above' : point.hpRelation === 'BELOW' ? 'below' : 'on'} XY)
+                      {/* XY Ground Reference Line (Crisp HB pencil drafting line) */}
+                      <line
+                        x1="28"
+                        y1={originY}
+                        x2="628"
+                        y2={originY}
+                        stroke={textColor}
+                        strokeWidth="1.6"
+                      />
+                      <circle cx="28" cy={originY} r="2" fill={textColor} />
+                      <circle cx="628" cy={originY} r="2" fill={textColor} />
+
+                      {/* Reference Line End Labels X and Y */}
+                      <text
+                        x="20"
+                        y={originY + 5}
+                        fill={textColor}
+                        fontSize="15"
+                        fontWeight="bold"
+                        fontFamily="'JetBrains Mono', monospace"
+                        textAnchor="end"
+                      >
+                        X
+                      </text>
+                      <text
+                        x="635"
+                        y={originY + 5}
+                        fill={textColor}
+                        fontSize="15"
+                        fontWeight="bold"
+                        fontFamily="'JetBrains Mono', monospace"
+                        textAnchor="start"
+                      >
+                        Y
                       </text>
 
-                      {/* Plan Point a */}
-                      <circle cx={300} cy={planY} r="5" fill="#3b82f6" stroke="#fff" strokeWidth="1.5" />
-                      <text x={312} y={planY + 4} fill="#60a5fa" fontSize="12" fontWeight="bold" fontFamily="monospace">
-                        {point.topViewLabel} (Plan: {point.distVp}mm {point.vpRelation === 'IN_FRONT' ? 'below' : point.vpRelation === 'BEHIND' ? 'above' : 'on'} XY)
+                      {/* Pencil Sheet Plane Indicators (VP above XY, HP below XY in First Angle) */}
+                      <text
+                        x="34"
+                        y={originY - 12}
+                        fill={pencilFaint}
+                        fontSize="10"
+                        fontWeight="bold"
+                        fontFamily="'Space Grotesk', monospace"
+                        letterSpacing="1"
+                      >
+                        VP (VERTICAL PLANE)
                       </text>
+                      <text
+                        x="34"
+                        y={originY + 20}
+                        fill={pencilFaint}
+                        fontSize="10"
+                        fontWeight="bold"
+                        fontFamily="'Space Grotesk', monospace"
+                        letterSpacing="1"
+                      >
+                        HP (HORIZONTAL PLANE)
+                      </text>
+
+                      {/* PROJECTOR LINE: Continuous thin solid line (2H Pencil standard, NEVER dotted) */}
+                      <line
+                        x1={projX}
+                        y1={projMinY}
+                        x2={projX}
+                        y2={projMaxY}
+                        stroke={pencilGray}
+                        strokeWidth="1.0"
+                      />
+
+                      {/* Projector Intersection with Ground Line XY */}
+                      <circle cx={projX} cy={originY} r="2" fill={textColor} />
+                      <text
+                        x={projX - 8}
+                        y={originY + 12}
+                        fill={pencilFaint}
+                        fontSize="9"
+                        fontFamily="monospace"
+                        textAnchor="end"
+                      >
+                        o
+                      </text>
+
+                      {/* 1. FRONT VIEW POINT a' (Elevation on VP) */}
+                      <g>
+                        {/* 2H Pencil Crosshair */}
+                        <line x1={projX - 4} y1={elevY} x2={projX + 4} y2={elevY} stroke="#ef4444" strokeWidth="0.8" />
+                        <line x1={projX} y1={elevY - 4} x2={projX} y2={elevY + 4} stroke="#ef4444" strokeWidth="0.8" />
+
+                        {/* Graphite Point Dot */}
+                        <circle
+                          cx={projX}
+                          cy={elevY}
+                          r="3.5"
+                          fill="#ef4444"
+                          stroke={isDark ? '#ffffff' : '#1e293b'}
+                          strokeWidth="1.2"
+                        />
+
+                        {/* Pencil Lettering: a' */}
+                        <text
+                          x={projX - 10}
+                          y={elevY + (point.frontViewY >= 0 ? -4 : 12)}
+                          fill="#ef4444"
+                          fontSize="13"
+                          fontWeight="bold"
+                          fontFamily="'JetBrains Mono', monospace"
+                          textAnchor="end"
+                        >
+                          {viewsCoincide ? `${point.frontViewLabel} (${point.topViewLabel})` : point.frontViewLabel}
+                        </text>
+
+                        {/* Informative Drafting Note */}
+                        <text
+                          x={projX + 10}
+                          y={elevY + (point.frontViewY >= 0 ? -5 : 12)}
+                          fill={isDark ? '#fca5a5' : '#b91c1c'}
+                          fontSize="10"
+                          fontWeight="600"
+                          fontFamily="'Space Grotesk', sans-serif"
+                        >
+                          {point.frontViewLabel} — Front View ({point.distHp} mm {point.hpRelation === 'ABOVE' ? 'above' : point.hpRelation === 'BELOW' ? 'below' : 'on'} HP)
+                        </text>
+
+                        {/* Continuous Thin Extension & Dimension Lines for Elevation */}
+                        {point.distHp > 0 && (
+                          <g>
+                            <line x1={projX + 4} y1={elevY} x2={dimFvX + 6} y2={elevY} stroke={pencilFaint} strokeWidth="0.8" />
+                            <line x1={projX + 4} y1={originY} x2={dimFvX + 6} y2={originY} stroke={pencilFaint} strokeWidth="0.8" />
+                            <line
+                              x1={dimFvX}
+                              y1={originY}
+                              x2={dimFvX}
+                              y2={elevY}
+                              stroke={isDark ? '#f87171' : '#dc2626'}
+                              strokeWidth="1.0"
+                              markerStart="url(#pencil-arrow-start)"
+                              markerEnd="url(#pencil-arrow-end)"
+                            />
+                            <text
+                              x={dimFvX + 4}
+                              y={(originY + elevY) / 2 + 4}
+                              fill={isDark ? '#fca5a5' : '#b91c1c'}
+                              fontSize="9.5"
+                              fontWeight="bold"
+                              fontFamily="'JetBrains Mono', monospace"
+                              textAnchor="start"
+                            >
+                              h = {point.distHp} mm
+                            </text>
+                          </g>
+                        )}
+                      </g>
+
+                      {/* 2. TOP VIEW POINT a (Plan on HP) if not strictly coincident */}
+                      {!viewsCoincide && (
+                        <g>
+                          {/* 2H Pencil Crosshair */}
+                          <line x1={projX - 4} y1={planY} x2={projX + 4} y2={planY} stroke="#3b82f6" strokeWidth="0.8" />
+                          <line x1={projX} y1={planY - 4} x2={projX} y2={planY + 4} stroke="#3b82f6" strokeWidth="0.8" />
+
+                          {/* Graphite Point Dot */}
+                          <circle
+                            cx={projX}
+                            cy={planY}
+                            r="3.5"
+                            fill="#3b82f6"
+                            stroke={isDark ? '#ffffff' : '#1e293b'}
+                            strokeWidth="1.2"
+                          />
+
+                          {/* Pencil Lettering: a */}
+                          <text
+                            x={projX - 10}
+                            y={planY + (point.topViewY >= 0 ? -4 : 12)}
+                            fill="#3b82f6"
+                            fontSize="13"
+                            fontWeight="bold"
+                            fontFamily="'JetBrains Mono', monospace"
+                            textAnchor="end"
+                          >
+                            {point.topViewLabel}
+                          </text>
+
+                          {/* Informative Drafting Note */}
+                          <text
+                            x={projX + 10}
+                            y={planY + (point.topViewY >= 0 ? -5 : 12)}
+                            fill={isDark ? '#93c5fd' : '#1d4ed8'}
+                            fontSize="10"
+                            fontWeight="600"
+                            fontFamily="'Space Grotesk', sans-serif"
+                          >
+                            {point.topViewLabel} — Top View ({point.distVp} mm {point.vpRelation === 'IN_FRONT' ? 'in front of' : point.vpRelation === 'BEHIND' ? 'behind' : 'on'} VP)
+                          </text>
+
+                          {/* Continuous Thin Extension & Dimension Lines for Plan */}
+                          {point.distVp > 0 && (
+                            <g>
+                              <line x1={projX + 4} y1={planY} x2={dimTvX + 6} y2={planY} stroke={pencilFaint} strokeWidth="0.8" />
+                              <line x1={projX + 4} y1={originY} x2={dimTvX + 6} y2={originY} stroke={pencilFaint} strokeWidth="0.8" />
+                              <line
+                                x1={dimTvX}
+                                y1={originY}
+                                x2={dimTvX}
+                                y2={planY}
+                                stroke={isDark ? '#60a5fa' : '#2563eb'}
+                                strokeWidth="1.0"
+                                markerStart="url(#pencil-arrow-start)"
+                                markerEnd="url(#pencil-arrow-end)"
+                              />
+                              <text
+                                x={dimTvX + 4}
+                                y={(originY + planY) / 2 + 4}
+                                fill={isDark ? '#93c5fd' : '#1d4ed8'}
+                                fontSize="9.5"
+                                fontWeight="bold"
+                                fontFamily="'JetBrains Mono', monospace"
+                                textAnchor="start"
+                              >
+                                d = {point.distVp} mm
+                              </text>
+                            </g>
+                          )}
+                        </g>
+                      )}
+
+                      {/* Technical Drawing Sheet Title Stamp (Bottom-Right, Quadrant removed) */}
+                      <g transform="translate(450, 182)">
+                        <rect
+                          x="0"
+                          y="0"
+                          width="192"
+                          height="50"
+                          rx="3"
+                          fill="#f8fafc"
+                          stroke="#cbd5e1"
+                          strokeWidth="0.8"
+                        />
+                        <text
+                          x="8"
+                          y="15"
+                          fill="#0f172a"
+                          fontSize="9.5"
+                          fontWeight="bold"
+                          fontFamily="'JetBrains Mono', monospace"
+                        >
+                          DRAWING SHEET (2D PROJECTION)
+                        </text>
+                        <text
+                          x="8"
+                          y="29"
+                          fill="#334155"
+                          fontSize="8.5"
+                          fontWeight="600"
+                          fontFamily="'JetBrains Mono', monospace"
+                        >
+                          POINT {point.name} • ORTHOGRAPHIC VIEW
+                        </text>
+                        <text
+                          x="8"
+                          y="42"
+                          fill="#64748b"
+                          fontSize="8"
+                          fontFamily="'JetBrains Mono', monospace"
+                        >
+                          CONTINUOUS 2H PROJECTOR (BIS SP 46)
+                        </text>
+                      </g>
                     </g>
                   );
                 })()}
               </svg>
 
-              <div className="absolute top-2 right-2 text-[10px] font-mono text-slate-300 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-700">
-                2D Orthographic Sheet
+              <div className="absolute top-2 right-2 text-[10px] font-mono text-slate-800 bg-white/95 px-2.5 py-0.5 rounded border border-slate-300 shadow-xs pointer-events-none">
+                White Drawing Sheet • Pencil Sketch
               </div>
             </div>
 
@@ -317,8 +639,8 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
                     HP (Plan a)
                   </text>
 
-                  {/* Common Projector line */}
-                  <line x1={90} y1={15} x2={90} y2={125} stroke="#64748b" strokeWidth="1" strokeDasharray="3,3" />
+                  {/* Common Projector line (continuous thin line) */}
+                  <line x1={90} y1={15} x2={90} y2={125} stroke="#64748b" strokeWidth="1.0" />
                   <circle cx={90} cy={42} r="4" fill="#ef4444" />
                   <circle cx={90} cy={98} r="4" fill="#3b82f6" />
                 </g>

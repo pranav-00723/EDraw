@@ -60,8 +60,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         <nav className="flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60 text-xs font-medium">
           {/* Dashboard */}
           <button
+            type="button"
             onClick={() => onNavigate('/dashboard')}
-            className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
               currentRoute === '/' || currentRoute === '/dashboard'
                 ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs font-bold'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
@@ -73,8 +74,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
 
           {/* V1: Projection of Points */}
           <button
+            type="button"
             onClick={() => onNavigate('/projection-of-points')}
-            className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
               currentRoute === '/projection-of-points'
                 ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs font-bold'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
@@ -86,8 +88,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
 
           {/* V2: Projection of Straight Lines */}
           <button
+            type="button"
             onClick={() => onNavigate('/projection-of-lines')}
-            className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
               currentRoute === '/projection-of-lines'
                 ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-300 shadow-xs font-bold'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'

@@ -9,6 +9,11 @@ import { GoogleGenAI, Type } from '@google/genai';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import {
+  parseTextToNormalizedModel,
+  solveNormalizedModel,
+  normalizeMasterOcrText,
+} from './src/utils/straightLineMasterSolver';
 
 dotenv.config();
 
@@ -61,15 +66,54 @@ export interface ExtractedQuestionSchema {
 }
 
 /**
+ * Offline Server-Side Tesseract OCR Engine
+ */
+async function runTesseractOcr(base64Image: string): Promise<string> {
+  try {
+    const { createWorker } = await import('tesseract.js');
+    const worker = await createWorker('eng');
+    let imgSrc = base64Image;
+    if (!imgSrc.startsWith('data:')) {
+      imgSrc = `data:image/jpeg;base64,${base64Image}`;
+    }
+    const ret = await worker.recognize(imgSrc);
+    await worker.terminate();
+    return (ret?.data?.text || '').trim();
+  } catch (err) {
+    console.error('Tesseract OCR error in server:', err);
+    return '';
+  }
+}
+
+/**
+ * Normalizes common OCR transcription errors from camera/paper scans
+ */
+export function normalizeOcrText(text: string): string {
+  let s = text;
+  // Common OCR character and word corruptions
+  s = s.replace(/\blinc\b/gi, 'line');
+  s = s.replace(/(\d+(?:\.\d+)?)\s*mm\s*lone\b/gi, '$1mm long');
+  s = s.replace(/(\d+(?:\.\d+)?)\s*1\s*m\b/gi, '$1mm');
+  s = s.replace(/\bpars?\s+to\s+the\b/gi, 'parallel to the');
+  s = s.replace(/\bpar(?:al{1,2}el)?\b/gi, 'parallel');
+  s = s.replace(/\boerpen\s*dic\s*ula[a-z]*\b/gi, 'perpendicular');
+  s = s.replace(/\bperpen\s*dicular\b/gi, 'perpendicular');
+  s = s.replace(/\bto\s+the\s+[Pp]\b/gi, 'to the VP');
+  s = s.replace(/\b[vV][\.\s]*[pP]\b/g, 'VP');
+  s = s.replace(/\b[hH][\.\s]*[pP]\b/g, 'HP');
+  return s;
+}
+
+/**
  * Robust rule-based engineering graphics solver and question parser.
- * Adheres strictly to the user's 5 critical rules.
+ * Adheres strictly to the user's 5 critical rules and tolerates common OCR typos.
  */
 function solveQuestionRuleBased(text: string): { schema: ExtractedQuestionSchema; parsed: any } {
-  const raw = text.trim();
-  const lower = raw.toLowerCase();
+  const normalizedRaw = normalizeOcrText(text).trim();
+  const lower = normalizedRaw.toLowerCase();
 
-  // RULE 1: Focus on problem statement and heading. Strip out numbered solution steps (e.g. "1. Draw XY...", "2. Mark p'...")
-  const cleanedText = raw
+  // RULE 1: Focus on problem statement and heading. Strip out numbered solution steps
+  const cleanedText = normalizedRaw
     .replace(/(?:^|\n)\s*\d+[\.\)]\s*[^.\n]*(?:draw|mark|join|project|extend|measure|with|taking|from|cut|locate)[^\n]*/gi, '')
     .trim();
   const cleanedLower = cleanedText.toLowerCase();
@@ -81,25 +125,26 @@ function solveQuestionRuleBased(text: string): { schema: ExtractedQuestionSchema
     heading = headingMatch[1].trim();
   }
 
-  // 1. Line names
-  let startPoint = 'P';
-  let endPoint = 'Q';
-  let lineName = 'PQ';
+  // 1. Line names (handles "line AB", "linc AB", "lone AB", "straight line AB", "AB 50mm")
+  let startPoint = 'A';
+  let endPoint = 'B';
+  let lineName = 'AB';
   const nameMatch =
-    cleanedText.match(/line\s+([A-Z])([A-Z])/i) ||
-    cleanedText.match(/line\s+([A-Z])\s*(?:and|to|-)\s*([A-Z])/i) ||
-    cleanedText.match(/([A-Z])([A-Z])\s+(?:is\s+a\s+line|\d+\s*mm)/i);
+    cleanedText.match(/(?:line|linc|lone|straight\s*line)\s+([A-Za-z])([A-Za-z])\b/i) ||
+    cleanedText.match(/\b([A-Z])([A-Z])\b\s+(\d+(?:\.\d+)?)\s*mm/) ||
+    cleanedText.match(/\b([A-Z])([A-Z])\b\s+(?:is\s+a\s+line|is\s+)/) ||
+    cleanedText.match(/(?:line|linc|lone)\s+([A-Za-z])\s*(?:and|to|-)\s*([A-Za-z])/i);
   if (nameMatch) {
     startPoint = nameMatch[1].toUpperCase();
     endPoint = nameMatch[2].toUpperCase();
     lineName = `${startPoint}${endPoint}`;
   }
 
-  // 2. True Length
+  // 2. True Length (handles "50mm long", "50mm lone", "line AB 50mm", "length of 50mm", etc.)
   let tl: number | null = null;
   const tlMatch =
-    cleanedLower.match(/line\s+[a-z]{1,2}\s+(\d+(?:\.\d+)?)\s*mm/i) ||
-    cleanedLower.match(/(\d+(?:\.\d+)?)\s*mm\s*long/i) ||
+    cleanedLower.match(/(?:line|linc|lone)\s+[a-z]{1,2}\s+(\d+(?:\.\d+)?)\s*mm/i) ||
+    cleanedLower.match(/(\d+(?:\.\d+)?)\s*mm\s*(?:long|lone|length|in\s*length)/i) ||
     cleanedLower.match(/length\s*(?:of)?\s*(?:the\s*line\s*)?(\d+(?:\.\d+)?)\s*mm/i) ||
     cleanedLower.match(/tl\s*=?\s*(\d+(?:\.\d+)?)/i) ||
     cleanedLower.match(/(\d+(?:\.\d+)?)\s*mm/i);
@@ -224,8 +269,13 @@ function solveQuestionRuleBased(text: string): { schema: ExtractedQuestionSchema
       cleanedLower.match(new RegExp(`(?:point\\s*${qName}|end\\s*${qName}|\\b${qName}\\b)[^.]*?(\\d+(?:\\.\\d+)?)\\s*mm\\s*above\\s*(?:the\\s*)?hp`, 'i'));
     const qHpBelowMatch =
       cleanedLower.match(new RegExp(`(?:point\\s*${qName}|end\\s*${qName}|\\b${qName}\\b)[^.]*?(\\d+(?:\\.\\d+)?)\\s*mm\\s*below\\s*(?:the\\s*)?hp`, 'i'));
-    if (qHpMatch) qAboveHp = parseFloat(qHpMatch[1]);
-    else if (qHpBelowMatch) qAboveHp = -parseFloat(qHpBelowMatch[1]);
+    if (qHpMatch) {
+      qAboveHp = parseFloat(qHpMatch[1]);
+    } else if (qHpBelowMatch) {
+      qAboveHp = -parseFloat(qHpBelowMatch[1]);
+    } else if (isPerpHP && pAboveHp !== null && tl !== null) {
+      qAboveHp = pAboveHp + tl;
+    }
   }
 
   if (isParVP) {
@@ -236,8 +286,13 @@ function solveQuestionRuleBased(text: string): { schema: ExtractedQuestionSchema
       cleanedLower.match(new RegExp(`(?:point\\s*${qName}|end\\s*${qName}|\\b${qName}\\b)[^.]*?(\\d+(?:\\.\\d+)?)\\s*mm\\s*in\\s*front\\s*of\\s*(?:the\\s*)?vp`, 'i'));
     const qVpBehindMatch =
       cleanedLower.match(new RegExp(`(?:point\\s*${qName}|end\\s*${qName}|\\b${qName}\\b)[^.]*?(\\d+(?:\\.\\d+)?)\\s*mm\\s*behind\\s*(?:the\\s*)?vp`, 'i'));
-    if (qVpMatch) qInFrontVp = parseFloat(qVpMatch[1]);
-    else if (qVpBehindMatch) qInFrontVp = -parseFloat(qVpBehindMatch[1]);
+    if (qVpMatch) {
+      qInFrontVp = parseFloat(qVpMatch[1]);
+    } else if (qVpBehindMatch) {
+      qInFrontVp = -parseFloat(qVpBehindMatch[1]);
+    } else if (isPerpVP && pInFrontVp !== null && tl !== null) {
+      qInFrontVp = pInFrontVp + tl;
+    }
   }
 
   // Distance between end projectors (DEP)
@@ -312,14 +367,14 @@ function convertSchemaToSimulation(s: ExtractedQuestionSchema) {
   let qAbove = s.q_above_hp_mm;
   if (qAbove === null || qAbove === undefined) {
     if (s.is_parallel_to_hp) qAbove = pAbove;
-    else if (s.is_perpendicular_to_hp) qAbove = Math.max(0, pAbove - tl);
+    else if (s.is_perpendicular_to_hp) qAbove = pAbove + tl;
     else qAbove = pAbove + tl * Math.sin((theta * Math.PI) / 180);
   }
 
   let qFront = s.q_in_front_of_vp_mm;
   if (qFront === null || qFront === undefined) {
     if (s.is_parallel_to_vp) qFront = pFront;
-    else if (s.is_perpendicular_to_vp) qFront = Math.max(0, pFront - tl);
+    else if (s.is_perpendicular_to_vp) qFront = pFront + tl;
     else qFront = pFront + tl * Math.sin((phi * Math.PI) / 180);
   }
 
@@ -487,7 +542,7 @@ CRITICAL RULES TO PREVENT MISINTERPRETATION:
         });
 
         const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Gemini API timeout')), 4500)
+          setTimeout(() => reject(new Error('Gemini API timeout')), 12000)
         );
 
         const response: any = await Promise.race([generatePromise, timeoutPromise]);
@@ -496,31 +551,94 @@ CRITICAL RULES TO PREVENT MISINTERPRETATION:
         const extractedSchema: ExtractedQuestionSchema = JSON.parse(rawJson);
         recognizedText = extractedSchema.transcribed_question || recognizedText;
 
-        const parsed = convertSchemaToSimulation(extractedSchema);
+        const cleanText = normalizeMasterOcrText(recognizedText);
+        const normalizedModel = parseTextToNormalizedModel(cleanText, 'OCR');
+
+        // Augment normalizedModel with any explicit values detected by Gemini
+        if (extractedSchema.true_length_mm !== null && extractedSchema.true_length_mm !== undefined) {
+          normalizedModel.true_length_mm = extractedSchema.true_length_mm;
+        }
+        if (extractedSchema.p_above_hp_mm !== null && extractedSchema.p_above_hp_mm !== undefined) {
+          normalizedModel.endpoint_A.distHp = Math.abs(extractedSchema.p_above_hp_mm);
+          normalizedModel.endpoint_A.hpRelation =
+            extractedSchema.p_above_hp_mm === 0 ? 'ON' : extractedSchema.p_above_hp_mm > 0 ? 'ABOVE' : 'BELOW';
+        }
+        if (extractedSchema.p_in_front_of_vp_mm !== null && extractedSchema.p_in_front_of_vp_mm !== undefined) {
+          normalizedModel.endpoint_A.distVp = Math.abs(extractedSchema.p_in_front_of_vp_mm);
+          normalizedModel.endpoint_A.vpRelation =
+            extractedSchema.p_in_front_of_vp_mm === 0 ? 'ON' : extractedSchema.p_in_front_of_vp_mm > 0 ? 'IN_FRONT' : 'BEHIND';
+        }
+        if (extractedSchema.q_above_hp_mm !== null && extractedSchema.q_above_hp_mm !== undefined) {
+          normalizedModel.endpoint_B.distHp = Math.abs(extractedSchema.q_above_hp_mm);
+          normalizedModel.endpoint_B.hpRelation =
+            extractedSchema.q_above_hp_mm === 0 ? 'ON' : extractedSchema.q_above_hp_mm > 0 ? 'ABOVE' : 'BELOW';
+        }
+        if (extractedSchema.q_in_front_of_vp_mm !== null && extractedSchema.q_in_front_of_vp_mm !== undefined) {
+          normalizedModel.endpoint_B.distVp = Math.abs(extractedSchema.q_in_front_of_vp_mm);
+          normalizedModel.endpoint_B.vpRelation =
+            extractedSchema.q_in_front_of_vp_mm === 0 ? 'ON' : extractedSchema.q_in_front_of_vp_mm > 0 ? 'IN_FRONT' : 'BEHIND';
+        }
+        if (extractedSchema.is_perpendicular_to_hp) {
+          normalizedModel.perpendicular_to = 'HP';
+          normalizedModel.parallel_to = 'VP';
+          normalizedModel.inclination_hp_deg = 90;
+          normalizedModel.inclination_vp_deg = 0;
+        } else if (extractedSchema.is_perpendicular_to_vp) {
+          normalizedModel.perpendicular_to = 'VP';
+          normalizedModel.parallel_to = 'HP';
+          normalizedModel.inclination_hp_deg = 0;
+          normalizedModel.inclination_vp_deg = 90;
+        }
+
+        const solution = solveNormalizedModel(normalizedModel);
+        const parsed = solution.candidate_solutions[0]?.input || convertSchemaToSimulation(extractedSchema);
 
         return res.json({
           success: true,
           rawText: recognizedText,
           source: 'gemini-3.8-flash',
           extractedSchema,
+          normalizedModel,
+          solution,
           parsed,
         });
       } catch (geminiErr: any) {
-        console.error('Gemini OCR API error, falling back to rule-based parser:', geminiErr);
+        console.warn('Gemini OCR API error or unavailable, falling back to local OCR engine:', geminiErr?.message || geminiErr);
       }
     }
 
-    // Rule-based Fallback
-    const { schema, parsed } = solveQuestionRuleBased(
-      recognizedText || text || 'A Line AB 25mm is parallel to the VP and perpendicular to the HP. Point A is 35mm above the HP and 20mm in front of the VP. B is 10 mm above the HP. Draw its projections.'
+    // 2. High-Accuracy Local Tesseract OCR Engine when image is provided and text is empty
+    let sourceEngine = 'user-text-input';
+    if (imageBase64 && (!recognizedText || recognizedText.trim().length < 5)) {
+      recognizedText = await runTesseractOcr(imageBase64);
+      sourceEngine = 'tesseract-ocr';
+    }
+
+    if (!recognizedText || recognizedText.trim().length === 0) {
+      return res.status(422).json({
+        success: false,
+        error: 'No legible text could be extracted from the scanned image. Please upload a clear photo or type the question directly.',
+      });
+    }
+
+    // 3. Rule-based Engineering Graphics Master Solver using Normalized OCR Text
+    const cleanText = normalizeMasterOcrText(recognizedText);
+    const normalizedModel = parseTextToNormalizedModel(
+      cleanText,
+      sourceEngine === 'tesseract-ocr' ? 'OCR' : 'CLIPBOARD'
     );
+    const solution = solveNormalizedModel(normalizedModel);
+    const { schema } = solveQuestionRuleBased(cleanText);
+    const candidateInput = solution.candidate_solutions[0]?.input;
 
     return res.json({
       success: true,
-      rawText: recognizedText || text,
-      source: 'rule-based-fallback',
+      rawText: recognizedText,
+      source: sourceEngine,
       extractedSchema: schema,
-      parsed,
+      normalizedModel,
+      solution,
+      parsed: candidateInput || convertSchemaToSimulation(schema),
     });
   } catch (err: any) {
     console.error('Error in /api/scan-question:', err);

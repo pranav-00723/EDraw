@@ -18,9 +18,20 @@ import {
   Image as ImageIcon,
   Check,
   Info,
+  Layers,
+  HelpCircle,
 } from 'lucide-react';
 import { PointInput, HpRelation, VpRelation } from '../types/projection';
 import { LineProblemInput, TargetQuadrantB, LineInputMode } from '../types/lines';
+import {
+  parseTextToNormalizedModel,
+  solveNormalizedModel,
+  normalizeMasterOcrText,
+} from '../utils/straightLineMasterSolver';
+import {
+  NormalizedConstraintModel,
+  MasterValidationStatus,
+} from '../types/masterLines';
 
 export interface ExtractedQuestionSchema {
   line_name: string;
@@ -158,6 +169,7 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
   const [questionText, setQuestionText] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [parsedResult, setParsedResult] = useState<ParsedQuestionResult | null>(null);
+  const [normalizedModel, setNormalizedModel] = useState<NormalizedConstraintModel | null>(null);
   const [extractedSchema, setExtractedSchema] = useState<ExtractedQuestionSchema | null>(null);
   const [appliedNotification, setAppliedNotification] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -181,256 +193,72 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Local fallback parser strictly observing the 5 critical rules
-  const parseQuestionRuleBased = (text: string): { schema: ExtractedQuestionSchema; parsed: ParsedQuestionResult } | null => {
-    const raw = text.trim();
-    if (!raw) return null;
-
-    // Rule 1: Focus on heading and problem statement; strip out numbered drafting steps
-    const cleanedText = raw
-      .replace(/(?:^|\n)\s*\d+[\.\)]\s*[^.\n]*(?:draw|mark|join|project|extend|measure|with|taking|from|cut|locate)[^\n]*/gi, '')
-      .trim();
-    const lower = cleanedText.toLowerCase();
-
-    let startPoint = 'P';
-    let endPoint = 'Q';
-    let lineName = 'PQ';
-    const nameMatch =
-      cleanedText.match(/line\s+([A-Z])([A-Z])/i) ||
-      cleanedText.match(/line\s+([A-Z])\s*(?:and|to|-)\s*([A-Z])/i) ||
-      cleanedText.match(/([A-Z])([A-Z])\s+(?:is\s+a\s+line|\d+\s*mm)/i);
-    if (nameMatch) {
-      startPoint = nameMatch[1].toUpperCase();
-      endPoint = nameMatch[2].toUpperCase();
-      lineName = `${startPoint}${endPoint}`;
+  /**
+   * Deterministic Master Solver parser connecting directly to straightLineMasterSolver
+   */
+  const parseWithMasterSolver = (
+    text: string,
+    source: 'CLIPBOARD' | 'OCR' | 'SAMPLE' = 'CLIPBOARD'
+  ) => {
+    const cleanText = normalizeMasterOcrText(text.trim());
+    if (!cleanText || cleanText.length < 6) {
+      setParsedResult(null);
+      setNormalizedModel(null);
+      setExtractedSchema(null);
+      return;
     }
 
-    let tl = 70;
-    const tlMatch =
-      lower.match(/line\s+[a-z]{1,2}\s+(\d+(?:\.\d+)?)\s*mm/i) ||
-      lower.match(/(\d+(?:\.\d+)?)\s*mm\s*long/i) ||
-      lower.match(/length\s*(?:of)?\s*(?:the\s*line\s*)?(\d+(?:\.\d+)?)\s*mm/i) ||
-      lower.match(/tl\s*=?\s*(\d+(?:\.\d+)?)/i) ||
-      lower.match(/(\d+(?:\.\d+)?)\s*mm/i);
-    if (tlMatch) {
-      tl = parseFloat(tlMatch[1]);
-    }
+    const model = parseTextToNormalizedModel(cleanText, source);
+    const solution = solveNormalizedModel(model);
+    setNormalizedModel(model);
 
-    // Rule 4: Parallel and Perpendicular constraints
-    const isPerpHP =
-      lower.includes('perpendicular to the hp') ||
-      lower.includes('perpendicular to hp') ||
-      lower.includes('perp to hp') ||
-      lower.includes('perp. to hp');
-
-    const isPerpVP =
-      lower.includes('perpendicular to the vp') ||
-      lower.includes('perpendicular to vp') ||
-      lower.includes('perp to vp') ||
-      lower.includes('perp. to vp');
-
-    const isParVP =
-      isPerpHP ||
-      lower.includes('parallel to the vp') ||
-      lower.includes('parallel to vp') ||
-      lower.includes('parallel to both');
-
-    const isParHP =
-      isPerpVP ||
-      lower.includes('parallel to the hp') ||
-      lower.includes('parallel to hp') ||
-      lower.includes('parallel to both');
-
-    // Rule 3: Inclination angles (theta with HP, phi with VP)
-    let theta = 0;
-    let phi = 0;
-
-    if (isPerpHP) {
-      theta = 90;
-      phi = 0;
-    } else if (isPerpVP) {
-      theta = 0;
-      phi = 90;
+    if (solution.candidate_solutions && solution.candidate_solutions.length > 0) {
+      const cand = solution.candidate_solutions[0];
+      const parsed: ParsedLineResult = {
+        type: 'LINE',
+        nameA: cand.nameA,
+        nameB: cand.nameB,
+        trueLength: cand.trueLength,
+        thetaDeg: cand.thetaDeg,
+        phiDeg: cand.phiDeg,
+        orientation: cand.orientation,
+        endA: {
+          name: cand.nameA,
+          hpRelation: cand.input.endA.hpRelation,
+          distanceHp: cand.input.endA.distanceHp,
+          vpRelation: cand.input.endA.vpRelation,
+          distanceVp: cand.input.endA.distanceVp,
+        },
+        endB: {
+          name: cand.nameB,
+          hpRelation: cand.input.endB.hpRelation,
+          distanceHp: cand.input.endB.distanceHp,
+          vpRelation: cand.input.endB.vpRelation,
+          distanceVp: cand.input.endB.distanceVp,
+        },
+        mode: cand.input.mode,
+        dep: cand.dep,
+        frontViewLength: cand.frontViewLength,
+        topViewLength: cand.topViewLength,
+        explanation: cand.orientationDesc,
+      };
+      setParsedResult(parsed);
+      setOcrEngine(source === 'SAMPLE' ? 'textbook-dataset' : 'master-geometry-solver');
     } else {
-      if (isParHP) {
-        theta = 0;
-      } else {
-        const thetaMatch =
-          lower.match(/(?:inclined\s*(?:at)?\s*(\d+(?:\.\d+)?)\s*(?:°|deg|degrees)?\s*to\s*(?:the\s*)?hp)/i) ||
-          lower.match(/(?:(\d+(?:\.\d+)?)\s*(?:°|deg|degrees)?\s*(?:with|to)\s*(?:the\s*)?hp)/i) ||
-          lower.match(/θ\s*=?\s*(\d+(?:\.\d+)?)/i);
-        if (thetaMatch) theta = parseFloat(thetaMatch[1]);
-        else theta = 30;
-      }
-
-      if (isParVP) {
-        phi = 0;
-      } else {
-        const phiMatch =
-          lower.match(/(?:inclined\s*(?:at)?\s*(\d+(?:\.\d+)?)\s*(?:°|deg|degrees)?\s*to\s*(?:the\s*)?vp)/i) ||
-          lower.match(/(?:(\d+(?:\.\d+)?)\s*(?:°|deg|degrees)?\s*(?:with|to)\s*(?:the\s*)?vp)/i) ||
-          lower.match(/φ\s*=?\s*(\d+(?:\.\d+)?)/i);
-        if (phiMatch) phi = parseFloat(phiMatch[1]);
-        else phi = 30;
-      }
+      setParsedResult(null);
     }
-
-    // Point P Position
-    const pName = startPoint.toLowerCase();
-    const qName = endPoint.toLowerCase();
-
-    let pAbove: number | null = null;
-    let pFront: number | null = null;
-
-    if (lower.includes(`${pName} is in hp`) || lower.includes(`${pName} is in the hp`) || lower.includes(`${pName} is on hp`)) {
-      pAbove = 0;
-    } else {
-      const hpMatch =
-        lower.match(new RegExp(`(?:point\\s*${pName}|end\\s*${pName}|\\b${pName}\\b)[^.]*?(\\d+(?:\\.\\d+)?)\\s*mm\\s*above\\s*(?:the\\s*)?hp`, 'i')) ||
-        lower.match(/(\d+(?:\.\d+)?)\s*mm\s*above\s*(?:the\s*)?hp/i);
-      const hpBelowMatch =
-        lower.match(new RegExp(`(?:point\\s*${pName}|end\\s*${pName}|\\b${pName}\\b)[^.]*?(\\d+(?:\\.\\d+)?)\\s*mm\\s*below\\s*(?:the\\s*)?hp`, 'i')) ||
-        lower.match(/(\d+(?:\.\d+)?)\s*mm\s*below\s*(?:the\s*)?hp/i);
-      if (hpMatch) pAbove = parseFloat(hpMatch[1]);
-      else if (hpBelowMatch) pAbove = -parseFloat(hpBelowMatch[1]);
-      else pAbove = 25;
-    }
-
-    if (lower.includes(`${pName} is in vp`) || lower.includes(`${pName} is in the vp`) || lower.includes(`${pName} is on vp`)) {
-      pFront = 0;
-    } else {
-      const vpMatch =
-        lower.match(new RegExp(`(?:point\\s*${pName}|end\\s*${pName}|\\b${pName}\\b)[^.]*?(\\d+(?:\\.\\d+)?)\\s*mm\\s*in\\s*front\\s*of\\s*(?:the\\s*)?vp`, 'i')) ||
-        lower.match(/(\d+(?:\.\d+)?)\s*mm\s*in\s*front\s*of\s*(?:the\s*)?vp/i);
-      const vpBehindMatch =
-        lower.match(new RegExp(`(?:point\\s*${pName}|end\\s*${pName}|\\b${pName}\\b)[^.]*?(\\d+(?:\\.\\d+)?)\\s*mm\\s*behind\\s*(?:the\\s*)?vp`, 'i')) ||
-        lower.match(/(\d+(?:\.\d+)?)\s*mm\s*behind\s*(?:the\s*)?vp/i);
-      if (vpMatch) pFront = parseFloat(vpMatch[1]);
-      else if (vpBehindMatch) pFront = -parseFloat(vpBehindMatch[1]);
-      else pFront = 20;
-    }
-
-    // Point Q Position
-    let qAbove: number | null = null;
-    let qFront: number | null = null;
-
-    if (isParHP) {
-      qAbove = pAbove;
-    } else {
-      const qHpMatch = lower.match(new RegExp(`(?:point\\s*${qName}|end\\s*${qName}|\\b${qName}\\b)[^.]*?(\\d+(?:\\.\\d+)?)\\s*mm\\s*above\\s*(?:the\\s*)?hp`, 'i'));
-      const qHpBelowMatch = lower.match(new RegExp(`(?:point\\s*${qName}|end\\s*${qName}|\\b${qName}\\b)[^.]*?(\\d+(?:\\.\\d+)?)\\s*mm\\s*below\\s*(?:the\\s*)?hp`, 'i'));
-      if (qHpMatch) qAbove = parseFloat(qHpMatch[1]);
-      else if (qHpBelowMatch) qAbove = -parseFloat(qHpBelowMatch[1]);
-      else if (isPerpHP) qAbove = Math.max(0, pAbove - tl);
-      else qAbove = pAbove + tl * Math.sin((theta * Math.PI) / 180);
-    }
-
-    if (isParVP) {
-      qFront = pFront;
-    } else {
-      const qVpMatch = lower.match(new RegExp(`(?:point\\s*${qName}|end\\s*${qName}|\\b${qName}\\b)[^.]*?(\\d+(?:\\.\\d+)?)\\s*mm\\s*in\\s*front\\s*of\\s*(?:the\\s*)?vp`, 'i'));
-      const qVpBehindMatch = lower.match(new RegExp(`(?:point\\s*${qName}|end\\s*${qName}|\\b${qName}\\b)[^.]*?(\\d+(?:\\.\\d+)?)\\s*mm\\s*behind\\s*(?:the\\s*)?vp`, 'i'));
-      if (qVpMatch) qFront = parseFloat(qVpMatch[1]);
-      else if (qVpBehindMatch) qFront = -parseFloat(qVpBehindMatch[1]);
-      else if (isPerpVP) qFront = Math.max(0, pFront - tl);
-      else qFront = pFront + tl * Math.sin((phi * Math.PI) / 180);
-    }
-
-    // Rule 5: Calculate DEP mathematically - DO NOT hallucinate 50!
-    let dep = 0;
-    if (isPerpHP || isPerpVP) {
-      dep = 0;
-    } else {
-      const thetaRad = (theta * Math.PI) / 180;
-      const phiRad = (phi * Math.PI) / 180;
-      const dy = tl * Math.sin(phiRad);
-      const dz = tl * Math.sin(thetaRad);
-      const dxSq = Math.max(0, tl * tl - dy * dy - dz * dz);
-      dep = Math.round(Math.sqrt(dxSq) * 100) / 100;
-    }
-
-    let orientation = 'INCLINED_BOTH';
-    if (isPerpHP) orientation = 'PERPENDICULAR_HP';
-    else if (isPerpVP) orientation = 'PERPENDICULAR_VP';
-    else if (isParHP && isParVP) orientation = 'PARALLEL_BOTH';
-    else if (isParHP) orientation = 'INCLINED_VP_PARALLEL_HP';
-    else if (isParVP) orientation = 'INCLINED_HP_PARALLEL_VP';
-
-    const schema: ExtractedQuestionSchema = {
-      line_name: lineName,
-      start_point: startPoint,
-      end_point: endPoint,
-      true_length_mm: tl,
-      p_above_hp_mm: pAbove,
-      p_in_front_of_vp_mm: pFront,
-      q_above_hp_mm: qAbove,
-      q_in_front_of_vp_mm: qFront,
-      theta_hp_deg: theta,
-      phi_vp_deg: phi,
-      alpha_apparent_fv_deg: null,
-      beta_apparent_tv_deg: null,
-      front_view_length_mm: orientation === 'PERPENDICULAR_VP' ? 0 : tl * Math.cos((phi * Math.PI) / 180),
-      top_view_length_mm: orientation === 'PERPENDICULAR_HP' ? 0 : tl * Math.cos((theta * Math.PI) / 180),
-      dep_projector_distance_mm: dep,
-      is_parallel_to_hp: isParHP,
-      is_parallel_to_vp: isParVP,
-      is_perpendicular_to_hp: isPerpHP,
-      is_perpendicular_to_vp: isPerpVP,
-      transcribed_question: cleanedText,
-    };
-
-    const isHiddenB = orientation === 'PERPENDICULAR_HP' && pAbove >= qAbove;
-    const isHiddenA = orientation === 'PERPENDICULAR_HP' && qAbove > pAbove;
-
-    const parsed: ParsedLineResult = {
-      type: 'LINE',
-      nameA: startPoint,
-      nameB: endPoint,
-      trueLength: tl,
-      thetaDeg: theta,
-      phiDeg: phi,
-      orientation,
-      mode: 'END_POINTS',
-      endA: {
-        name: startPoint,
-        hpRelation: pAbove === 0 ? 'ON' : pAbove > 0 ? 'ABOVE' : 'BELOW',
-        distanceHp: Math.abs(pAbove),
-        vpRelation: pFront === 0 ? 'ON' : pFront > 0 ? 'IN_FRONT' : 'BEHIND',
-        distanceVp: Math.abs(pFront),
-      },
-      endB: {
-        name: endPoint,
-        hpRelation: qAbove === 0 ? 'ON' : qAbove > 0 ? 'ABOVE' : 'BELOW',
-        distanceHp: Math.abs(qAbove),
-        vpRelation: qFront === 0 ? 'ON' : qFront > 0 ? 'IN_FRONT' : 'BEHIND',
-        distanceVp: Math.abs(qFront),
-      },
-      dep,
-      frontViewLength: orientation === 'PERPENDICULAR_VP' ? 0 : tl * Math.cos((phi * Math.PI) / 180),
-      topViewLength: orientation === 'PERPENDICULAR_HP' ? 0 : tl * Math.cos((theta * Math.PI) / 180),
-      targetQuadrantB: 'FIRST',
-      hiddenA: isHiddenA,
-      hiddenB: isHiddenB,
-      topViewLabel:
-        orientation === 'PERPENDICULAR_HP'
-          ? pAbove >= qAbove
-            ? `${startPoint.toLowerCase()}(${endPoint.toLowerCase()})`
-            : `${endPoint.toLowerCase()}(${startPoint.toLowerCase()})`
-          : `${startPoint.toLowerCase()}${endPoint.toLowerCase()}`,
-      frontViewLabelA: `${startPoint.toLowerCase()}′`,
-      frontViewLabelB: `${endPoint.toLowerCase()}′`,
-      explanation: `Line ${lineName} (${tl} mm) ${orientation === 'PERPENDICULAR_HP' ? 'perpendicular to HP and parallel to VP' : orientation === 'INCLINED_VP_PARALLEL_HP' ? `parallel to HP and inclined to VP at φ=${phi}°` : orientation === 'INCLINED_HP_PARALLEL_VP' ? `parallel to VP and inclined to HP at θ=${theta}°` : 'orthographic projection'}.`,
-    };
-
-    return { schema, parsed };
   };
 
   /**
-   * Process image via server-side Gemini 3.8 Flash OCR endpoint
+   * Process image via server-side Gemini 3.8 Flash OCR and Tesseract engine
    */
   const processImageOcr = async (dataUrl: string, mimeType = 'image/jpeg') => {
     setIsScanning(true);
     setScanError(null);
+    setParsedResult(null);
+    setNormalizedModel(null);
+    setExtractedSchema(null);
+
     try {
       const res = await fetch('/api/scan-question', {
         method: 'POST',
@@ -446,11 +274,45 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
       }
 
       const data = await res.json();
-      if (data.success && data.parsed) {
-        if (data.rawText) {
-          setQuestionText(data.rawText);
+      if (data.success) {
+        const text = data.rawText || '';
+        setQuestionText(text);
+
+        const model = data.normalizedModel || parseTextToNormalizedModel(text, 'OCR');
+        const solution = data.solution || solveNormalizedModel(model);
+        setNormalizedModel(model);
+
+        if (solution.candidate_solutions && solution.candidate_solutions.length > 0) {
+          const cand = solution.candidate_solutions[0];
+          setParsedResult({
+            type: 'LINE',
+            nameA: cand.nameA,
+            nameB: cand.nameB,
+            trueLength: cand.trueLength,
+            thetaDeg: cand.thetaDeg,
+            phiDeg: cand.phiDeg,
+            orientation: cand.orientation,
+            endA: {
+              name: cand.nameA,
+              hpRelation: cand.input.endA.hpRelation,
+              distanceHp: cand.input.endA.distanceHp,
+              vpRelation: cand.input.endA.vpRelation,
+              distanceVp: cand.input.endA.distanceVp,
+            },
+            endB: {
+              name: cand.nameB,
+              hpRelation: cand.input.endB.hpRelation,
+              distanceHp: cand.input.endB.distanceHp,
+              vpRelation: cand.input.endB.vpRelation,
+              distanceVp: cand.input.endB.distanceVp,
+            },
+            mode: cand.input.mode,
+            dep: cand.dep,
+            frontViewLength: cand.frontViewLength,
+            topViewLength: cand.topViewLength,
+            explanation: cand.orientationDesc,
+          });
         }
-        setParsedResult(data.parsed);
         if (data.extractedSchema) {
           setExtractedSchema(data.extractedSchema);
         }
@@ -459,16 +321,14 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
         throw new Error(data.error || 'Failed to extract drawing values');
       }
     } catch (err: any) {
-      console.warn('Server OCR fallback engaged:', err);
-      const fallback = parseQuestionRuleBased(
-        questionText ||
-          'A Line PQ 70mm long is parallel to the HP and inclined at 30° to the VP. Point P is 25mm above the HP and 20mm in front of the VP. Draw its projections.'
-      );
-      if (fallback) {
-        setParsedResult(fallback.parsed);
-        setExtractedSchema(fallback.schema);
+      console.warn('Server OCR error:', err);
+      if (questionText && questionText.trim().length > 5) {
+        parseWithMasterSolver(questionText, 'OCR');
+      } else {
+        setScanError(
+          err.message || 'Unable to recognize text from this photo. Please try uploading a sharper image or type the question directly.'
+        );
       }
-      setOcrEngine('rule-based-engine');
     } finally {
       setIsScanning(false);
     }
@@ -477,6 +337,13 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Reset previous question state completely so no stale values display
+    setQuestionText('');
+    setParsedResult(null);
+    setNormalizedModel(null);
+    setExtractedSchema(null);
+    setScanError(null);
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -532,6 +399,14 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
     if (!ctx) return;
     ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
     const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+
+    // Reset old state immediately
+    setQuestionText('');
+    setParsedResult(null);
+    setNormalizedModel(null);
+    setExtractedSchema(null);
+    setScanError(null);
+
     setSelectedImage(dataUrl);
     stopCamera();
     setActiveTab('upload');
@@ -541,31 +416,29 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
   const handleTextChange = (val: string) => {
     setQuestionText(val);
     setAppliedNotification(false);
-    if (val.trim().length > 8) {
-      const res = parseQuestionRuleBased(val);
-      if (res) {
-        setParsedResult(res.parsed);
-        setExtractedSchema(res.schema);
-        setOcrEngine('instant-rule-parser');
-      }
-    } else {
-      setParsedResult(null);
-      setExtractedSchema(null);
-    }
+    parseWithMasterSolver(val, 'CLIPBOARD');
   };
 
   const handleSelectSample = (sample: typeof SAMPLE_TEXTBOOK_QUESTIONS[0]) => {
     setQuestionText(sample.text);
-    const res = parseQuestionRuleBased(sample.text);
-    if (res) {
-      setParsedResult(res.parsed);
-      setExtractedSchema(res.schema);
-      setOcrEngine('textbook-dataset');
-    }
+    parseWithMasterSolver(sample.text, 'SAMPLE');
     setActiveTab('text');
   };
 
   const handleApply = () => {
+    if (normalizedModel) {
+      const solution = solveNormalizedModel(normalizedModel);
+      if (solution.candidate_solutions && solution.candidate_solutions.length > 0) {
+        onApplyLine(solution.candidate_solutions[0].input);
+        setAppliedNotification(true);
+        setTimeout(() => {
+          stopCamera();
+          onClose();
+        }, 600);
+        return;
+      }
+    }
+
     if (!parsedResult) return;
 
     if (parsedResult.type === 'POINT') {
@@ -609,7 +482,10 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
           : {
               name: parsedResult.nameB,
               hpRelation: 'ABOVE',
-              distanceHp: parsedResult.orientation === 'PERPENDICULAR_HP' ? 10 : 25,
+              distanceHp:
+                parsedResult.orientation === 'PERPENDICULAR_HP'
+                  ? parsedResult.endA.distanceHp + parsedResult.trueLength
+                  : parsedResult.endA.distanceHp,
               vpRelation: 'IN_FRONT',
               distanceVp: parsedResult.endA.distanceVp,
             },
@@ -628,7 +504,7 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
     setTimeout(() => {
       stopCamera();
       onClose();
-    }, 800);
+    }, 600);
   };
 
   return (
@@ -925,77 +801,127 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
           {/* Parsed Result Breakdown */}
           {parsedResult && !isScanning && (
             <div className="p-4 rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/40 dark:bg-emerald-950/20 flex flex-col gap-3 animate-in fade-in duration-200">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-emerald-900 dark:text-emerald-300 flex items-center gap-1.5 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  <span>
-                    Parsed {parsedResult.type === 'POINT' ? 'Point' : `Line ${parsedResult.nameA}${parsedResult.nameB} (${parsedResult.orientation || 'Standard'})`}
+                  <span className="font-bold text-emerald-900 dark:text-emerald-300 text-xs">
+                    {normalizedModel?.categoryTitle
+                      ? `${normalizedModel.category.replace(/_/g, ' ')}: ${normalizedModel.categoryTitle}`
+                      : parsedResult.type === 'POINT'
+                      ? `Point ${parsedResult.name}`
+                      : `Line ${parsedResult.nameA}${parsedResult.nameB} (${parsedResult.orientation || 'Standard'})`}
                   </span>
-                </span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-200/80 text-emerald-900 dark:bg-emerald-900/80 dark:text-emerald-200">
-                  {ocrEngine || 'Extracted Parameters'}
-                </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {normalizedModel && (
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                        normalizedModel.validation_status === 'VALID'
+                          ? 'bg-emerald-200 text-emerald-900 dark:bg-emerald-900/80 dark:text-emerald-200'
+                          : normalizedModel.validation_status === 'INCONSISTENT_CONSTRAINTS'
+                          ? 'bg-red-200 text-red-900 dark:bg-red-900/80 dark:text-red-200'
+                          : normalizedModel.validation_status === 'UNDERDETERMINED'
+                          ? 'bg-amber-200 text-amber-900 dark:bg-amber-900/80 dark:text-amber-200'
+                          : 'bg-purple-200 text-purple-900 dark:bg-purple-900/80 dark:text-purple-200'
+                      }`}
+                    >
+                      {normalizedModel.validation_status}
+                    </span>
+                  )}
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-300">
+                    {ocrEngine || 'master-solver'}
+                  </span>
+                </div>
               </div>
 
-              {parsedResult.type === 'LINE' && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              {/* Validation Warnings / Contradictions */}
+              {normalizedModel && normalizedModel.validation_messages.length > 0 && (
+                <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 flex flex-col gap-1 text-[11px] text-amber-900 dark:text-amber-300">
+                  {normalizedModel.validation_messages.map((msg, i) => (
+                    <div key={i} className="flex items-start gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                      <span>{msg}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {parsedResult.type === 'POINT' && (
+                <div className="grid grid-cols-2 gap-2 text-xs">
                   <div className="p-2 rounded-lg bg-white/80 dark:bg-slate-900/80 border border-emerald-100 dark:border-emerald-900/40">
-                    <span className="text-[10px] text-slate-400 block">Line &amp; True Length</span>
+                    <span className="text-[10px] text-slate-400 block">Elevation relative to HP</span>
                     <span className="font-mono font-bold text-slate-900 dark:text-slate-100 text-sm">
-                      {parsedResult.nameA}{parsedResult.nameB} = {parsedResult.trueLength} mm
+                      {parsedResult.distanceHp} mm {parsedResult.hpRelation}
                     </span>
                   </div>
-
                   <div className="p-2 rounded-lg bg-white/80 dark:bg-slate-900/80 border border-emerald-100 dark:border-emerald-900/40">
-                    <span className="text-[10px] text-slate-400 block">True Inclinations</span>
-                    <span className="font-mono font-bold text-purple-600 dark:text-purple-400">
-                      θ (HP) = {parsedResult.thetaDeg}°, φ (VP) = {parsedResult.phiDeg}°
-                    </span>
-                  </div>
-
-                  <div className="p-2 rounded-lg bg-white/80 dark:bg-slate-900/80 border border-emerald-100 dark:border-emerald-900/40">
-                    <span className="text-[10px] text-slate-400 block">Start Point {parsedResult.nameA}</span>
-                    <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
-                      {parsedResult.endA.distanceHp}mm {parsedResult.endA.hpRelation}, {parsedResult.endA.distanceVp}mm {parsedResult.endA.vpRelation}
-                    </span>
-                  </div>
-
-                  <div className="p-2 rounded-lg bg-white/80 dark:bg-slate-900/80 border border-emerald-100 dark:border-emerald-900/40">
-                    <span className="text-[10px] text-slate-400 block">End Point {parsedResult.nameB}</span>
-                    <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
-                      {parsedResult.endB?.distanceHp}mm {parsedResult.endB?.hpRelation}, {parsedResult.endB?.distanceVp}mm {parsedResult.endB?.vpRelation}
+                    <span className="text-[10px] text-slate-400 block">Plan relative to VP</span>
+                    <span className="font-mono font-bold text-blue-600 dark:text-blue-400 text-sm">
+                      {parsedResult.distanceVp} mm {parsedResult.vpRelation}
                     </span>
                   </div>
                 </div>
               )}
 
-              {/* Exact Extracted Schema Tags */}
-              {extractedSchema && (
-                <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[10px] font-mono">
-                  {extractedSchema.is_parallel_to_hp && (
-                    <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
-                      is_parallel_to_hp: true (θ = 0°)
+              {parsedResult.type === 'LINE' && (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    <div className="p-2 rounded-lg bg-white/80 dark:bg-slate-900/80 border border-emerald-100 dark:border-emerald-900/40">
+                      <span className="text-[10px] text-slate-400 block">Line &amp; True Length</span>
+                      <span className="font-mono font-bold text-slate-900 dark:text-slate-100 text-sm">
+                        {parsedResult.nameA}{parsedResult.nameB} = {parsedResult.trueLength} mm
+                      </span>
+                    </div>
+
+                    <div className="p-2 rounded-lg bg-white/80 dark:bg-slate-900/80 border border-emerald-100 dark:border-emerald-900/40">
+                      <span className="text-[10px] text-slate-400 block">True Inclinations</span>
+                      <span className="font-mono font-bold text-purple-600 dark:text-purple-400">
+                        θ (HP) = {parsedResult.thetaDeg}°, φ (VP) = {parsedResult.phiDeg}°
+                      </span>
+                    </div>
+
+                    <div className="p-2 rounded-lg bg-white/80 dark:bg-slate-900/80 border border-emerald-100 dark:border-emerald-900/40">
+                      <span className="text-[10px] text-slate-400 block">Start Point {parsedResult.nameA}</span>
+                      <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                        {parsedResult.endA.distanceHp}mm {parsedResult.endA.hpRelation}, {parsedResult.endA.distanceVp}mm {parsedResult.endA.vpRelation}
+                      </span>
+                    </div>
+
+                    <div className="p-2 rounded-lg bg-white/80 dark:bg-slate-900/80 border border-emerald-100 dark:border-emerald-900/40">
+                      <span className="text-[10px] text-slate-400 block">End Point {parsedResult.nameB}</span>
+                      <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                        {parsedResult.endB?.distanceHp}mm {parsedResult.endB?.hpRelation}, {parsedResult.endB?.distanceVp}mm {parsedResult.endB?.vpRelation}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Exact Extracted Schema Tags */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[10px] font-mono">
+                    {parsedResult.orientation === 'PERPENDICULAR_HP' && (
+                      <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300">
+                        Perpendicular to HP • θ = 90°
+                      </span>
+                    )}
+                    {parsedResult.orientation === 'PERPENDICULAR_VP' && (
+                      <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300">
+                        Perpendicular to VP • φ = 90°
+                      </span>
+                    )}
+                    {parsedResult.frontViewLength !== undefined && (
+                      <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                        Elevation: {parsedResult.frontViewLength} mm
+                      </span>
+                    )}
+                    {parsedResult.topViewLength !== undefined && (
+                      <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
+                        Plan: {parsedResult.topViewLength} mm
+                      </span>
+                    )}
+                    <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-300">
+                      DEP: {parsedResult.dep !== undefined ? `${parsedResult.dep} mm` : '0 mm'}
                     </span>
-                  )}
-                  {extractedSchema.is_parallel_to_vp && (
-                    <span className="px-2 py-0.5 rounded bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300">
-                      is_parallel_to_vp: true (φ = 0°)
-                    </span>
-                  )}
-                  {extractedSchema.is_perpendicular_to_hp && (
-                    <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300">
-                      is_perpendicular_to_hp: true (θ = 90°)
-                    </span>
-                  )}
-                  {extractedSchema.is_perpendicular_to_vp && (
-                    <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300">
-                      is_perpendicular_to_vp: true (φ = 90°)
-                    </span>
-                  )}
-                  <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-300">
-                    dep: {extractedSchema.dep_projector_distance_mm !== null ? `${extractedSchema.dep_projector_distance_mm}mm` : 'calculated'}
-                  </span>
-                </div>
+                  </div>
+                </>
               )}
 
               {parsedResult.explanation && (

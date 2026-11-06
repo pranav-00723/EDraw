@@ -13,7 +13,8 @@ import { LineTwoDOrthographicView } from './LineTwoDOrthographicView';
 import { LineTheoryPanel } from './LineTheoryPanel';
 import { ScanQuestionModal } from '../../components/ScanQuestionModal';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
-import { Sparkles } from 'lucide-react';
+import { MasterRegressionSuiteModal } from './MasterRegressionSuiteModal';
+import { Sparkles, ShieldCheck } from 'lucide-react';
 
 interface LinesModuleProps {
   hpColor: string;
@@ -65,6 +66,7 @@ export const LinesModule: React.FC<LinesModuleProps> = ({
   const [input, setInput] = useState<LineProblemInput>(initialLineInput || DEFAULT_LINE_INPUT);
   const [activeTab, setActiveTab] = useState<'both' | '3d' | '2d'>('both');
   const [isScanModalOpen, setIsScanModalOpen] = useState<boolean>(false);
+  const [isRegressionModalOpen, setIsRegressionModalOpen] = useState<boolean>(false);
 
   useEffect(() => {
     if (initialLineInput) {
@@ -108,6 +110,17 @@ export const LinesModule: React.FC<LinesModuleProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Master Solver & Regression Suite Button */}
+          <button
+            onClick={() => setIsRegressionModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs cursor-pointer transition"
+            title="10 Master Regression Tests & Constraint Normalizer"
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Master Tests (10)</span>
+            <span className="sm:hidden">Tests</span>
+          </button>
+
           {/* Scan Question Button */}
           <button
             onClick={() => setIsScanModalOpen(true)}
@@ -272,6 +285,16 @@ export const LinesModule: React.FC<LinesModuleProps> = ({
         onApplyLine={(scannedLine) => {
           setInput(scannedLine);
         }}
+      />
+
+      {/* Master Straight Line Solver & Regression Suite Modal */}
+      <MasterRegressionSuiteModal
+        isOpen={isRegressionModalOpen}
+        onClose={() => setIsRegressionModalOpen(false)}
+        onApplyLine={(scannedLine) => {
+          setInput(scannedLine);
+        }}
+        isDark={isDark}
       />
     </div>
   );

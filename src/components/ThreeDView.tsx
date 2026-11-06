@@ -146,6 +146,10 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
   const spacePointsGroupRef = useRef<THREE.Group | null>(null); // 3D points in space (hidden when folded)
   const hpProjectionsGroupRef = useRef<THREE.Group | null>(null); // Top view projections on HP (rotates with foldGroup)
   const vpProjectionsGroupRef = useRef<THREE.Group | null>(null); // Front view projections on VP (fixed on VP)
+  const quadrantsGroupRef = useRef<THREE.Group | null>(null); // Quadrant markers group
+
+  // Active Camera Preset / View mode ('iso', 'front', 'top')
+  const [activeView, setActiveView] = useState<'iso' | 'front' | 'top'>('iso');
 
   // Interactive settings state
   const [showHp, setShowHp] = useState(true);
@@ -216,6 +220,11 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
       controls.target.set(0, 0, 0);
       controlsRef.current = controls;
 
+      controls.addEventListener('start', () => {
+        // When user manually orbits camera, return to full 3D mode
+        setActiveView('iso');
+      });
+
     // Lighting Rig
     const hemiLight = new THREE.HemisphereLight(0xffffff, 0x64748b, 0.85);
     scene.add(hemiLight);
@@ -256,6 +265,11 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
     const vpProjectionsGroup = new THREE.Group();
     scene.add(vpProjectionsGroup);
     vpProjectionsGroupRef.current = vpProjectionsGroup;
+
+    // Quadrants Group — holds quadrant labels/tints in 3D cutting representation
+    const quadrantsGroup = new THREE.Group();
+    scene.add(quadrantsGroup);
+    quadrantsGroupRef.current = quadrantsGroup;
 
     // 3D Space Points Group — contains the actual point in space and 3D rays (hidden when folded)
     const spacePointsGroup = new THREE.Group();
@@ -580,49 +594,56 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
     }
 
     // 4. QUADRANT MARKERS IN 3D SPACE
-    if (showQuadrants) {
-      const quadColors = isDark
-        ? ['#60a5fa', '#f87171', '#34d399', '#c084fc']
-        : ['#1d4ed8', '#b91c1c', '#047857', '#7e22ce'];
+    const quadrantsGroup = quadrantsGroupRef.current;
+    if (quadrantsGroup) {
+      while (quadrantsGroup.children.length > 0) {
+        quadrantsGroup.remove(quadrantsGroup.children[0]);
+      }
 
-      const quadOffsetVert = Math.min(maxVert * 0.5, 45);
-      const quadOffsetDepth = Math.min(maxDepth * 0.5, 45);
+      if (showQuadrants) {
+        const quadColors = isDark
+          ? ['#60a5fa', '#f87171', '#34d399', '#c084fc']
+          : ['#1d4ed8', '#b91c1c', '#047857', '#7e22ce'];
 
-      // 1st Quadrant: +Y (up), +Z (front)
-      const q1 = createTextSprite('1st Quadrant', {
-        fontsize: 18,
-        textColor: quadColors[0],
-        backgroundColor: isDark ? 'rgba(15,23,42,0.7)' : 'rgba(255,255,255,0.75)',
-      });
-      q1.position.set(startX + 25, quadOffsetVert, quadOffsetDepth);
-      vpGroup.add(q1);
+        const quadOffsetVert = Math.min(maxVert * 0.5, 45);
+        const quadOffsetDepth = Math.min(maxDepth * 0.5, 45);
 
-      // 2nd Quadrant: +Y (up), -Z (behind)
-      const q2 = createTextSprite('2nd Quadrant', {
-        fontsize: 18,
-        textColor: quadColors[1],
-        backgroundColor: isDark ? 'rgba(15,23,42,0.7)' : 'rgba(255,255,255,0.75)',
-      });
-      q2.position.set(startX + 25, quadOffsetVert, -quadOffsetDepth);
-      vpGroup.add(q2);
+        // 1st Quadrant: +Y (up), +Z (front)
+        const q1 = createTextSprite('1st Quadrant', {
+          fontsize: 18,
+          textColor: quadColors[0],
+          backgroundColor: isDark ? 'rgba(15,23,42,0.7)' : 'rgba(255,255,255,0.75)',
+        });
+        q1.position.set(startX + 25, quadOffsetVert, quadOffsetDepth);
+        quadrantsGroup.add(q1);
 
-      // 3rd Quadrant: -Y (below), -Z (behind)
-      const q3 = createTextSprite('3rd Quadrant', {
-        fontsize: 18,
-        textColor: quadColors[2],
-        backgroundColor: isDark ? 'rgba(15,23,42,0.7)' : 'rgba(255,255,255,0.75)',
-      });
-      q3.position.set(startX + 25, -quadOffsetVert, -quadOffsetDepth);
-      vpGroup.add(q3);
+        // 2nd Quadrant: +Y (up), -Z (behind)
+        const q2 = createTextSprite('2nd Quadrant', {
+          fontsize: 18,
+          textColor: quadColors[1],
+          backgroundColor: isDark ? 'rgba(15,23,42,0.7)' : 'rgba(255,255,255,0.75)',
+        });
+        q2.position.set(startX + 25, quadOffsetVert, -quadOffsetDepth);
+        quadrantsGroup.add(q2);
 
-      // 4th Quadrant: -Y (below), +Z (front)
-      const q4 = createTextSprite('4th Quadrant', {
-        fontsize: 18,
-        textColor: quadColors[3],
-        backgroundColor: isDark ? 'rgba(15,23,42,0.7)' : 'rgba(255,255,255,0.75)',
-      });
-      q4.position.set(startX + 25, -quadOffsetVert, quadOffsetDepth);
-      vpGroup.add(q4);
+        // 3rd Quadrant: -Y (below), -Z (behind)
+        const q3 = createTextSprite('3rd Quadrant', {
+          fontsize: 18,
+          textColor: quadColors[2],
+          backgroundColor: isDark ? 'rgba(15,23,42,0.7)' : 'rgba(255,255,255,0.75)',
+        });
+        q3.position.set(startX + 25, -quadOffsetVert, -quadOffsetDepth);
+        quadrantsGroup.add(q3);
+
+        // 4th Quadrant: -Y (below), +Z (front)
+        const q4 = createTextSprite('4th Quadrant', {
+          fontsize: 18,
+          textColor: quadColors[3],
+          backgroundColor: isDark ? 'rgba(15,23,42,0.7)' : 'rgba(255,255,255,0.75)',
+        });
+        q4.position.set(startX + 25, -quadOffsetVert, quadOffsetDepth);
+        quadrantsGroup.add(q4);
+      }
     }
 
     // Auto-update orbit controls target to center of active planes
@@ -644,9 +665,45 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
     // When unfold angle > 0 (or folding/folded), hide the 3D space point and rays
     // so ONLY front view and top view projections are visible.
     if (spacePointsGroupRef.current) {
-      spacePointsGroupRef.current.visible = unfoldAngle === 0;
+      spacePointsGroupRef.current.visible = activeView === 'iso' && unfoldAngle === 0;
     }
-  }, [unfoldAngle]);
+  }, [unfoldAngle, activeView]);
+
+  // Handle visibility when clicking Front View, Top View, or Isometric
+  useEffect(() => {
+    const hpGroup = hpGroupRef.current;
+    const vpGroup = vpGroupRef.current;
+    const spaceGroup = spacePointsGroupRef.current;
+    const hpProj = hpProjectionsGroupRef.current;
+    const vpProj = vpProjectionsGroupRef.current;
+    const quadGroup = quadrantsGroupRef.current;
+
+    if (activeView === 'front') {
+      // ONLY the Front View is visible. Hide 3D spatial points, HP, Top View projections, and quadrants
+      if (spaceGroup) spaceGroup.visible = false;
+      if (hpGroup) hpGroup.visible = false;
+      if (hpProj) hpProj.visible = false;
+      if (quadGroup) quadGroup.visible = false;
+      if (vpGroup) vpGroup.visible = true;
+      if (vpProj) vpProj.visible = true;
+    } else if (activeView === 'top') {
+      // ONLY the Top View is visible. Hide 3D spatial points, VP, Front View projections, and quadrants
+      if (spaceGroup) spaceGroup.visible = false;
+      if (vpGroup) vpGroup.visible = false;
+      if (vpProj) vpProj.visible = false;
+      if (quadGroup) quadGroup.visible = false;
+      if (hpGroup) hpGroup.visible = true;
+      if (hpProj) hpProj.visible = true;
+    } else {
+      // Isometric 3D Space: restore all elements based on user interactive checkboxes
+      if (spaceGroup) spaceGroup.visible = unfoldAngle === 0;
+      if (hpGroup) hpGroup.visible = showHp;
+      if (vpGroup) vpGroup.visible = showVp;
+      if (hpProj) hpProj.visible = true;
+      if (vpProj) vpProj.visible = true;
+      if (quadGroup) quadGroup.visible = showQuadrants;
+    }
+  }, [activeView, showHp, showVp, showQuadrants, unfoldAngle]);
 
   // Render Points, Projections, and Dimension Lines in 3D
   useEffect(() => {
@@ -968,7 +1025,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
   }, [points, onSelectPoint]);
 
   // Preset Camera Views
-  const setCameraView = useCallback((view: 'iso' | 'front' | 'top' | 'side') => {
+  const setCameraView = useCallback((view: 'iso' | 'front' | 'top') => {
     const controls = controlsRef.current;
     const camera = cameraRef.current;
     if (!controls || !camera) return;
@@ -988,11 +1045,9 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
       case 'top': // Plan: Look directly from top along -Y at the HP (showing X and Depth Y)
         camera.position.set(centerX, dist * 1.4, 0.001); // tiny epsilon to avoid gimbal lock
         break;
-      case 'side': // Side View: Look along X axis
-        camera.position.set(centerX + dist * 1.4, 0, 0);
-        break;
     }
     controls.update();
+    setActiveView(view);
   }, [planeBounds]);
 
   // Animate Unfolding HP
@@ -1086,7 +1141,11 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
         <button
           onClick={() => setCameraView('iso')}
           style={{ fontFamily: "'Bebas Neue', sans-serif" }}
-          className="px-2.5 py-1 text-sm sm:text-base tracking-wider rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 transition"
+          className={`px-2.5 py-1 text-sm sm:text-base tracking-wider rounded transition ${
+            activeView === 'iso'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
           title="Isometric 3D Projection"
         >
           Isometric
@@ -1094,26 +1153,26 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
         <button
           onClick={() => setCameraView('front')}
           style={{ fontFamily: "'Bebas Neue', sans-serif" }}
-          className="px-2.5 py-1 text-sm sm:text-base tracking-wider rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 transition"
-          title="Front View (Elevation towards VP)"
+          className={`px-2.5 py-1 text-sm sm:text-base tracking-wider rounded transition ${
+            activeView === 'front'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+          title="Front View (Elevation on VP — Only Front View Visible)"
         >
           Front(VP)
         </button>
         <button
           onClick={() => setCameraView('top')}
           style={{ fontFamily: "'Bebas Neue', sans-serif" }}
-          className="px-2.5 py-1 text-sm sm:text-base tracking-wider rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 transition"
-          title="Top View (Plan onto HP)"
+          className={`px-2.5 py-1 text-sm sm:text-base tracking-wider rounded transition ${
+            activeView === 'top'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+          title="Top View (Plan on HP — Only Top View Visible)"
         >
           TOP(HP)
-        </button>
-        <button
-          onClick={() => setCameraView('side')}
-          style={{ fontFamily: "'Bebas Neue', sans-serif" }}
-          className="px-2.5 py-1 text-sm sm:text-base tracking-wider rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 transition"
-          title="Side View"
-        >
-          side view
         </button>
         <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
         <button

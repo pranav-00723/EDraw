@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { ComputedLine } from '../../types/lines';
 import { Eye, RotateCcw, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
@@ -26,17 +26,65 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
   isDark = false,
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
-  const [activePreset, setActivePreset] = useState<string>('isometric');
+  const [activePreset, setActivePreset] = useState<'isometric' | 'front' | 'top'>('isometric');
 
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const [webGlAvailable, setWebGlAvailable] = useState<boolean>(true);
 
+  // Scene sub-groups for view filtering
+  const hpGroupRef = useRef<THREE.Group | null>(null);
+  const vpGroupRef = useRef<THREE.Group | null>(null);
+  const groundLineGroupRef = useRef<THREE.Group | null>(null);
+  const spaceLineGroupRef = useRef<THREE.Group | null>(null);
+  const frontViewGroupRef = useRef<THREE.Group | null>(null);
+  const topViewGroupRef = useRef<THREE.Group | null>(null);
+  const tracesGroupRef = useRef<THREE.Group | null>(null);
+
   // Interaction tracking
   const isDraggingRef = useRef<boolean>(false);
   const prevMousePos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const cameraTarget = useRef<THREE.Vector3>(new THREE.Vector3(40, 20, 20));
+
+  const updateVisibilityForPreset = useCallback((preset: 'isometric' | 'front' | 'top') => {
+    const spaceGroup = spaceLineGroupRef.current;
+    const hpGroup = hpGroupRef.current;
+    const vpGroup = vpGroupRef.current;
+    const frontView = frontViewGroupRef.current;
+    const topView = topViewGroupRef.current;
+    const tracesGroup = tracesGroupRef.current;
+    const groundLine = groundLineGroupRef.current;
+
+    if (preset === 'front') {
+      // ONLY the Front View is visible: VP plane + Front View on VP + XY line
+      if (spaceGroup) spaceGroup.visible = false;
+      if (hpGroup) hpGroup.visible = false;
+      if (topView) topView.visible = false;
+      if (tracesGroup) tracesGroup.visible = false;
+      if (vpGroup) vpGroup.visible = true;
+      if (frontView) frontView.visible = true;
+      if (groundLine) groundLine.visible = true;
+    } else if (preset === 'top') {
+      // ONLY the Top View is visible: HP plane + Top View on HP + XY line
+      if (spaceGroup) spaceGroup.visible = false;
+      if (vpGroup) vpGroup.visible = false;
+      if (frontView) frontView.visible = false;
+      if (tracesGroup) tracesGroup.visible = false;
+      if (hpGroup) hpGroup.visible = true;
+      if (topView) topView.visible = true;
+      if (groundLine) groundLine.visible = true;
+    } else {
+      // Isometric 3D Space: everything visible
+      if (spaceGroup) spaceGroup.visible = true;
+      if (hpGroup) hpGroup.visible = true;
+      if (vpGroup) vpGroup.visible = true;
+      if (frontView) frontView.visible = true;
+      if (topView) topView.visible = true;
+      if (tracesGroup) tracesGroup.visible = true;
+      if (groundLine) groundLine.visible = true;
+    }
+  }, []);
 
   // Initialize Three.js scene once
   useEffect(() => {
@@ -96,6 +144,13 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
     const onMouseDown = (e: MouseEvent) => {
       isDraggingRef.current = true;
       prevMousePos.current = { x: e.clientX, y: e.clientY };
+      setActivePreset((current) => {
+        if (current !== 'isometric') {
+          updateVisibilityForPreset('isometric');
+          return 'isometric';
+        }
+        return current;
+      });
     };
 
     const onMouseMove = (e: MouseEvent) => {
@@ -195,15 +250,40 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
     const root = new THREE.Group();
     root.name = 'plane-or-point-object';
 
+    // Sub-groups for precise Front View / Top View / 3D visibility control
+    const hpGroup = new THREE.Group();
+    hpGroupRef.current = hpGroup;
+    root.add(hpGroup);
+
+    const vpGroup = new THREE.Group();
+    vpGroupRef.current = vpGroup;
+    root.add(vpGroup);
+
+    const groundLineGroup = new THREE.Group();
+    groundLineGroupRef.current = groundLineGroup;
+    root.add(groundLineGroup);
+
+    const spaceLineGroup = new THREE.Group();
+    spaceLineGroupRef.current = spaceLineGroup;
+    root.add(spaceLineGroup);
+
+    const frontViewGroup = new THREE.Group();
+    frontViewGroupRef.current = frontViewGroup;
+    root.add(frontViewGroup);
+
+    const topViewGroup = new THREE.Group();
+    topViewGroupRef.current = topViewGroup;
+    root.add(topViewGroup);
+
+    const tracesGroup = new THREE.Group();
+    tracesGroupRef.current = tracesGroup;
+    root.add(tracesGroup);
+
     const planeW = 260;
     const planeD = 200;
     const planeH = 200;
 
     // 1. Horizontal Plane (HP) - lies on X-Z plane (in Three.js Y=0)
-    // Three.js coordinates mapping:
-    // User X (lateral along XY) -> Three.js X
-    // User Z (height above HP)  -> Three.js Y
-    // User Y (depth from VP, +front) -> Three.js Z (+Z is in front of VP)
     const hpGeo = new THREE.PlaneGeometry(planeW, planeD);
     const hpMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color(hpColor),
@@ -215,7 +295,7 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
     const hpMesh = new THREE.Mesh(hpGeo, hpMat);
     hpMesh.rotation.x = Math.PI / 2;
     hpMesh.position.set(40, 0, 0);
-    root.add(hpMesh);
+    hpGroup.add(hpMesh);
 
     // HP Edges perimeter frame
     const hpEdges = new THREE.LineSegments(
@@ -229,7 +309,7 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
     );
     hpEdges.rotation.x = Math.PI / 2;
     hpEdges.position.set(40, 0, 0);
-    root.add(hpEdges);
+    hpGroup.add(hpEdges);
 
     // 2. Vertical Plane (VP) - lies on X-Y plane (in Three.js Z=0)
     const vpGeo = new THREE.PlaneGeometry(planeW, planeH);
@@ -242,7 +322,7 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
     });
     const vpMesh = new THREE.Mesh(vpGeo, vpMat);
     vpMesh.position.set(40, 0, 0);
-    root.add(vpMesh);
+    vpGroup.add(vpMesh);
 
     // VP Edges perimeter frame
     const vpEdges = new THREE.LineSegments(
@@ -255,7 +335,7 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
       })
     );
     vpEdges.position.set(40, 0, 0);
-    root.add(vpEdges);
+    vpGroup.add(vpEdges);
 
     // 3. Ground Line (XY Line) - intersection of HP & VP
     const xyLineMat = new THREE.LineBasicMaterial({
@@ -268,7 +348,7 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
     ];
     const xyGeo = new THREE.BufferGeometry().setFromPoints(xyPoints);
     const xyLine = new THREE.Line(xyGeo, xyLineMat);
-    root.add(xyLine);
+    groundLineGroup.add(xyLine);
 
     // Labels for X and Y line
     const createTextSprite = (text: string, color: string, fontSize = 24) => {
@@ -291,20 +371,20 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
 
     const xLabel = createTextSprite('X', isDark ? '#ffffff' : '#0f172a', 32);
     xLabel.position.set(-95, 4, 0);
-    root.add(xLabel);
+    groundLineGroup.add(xLabel);
 
     const yLabel = createTextSprite('Y', isDark ? '#ffffff' : '#0f172a', 32);
     yLabel.position.set(175, 4, 0);
-    root.add(yLabel);
+    groundLineGroup.add(yLabel);
 
     // Plane Labels
     const hpLabelSprite = createTextSprite('TOP VIEW (HP)', hpColor, 20);
     hpLabelSprite.position.set(130, 2, 70);
-    root.add(hpLabelSprite);
+    hpGroup.add(hpLabelSprite);
 
     const vpLabelSprite = createTextSprite('FRONT VIEW (VP)', vpColor, 20);
     vpLabelSprite.position.set(130, 70, 2);
-    root.add(vpLabelSprite);
+    vpGroup.add(vpLabelSprite);
 
     // 4. Coordinates of Line Ends in Space
     // User: (x, y, z) -> Three.js: (x, z, y)
@@ -329,7 +409,7 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
         metalness: 0.5,
       });
       const lineMesh = new THREE.Mesh(lineTubeGeo, lineTubeMat);
-      root.add(lineMesh);
+      spaceLineGroup.add(lineMesh);
     }
 
     // Spheres for Ends A and B in Space - reduced size
@@ -341,20 +421,20 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
 
     const sphereA = new THREE.Mesh(endGeo, endMat);
     sphereA.position.copy(posA3D);
-    root.add(sphereA);
+    spaceLineGroup.add(sphereA);
 
     const sphereB = new THREE.Mesh(endGeo, endMat);
     sphereB.position.copy(posB3D);
-    root.add(sphereB);
+    spaceLineGroup.add(sphereB);
 
     // Labels for Ends in Space
     const labelA3D = createTextSprite(line.nameA, '#10b981', 28);
     labelA3D.position.set(posA3D.x - 6, posA3D.y + 6, posA3D.z);
-    root.add(labelA3D);
+    spaceLineGroup.add(labelA3D);
 
     const labelB3D = createTextSprite(line.nameB, '#10b981', 28);
     labelB3D.position.set(posB3D.x + 6, posB3D.y + 6, posB3D.z);
-    root.add(labelB3D);
+    spaceLineGroup.add(labelB3D);
 
     // 6. Front View (Elevation) on VP: a′b′
     const projGeo = new THREE.SphereGeometry(1.2, 12, 12);
@@ -368,32 +448,32 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
         roughness: 0.3,
       });
       const fvMesh = new THREE.Mesh(fvTubeGeo, fvMat);
-      root.add(fvMesh);
+      frontViewGroup.add(fvMesh);
 
       const markerA_VP = new THREE.Mesh(projGeo, fvMarkerMat);
       markerA_VP.position.copy(posA_VP);
-      root.add(markerA_VP);
+      frontViewGroup.add(markerA_VP);
 
       const markerB_VP = new THREE.Mesh(projGeo, fvMarkerMat);
       markerB_VP.position.copy(posB_VP);
-      root.add(markerB_VP);
+      frontViewGroup.add(markerB_VP);
 
       const labelA_VP = createTextSprite(line.aFront.label, vpColor, 26);
       labelA_VP.position.set(posA_VP.x - 6, posA_VP.y + 6, 2);
-      root.add(labelA_VP);
+      frontViewGroup.add(labelA_VP);
 
       const labelB_VP = createTextSprite(line.bFront.label, vpColor, 26);
       labelB_VP.position.set(posB_VP.x + 6, posB_VP.y + 6, 2);
-      root.add(labelB_VP);
+      frontViewGroup.add(labelB_VP);
     } else {
       // Front view is a single point (Perpendicular to VP)
       const marker_VP = new THREE.Mesh(projGeo, fvMarkerMat);
       marker_VP.position.copy(posA_VP);
-      root.add(marker_VP);
+      frontViewGroup.add(marker_VP);
 
       const label_VP = createTextSprite(line.aFront.label, vpColor, 26);
       label_VP.position.set(posA_VP.x + 8, posA_VP.y + 4, 2);
-      root.add(label_VP);
+      frontViewGroup.add(label_VP);
     }
 
     // 7. Top View (Plan) on HP: ab
@@ -407,32 +487,32 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
         roughness: 0.3,
       });
       const tvMesh = new THREE.Mesh(tvTubeGeo, tvMat);
-      root.add(tvMesh);
+      topViewGroup.add(tvMesh);
 
       const markerA_HP = new THREE.Mesh(projGeo, tvMarkerMat);
       markerA_HP.position.copy(posA_HP);
-      root.add(markerA_HP);
+      topViewGroup.add(markerA_HP);
 
       const markerB_HP = new THREE.Mesh(projGeo, tvMarkerMat);
       markerB_HP.position.copy(posB_HP);
-      root.add(markerB_HP);
+      topViewGroup.add(markerB_HP);
 
       const labelA_HP = createTextSprite(line.aTop.label, hpColor, 26);
       labelA_HP.position.set(posA_HP.x - 6, 2, posA_HP.z + 6);
-      root.add(labelA_HP);
+      topViewGroup.add(labelA_HP);
 
       const labelB_HP = createTextSprite(line.bTop.label, hpColor, 26);
       labelB_HP.position.set(posB_HP.x + 6, 2, posB_HP.z + 6);
-      root.add(labelB_HP);
+      topViewGroup.add(labelB_HP);
     } else {
       // Top view is a single point (Perpendicular to HP, e.g. a(b))
       const marker_HP = new THREE.Mesh(projGeo, tvMarkerMat);
       marker_HP.position.copy(posA_HP);
-      root.add(marker_HP);
+      topViewGroup.add(marker_HP);
 
       const label_HP = createTextSprite(line.aTop.label, hpColor, 26);
       label_HP.position.set(posA_HP.x + 8, 2, posA_HP.z + 4);
-      root.add(label_HP);
+      topViewGroup.add(label_HP);
     }
 
     // 8. Orthogonal Projector Lines (continuous thin lines)
@@ -443,26 +523,27 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
       opacity: 0.8,
     });
 
-    const addProjectorLine = (p1: THREE.Vector3, p2: THREE.Vector3) => {
+    const createProjector = (p1: THREE.Vector3, p2: THREE.Vector3) => {
       const geo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
-      const line = new THREE.Line(geo, projectorMat);
-      root.add(line);
+      return new THREE.Line(geo, projectorMat);
     };
 
-    // Projectors from Space A -> a' and a
-    addProjectorLine(posA3D, posA_VP);
-    addProjectorLine(posA3D, posA_HP);
-    // Projectors from Space B -> b' and b
-    addProjectorLine(posB3D, posB_VP);
-    addProjectorLine(posB3D, posB_HP);
+    // Projectors from Space A -> a' and a (added to spaceLineGroup)
+    spaceLineGroup.add(createProjector(posA3D, posA_VP));
+    spaceLineGroup.add(createProjector(posA3D, posA_HP));
+    // Projectors from Space B -> b' and b (added to spaceLineGroup)
+    spaceLineGroup.add(createProjector(posB3D, posB_VP));
+    spaceLineGroup.add(createProjector(posB3D, posB_HP));
 
-    // Projectors to XY axis
+    // Projectors on VP to XY axis (added to frontViewGroup)
     const posA_XY = new THREE.Vector3(line.xA, 0, 0);
     const posB_XY = new THREE.Vector3(line.xB, 0, 0);
-    addProjectorLine(posA_VP, posA_XY);
-    addProjectorLine(posA_HP, posA_XY);
-    addProjectorLine(posB_VP, posB_XY);
-    addProjectorLine(posB_HP, posB_XY);
+    frontViewGroup.add(createProjector(posA_VP, posA_XY));
+    frontViewGroup.add(createProjector(posB_VP, posB_XY));
+
+    // Projectors on HP to XY axis (added to topViewGroup)
+    topViewGroup.add(createProjector(posA_HP, posA_XY));
+    topViewGroup.add(createProjector(posB_HP, posB_XY));
 
     // 9. Traces (HT & VT) if existing
     if (line.ht.exists) {
@@ -472,11 +553,11 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
         new THREE.MeshBasicMaterial({ color: 0xf59e0b })
       );
       htMesh.position.copy(htPos);
-      root.add(htMesh);
+      tracesGroup.add(htMesh);
 
       const htLabel = createTextSprite('HT', '#f59e0b', 22);
       htLabel.position.set(htPos.x + 6, 3, htPos.z + 6);
-      root.add(htLabel);
+      tracesGroup.add(htLabel);
     }
 
     if (line.vt.exists) {
@@ -486,18 +567,19 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
         new THREE.MeshBasicMaterial({ color: 0xf59e0b })
       );
       vtMesh.position.copy(vtPos);
-      root.add(vtMesh);
+      tracesGroup.add(vtMesh);
 
       const vtLabel = createTextSprite('VT', '#f59e0b', 22);
       vtLabel.position.set(vtPos.x + 6, vtPos.y + 6, 2);
-      root.add(vtLabel);
+      tracesGroup.add(vtLabel);
     }
 
     scene.add(root);
-  }, [line, hpColor, vpColor, isDark]);
+    updateVisibilityForPreset(activePreset);
+  }, [line, hpColor, vpColor, isDark, activePreset, updateVisibilityForPreset]);
 
   // Camera presets
-  const applyCameraPreset = (preset: 'isometric' | 'front' | 'top' | 'profile') => {
+  const applyCameraPreset = (preset: 'isometric' | 'front' | 'top') => {
     if (!cameraRef.current) return;
     setActivePreset(preset);
     const cam = cameraRef.current;
@@ -515,12 +597,9 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
         // Looking directly at HP from above (along Y axis)
         cam.position.set(40, 280, 0.1);
         break;
-      case 'profile':
-        // Side view / Profile plane (along X axis)
-        cam.position.set(280, 20, 20);
-        break;
     }
     cam.lookAt(target);
+    updateVisibilityForPreset(preset);
   };
 
   const handleZoom = (factor: number) => {
@@ -604,6 +683,7 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
               ? 'bg-blue-600 text-white shadow-xs'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
           }`}
+          title="Front View (Elevation on VP — Only Front View Visible)"
         >
           Front(VP)
         </button>
@@ -615,20 +695,9 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
               ? 'bg-blue-600 text-white shadow-xs'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
           }`}
+          title="Top View (Plan on HP — Only Top View Visible)"
         >
           TOP(HP)
-        </button>
-        <button
-          onClick={() => applyCameraPreset('profile')}
-          style={{ fontFamily: "'Bebas Neue', sans-serif" }}
-          className={`px-2.5 py-1 text-sm tracking-wider rounded transition ${
-            activePreset === 'profile'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-          }`}
-          title="Side View"
-        >
-          side view
         </button>
       </div>
 

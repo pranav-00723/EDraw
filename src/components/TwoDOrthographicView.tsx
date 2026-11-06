@@ -667,7 +667,7 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
               fontFamily="sans-serif"
               fontWeight="bold"
             >
-              ED2 — PROJECTION OF POINTS
+              EDraw — PROJECTION OF POINTS
             </text>
             <text
               x="8"
@@ -677,7 +677,7 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
               fontFamily="monospace"
               fontWeight="bold"
             >
-              SCALE: 1:1 • ALL DIMENSIONS IN MM
+              Scale: 1:1 • All Dimensions Are In mm
             </text>
             <text
               x="8"

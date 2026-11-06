@@ -1157,6 +1157,71 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                 </>
               )}
             </g>
+
+            {/* Standard BIS SP 46 Title Block */}
+            <g
+              className="title-block"
+              transform={`translate(${baseWidth - 262}, ${baseHeight - 72})`}
+            >
+              <rect
+                x="0"
+                y="0"
+                width="250"
+                height="62"
+                rx="3"
+                fill={isDark ? '#0f172a' : '#f8fafc'}
+                stroke={isDark ? '#334155' : '#cbd5e1'}
+                strokeWidth="1.2"
+              />
+              <line
+                x1="0"
+                y1="20"
+                x2="250"
+                y2="20"
+                stroke={isDark ? '#334155' : '#cbd5e1'}
+                strokeWidth="0.8"
+              />
+              <text
+                x="8"
+                y="14"
+                fill={isDark ? '#f1f5f9' : '#0f172a'}
+                fontSize="9.5"
+                fontFamily="sans-serif"
+                fontWeight="bold"
+              >
+                EDraw — PROJECTION OF STRAIGHT LINES
+              </text>
+              <text
+                x="8"
+                y="33"
+                fill={isDark ? '#f1f5f9' : '#0f172a'}
+                fontSize="8.5"
+                fontFamily="monospace"
+                fontWeight="bold"
+              >
+                Scale: 1:1 • All Dimensions Are In mm
+              </text>
+              <text
+                x="8"
+                y="46"
+                fill={vpColor}
+                fontSize="8.5"
+                fontFamily="monospace"
+                fontWeight="bold"
+              >
+                ELEVATION: Front View a′b′ (on VP)
+              </text>
+              <text
+                x="8"
+                y="57"
+                fill={hpColor}
+                fontSize="8.5"
+                fontFamily="monospace"
+                fontWeight="bold"
+              >
+                PLAN: Top View ab (on HP)
+              </text>
+            </g>
           </svg>
         </div>
 

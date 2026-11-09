@@ -11,6 +11,7 @@ import { LineQuadrantCard, LineParametersCard } from './LineResultCard';
 import { LineThreeDView } from './LineThreeDView';
 import { LineTwoDOrthographicView } from './LineTwoDOrthographicView';
 import { LineTheoryPanel } from './LineTheoryPanel';
+import { RotatingLineConstructionEngine } from './RotatingLineConstructionEngine';
 import { ScanQuestionModal } from '../../components/ScanQuestionModal';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { MasterRegressionSuiteModal } from './MasterRegressionSuiteModal';
@@ -64,7 +65,7 @@ export const LinesModule: React.FC<LinesModuleProps> = ({
   initialLineInput,
 }) => {
   const [input, setInput] = useState<LineProblemInput>(initialLineInput || DEFAULT_LINE_INPUT);
-  const [activeTab, setActiveTab] = useState<'both' | '3d' | '2d'>('both');
+  const [activeTab, setActiveTab] = useState<'both' | '3d' | '2d' | 'rotating'>('both');
   const [isScanModalOpen, setIsScanModalOpen] = useState<boolean>(false);
   const [isRegressionModalOpen, setIsRegressionModalOpen] = useState<boolean>(false);
 
@@ -163,6 +164,16 @@ export const LinesModule: React.FC<LinesModuleProps> = ({
           >
             2D Orthographic
           </button>
+          <button
+            onClick={() => setActiveTab('rotating')}
+            className={`px-3 py-1.5 rounded-md transition flex items-center gap-1 ${
+              activeTab === 'rotating'
+                ? 'bg-blue-600 text-white shadow-xs font-bold'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+            }`}
+          >
+            <span>Rotating Line Method (8 Steps)</span>
+          </button>
         </div>
       </div>
     </div>
@@ -254,6 +265,30 @@ export const LinesModule: React.FC<LinesModuleProps> = ({
                 </span>
               </div>
               <LineTwoDOrthographicView
+                line={computedLine}
+                hpColor={hpColor}
+                vpColor={vpColor}
+                isDark={isDark}
+              />
+            </div>
+          )}
+
+          {/* 5th View: Rotating Line Method (8 Steps) */}
+          {activeTab === 'rotating' && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <h2
+                  style={{ fontFamily: "'Bebas Neue', sans-serif" }}
+                  className="text-lg sm:text-xl tracking-wider text-slate-900 dark:text-slate-100 flex items-center gap-2"
+                >
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-600 shadow-xs" />
+                  <span>ROTATING LINE METHOD — 8 CONSTRUCTION STEPS</span>
+                </h2>
+                <span className="text-[11px] font-mono text-slate-500">
+                  Auxiliary AB₁ &amp; AB₂ • Loci (No Gaps) • Rotating Arcs • BIS SP 46:2003
+                </span>
+              </div>
+              <RotatingLineConstructionEngine
                 line={computedLine}
                 hpColor={hpColor}
                 vpColor={vpColor}

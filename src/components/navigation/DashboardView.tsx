@@ -90,6 +90,36 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>
 
+      {/* Spotlight: Intelligent Question-to-Graphics Generator */}
+      <div className="p-6 rounded-2xl bg-gradient-to-r from-purple-900/40 via-indigo-900/30 to-blue-900/40 border border-purple-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-md">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white shrink-0 shadow-md">
+            <Sparkles className="w-6 h-6 text-amber-300" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                NEW FEATURE
+              </span>
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
+                Intelligent Question-to-Graphics Generator
+              </h2>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 max-w-2xl leading-relaxed">
+              Enter any engineering drawing problem in natural language or upload a textbook photo. EDraw interprets the geometry, extracts structured data, runs deterministic math, and draws the complete 8-step Rotating Line Method projection with zero gaps and full mathematical validation!
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => onNavigate('/question-generator')}
+          className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold transition flex items-center gap-2 cursor-pointer shrink-0 shadow-md shadow-purple-500/20"
+        >
+          <span>Launch AI Solver</span>
+          <ArrowRight className="w-4 h-4" />
+        </button>
+      </div>
+
       {/* Modules Grid */}
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">

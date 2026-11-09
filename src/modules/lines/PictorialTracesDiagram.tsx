@@ -132,41 +132,44 @@ export const PictorialTracesDiagram: React.FC<PictorialTracesDiagramProps> = ({
         {/* Horizontal Trace (HT) Construction */}
         {line.ht.exists && metrics.htGround && metrics.htTrace && (
           <g>
-            {/* Extended elevation to XY at h' — continuous thin line */}
+            {/* Extended elevation to XY at h' — dotted line */}
             <line
               x1={metrics.ptAFront.x}
               y1={metrics.ptAFront.y}
               x2={metrics.htGround.x}
               y2={metrics.htGround.y}
-              stroke="#ef4444"
-              strokeWidth="1.2"
-              opacity="0.8"
+              stroke="#f59e0b"
+              strokeWidth="1.6"
+              strokeDasharray="3,3"
+              opacity="0.9"
             />
             {/* Ground point h' */}
-            <circle cx={metrics.htGround.x} cy={metrics.htGround.y} r="3.5" fill="#ef4444" />
+            <circle cx={metrics.htGround.x} cy={metrics.htGround.y} r="3.5" fill="#f59e0b" stroke="#ffffff" strokeWidth="1" />
             <text x={metrics.htGround.x - 10} y={groundY - 8} fill="#fca5a5" fontSize="11" fontWeight="bold" fontFamily="monospace">
               h′
             </text>
 
-            {/* Perpendicular projector from h' to h (HT) — continuous thin line */}
+            {/* Perpendicular projector from h' to h (HT) — dotted line */}
             <line
               x1={metrics.htGround.x}
               y1={metrics.htGround.y}
               x2={metrics.htTrace.x}
               y2={metrics.htTrace.y}
               stroke="#10b981"
-              strokeWidth="1.2"
+              strokeWidth="1.3"
+              strokeDasharray="3,3"
             />
 
-            {/* Extended plan to h — continuous thin line */}
+            {/* Extended plan to h — dotted line */}
             <line
               x1={metrics.ptATop.x}
               y1={metrics.ptATop.y}
               x2={metrics.htTrace.x}
               y2={metrics.htTrace.y}
-              stroke="#3b82f6"
-              strokeWidth="1.2"
-              opacity="0.8"
+              stroke="#10b981"
+              strokeWidth="1.6"
+              strokeDasharray="3,3"
+              opacity="0.9"
             />
 
             {/* Trace Point h (HT) */}
@@ -180,41 +183,44 @@ export const PictorialTracesDiagram: React.FC<PictorialTracesDiagramProps> = ({
         {/* Vertical Trace (VT) Construction */}
         {line.vt.exists && metrics.vtGround && metrics.vtTrace && (
           <g>
-            {/* Extended plan to XY at v — continuous thin line */}
+            {/* Extended plan to XY at v — dotted line */}
             <line
               x1={metrics.ptATop.x}
               y1={metrics.ptATop.y}
               x2={metrics.vtGround.x}
               y2={metrics.vtGround.y}
-              stroke="#3b82f6"
-              strokeWidth="1.2"
-              opacity="0.8"
+              stroke="#ea580c"
+              strokeWidth="1.6"
+              strokeDasharray="3,3"
+              opacity="0.9"
             />
             {/* Ground point v */}
-            <circle cx={metrics.vtGround.x} cy={metrics.vtGround.y} r="3.5" fill="#3b82f6" />
+            <circle cx={metrics.vtGround.x} cy={metrics.vtGround.y} r="3.5" fill="#ea580c" stroke="#ffffff" strokeWidth="1" />
             <text x={metrics.vtGround.x + 6} y={groundY + 14} fill="#93c5fd" fontSize="11" fontWeight="bold" fontFamily="monospace">
               v
             </text>
 
-            {/* Perpendicular projector from v to v' (VT) — continuous thin line */}
+            {/* Perpendicular projector from v to v' (VT) — dotted line */}
             <line
               x1={metrics.vtGround.x}
               y1={metrics.vtGround.y}
               x2={metrics.vtTrace.x}
               y2={metrics.vtTrace.y}
-              stroke="#f59e0b"
-              strokeWidth="1.2"
+              stroke="#ea580c"
+              strokeWidth="1.3"
+              strokeDasharray="3,3"
             />
 
-            {/* Extended elevation to v' — continuous thin line */}
+            {/* Extended elevation to v' — dotted line */}
             <line
               x1={metrics.ptAFront.x}
               y1={metrics.ptAFront.y}
               x2={metrics.vtTrace.x}
               y2={metrics.vtTrace.y}
-              stroke="#ef4444"
-              strokeWidth="1.2"
-              opacity="0.8"
+              stroke="#f59e0b"
+              strokeWidth="1.6"
+              strokeDasharray="3,3"
+              opacity="0.9"
             />
 
             {/* Trace Point v' (VT) */}

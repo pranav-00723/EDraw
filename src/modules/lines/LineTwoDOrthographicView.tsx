@@ -112,6 +112,37 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
   const b1FrontSvg = { x: toSvgX(line.b1Front.x), y: toSvgY(line.b1Front.y) };
   const b2TopSvg = { x: toSvgX(line.b2Top.x), y: toSvgY(line.b2Top.y) };
 
+  // Traces projection points & nearest endpoints for dotted extension lines
+  const htGroundSvg = line.ht.exists ? { x: toSvgX(line.ht.groundProj.x), y: originY } : null;
+  const htTraceSvg = line.ht.exists ? { x: toSvgX(line.ht.traceProj.x), y: toSvgY(line.ht.traceProj.y) } : null;
+  const fvEndNearH = htGroundSvg
+    ? Math.hypot(aFrontSvg.x - htGroundSvg.x, aFrontSvg.y - htGroundSvg.y) <
+      Math.hypot(bFrontSvg.x - htGroundSvg.x, bFrontSvg.y - htGroundSvg.y)
+      ? aFrontSvg
+      : bFrontSvg
+    : null;
+  const tvEndNearH = htTraceSvg
+    ? Math.hypot(aTopSvg.x - htTraceSvg.x, aTopSvg.y - htTraceSvg.y) <
+      Math.hypot(bTopSvg.x - htTraceSvg.x, bTopSvg.y - htTraceSvg.y)
+      ? aTopSvg
+      : bTopSvg
+    : null;
+
+  const vtGroundSvg = line.vt.exists ? { x: toSvgX(line.vt.groundProj.x), y: originY } : null;
+  const vtTraceSvg = line.vt.exists ? { x: toSvgX(line.vt.traceProj.x), y: toSvgY(line.vt.traceProj.y) } : null;
+  const tvEndNearV = vtGroundSvg
+    ? Math.hypot(aTopSvg.x - vtGroundSvg.x, aTopSvg.y - vtGroundSvg.y) <
+      Math.hypot(bTopSvg.x - vtGroundSvg.x, bTopSvg.y - vtGroundSvg.y)
+      ? aTopSvg
+      : bTopSvg
+    : null;
+  const fvEndNearV = vtTraceSvg
+    ? Math.hypot(aFrontSvg.x - vtTraceSvg.x, aFrontSvg.y - vtTraceSvg.y) <
+      Math.hypot(bFrontSvg.x - vtTraceSvg.x, bFrontSvg.y - vtTraceSvg.y)
+      ? aFrontSvg
+      : bFrontSvg
+    : null;
+
   return (
     <div className="flex flex-col gap-3">
       {/* Visualizer Container */}
@@ -1043,16 +1074,55 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
               )}
             </g>
 
-            {/* 7. Traces (HT & VT) */}
+            {/* 7. Traces (HT & VT) — Connected to VP and HP with Dotted Lines */}
             {showTraces && (
               <g className="traces-representation">
                 {/* Horizontal Trace (HT) */}
-                {line.ht.exists && (
-                  <>
-                    {/* h' on XY */}
-                    <circle cx={toSvgX(line.ht.groundProj.x)} cy={originY} r="3.5" fill="#f59e0b" />
+                {line.ht.exists && htGroundSvg && htTraceSvg && (
+                  <g className="trace-ht-group">
+                    {/* Dotted Line joining Front View (VP line a′b′) to h′ on XY */}
+                    {fvEndNearH && (
+                      <line
+                        x1={fvEndNearH.x}
+                        y1={fvEndNearH.y}
+                        x2={htGroundSvg.x}
+                        y2={htGroundSvg.y}
+                        stroke="#f59e0b"
+                        strokeWidth="1.6"
+                        strokeDasharray="3,3"
+                        opacity="0.9"
+                      />
+                    )}
+
+                    {/* Dotted Line joining Top View (HP line ab) to h (HT) */}
+                    {tvEndNearH && (
+                      <line
+                        x1={tvEndNearH.x}
+                        y1={tvEndNearH.y}
+                        x2={htTraceSvg.x}
+                        y2={htTraceSvg.y}
+                        stroke="#10b981"
+                        strokeWidth="1.6"
+                        strokeDasharray="3,3"
+                        opacity="0.9"
+                      />
+                    )}
+
+                    {/* Dotted Projector connecting h′ on XY to h (HT) */}
+                    <line
+                      x1={htGroundSvg.x}
+                      y1={htGroundSvg.y}
+                      x2={htTraceSvg.x}
+                      y2={htTraceSvg.y}
+                      stroke="#f59e0b"
+                      strokeWidth="1.3"
+                      strokeDasharray="3,3"
+                    />
+
+                    {/* h′ on XY line */}
+                    <circle cx={htGroundSvg.x} cy={htGroundSvg.y} r="3.5" fill="#f59e0b" stroke="#ffffff" strokeWidth="1" />
                     <text
-                      x={toSvgX(line.ht.groundProj.x) - 4}
+                      x={htGroundSvg.x - 4}
                       y={originY - 8}
                       fill="#f59e0b"
                       fontSize="11"
@@ -1062,38 +1132,67 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                       {line.ht.groundProj.label}
                     </text>
 
-                    {/* Projector to h (HT) - continuous thin line */}
-                    <line
-                      x1={toSvgX(line.ht.groundProj.x)}
-                      y1={originY}
-                      x2={toSvgX(line.ht.traceProj.x)}
-                      y2={toSvgY(line.ht.traceProj.y)}
-                      stroke="#f59e0b"
-                      strokeWidth="1.0"
-                    />
-
                     {/* h (HT) point */}
-                    <circle cx={toSvgX(line.ht.traceProj.x)} cy={toSvgY(line.ht.traceProj.y)} r="4" fill="#f59e0b" />
+                    <circle cx={htTraceSvg.x} cy={htTraceSvg.y} r="4.5" fill="#10b981" stroke="#ffffff" strokeWidth="1.2" />
                     <text
-                      x={toSvgX(line.ht.traceProj.x) + 7}
-                      y={toSvgY(line.ht.traceProj.y) + 4}
-                      fill="#f59e0b"
-                      fontSize="11"
+                      x={htTraceSvg.x + 8}
+                      y={htTraceSvg.y + 4}
+                      fill="#34d399"
+                      fontSize="11.5"
                       fontWeight="bold"
                       fontFamily="'JetBrains Mono', monospace"
                     >
                       {line.ht.traceProj.label}
                     </text>
-                  </>
+                  </g>
                 )}
 
                 {/* Vertical Trace (VT) */}
-                {line.vt.exists && (
-                  <>
-                    {/* v on XY */}
-                    <circle cx={toSvgX(line.vt.groundProj.x)} cy={originY} r="3.5" fill="#ea580c" />
+                {line.vt.exists && vtGroundSvg && vtTraceSvg && (
+                  <g className="trace-vt-group">
+                    {/* Dotted Line joining Top View (HP line ab) to v on XY */}
+                    {tvEndNearV && (
+                      <line
+                        x1={tvEndNearV.x}
+                        y1={tvEndNearV.y}
+                        x2={vtGroundSvg.x}
+                        y2={vtGroundSvg.y}
+                        stroke="#ea580c"
+                        strokeWidth="1.6"
+                        strokeDasharray="3,3"
+                        opacity="0.9"
+                      />
+                    )}
+
+                    {/* Dotted Line joining Front View (VP line a′b′) to v′ (VT) */}
+                    {fvEndNearV && (
+                      <line
+                        x1={fvEndNearV.x}
+                        y1={fvEndNearV.y}
+                        x2={vtTraceSvg.x}
+                        y2={vtTraceSvg.y}
+                        stroke="#f59e0b"
+                        strokeWidth="1.6"
+                        strokeDasharray="3,3"
+                        opacity="0.9"
+                      />
+                    )}
+
+                    {/* Dotted Projector connecting v on XY to v′ (VT) */}
+                    <line
+                      x1={vtGroundSvg.x}
+                      y1={vtGroundSvg.y}
+                      x2={vtTraceSvg.x}
+                      y2={vtTraceSvg.y}
+                      stroke="#ea580c"
+                      strokeWidth="1.3"
+                      strokeDasharray="3,3"
+                    />
+
+                    {/* v on XY line */}
+                    <circle cx={vtGroundSvg.x} cy={vtGroundSvg.y} r="3.5" fill="#ea580c" stroke="#ffffff" strokeWidth="1" />
                     <text
-                      x={toSvgX(line.vt.groundProj.x) - 4}
+                      x={vtGroundSvg.x - 4}
                       y={originY + 16}
                       fill="#ea580c"
                       fontSize="11"
@@ -1103,29 +1202,19 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                       {line.vt.groundProj.label}
                     </text>
 
-                    {/* Projector to v' (VT) - continuous thin line */}
-                    <line
-                      x1={toSvgX(line.vt.groundProj.x)}
-                      y1={originY}
-                      x2={toSvgX(line.vt.traceProj.x)}
-                      y2={toSvgY(line.vt.traceProj.y)}
-                      stroke="#ea580c"
-                      strokeWidth="1.0"
-                    />
-
-                    {/* v' (VT) point */}
-                    <circle cx={toSvgX(line.vt.traceProj.x)} cy={toSvgY(line.vt.traceProj.y)} r="4" fill="#ea580c" />
+                    {/* v′ (VT) point */}
+                    <circle cx={vtTraceSvg.x} cy={vtTraceSvg.y} r="4.5" fill="#ea580c" stroke="#ffffff" strokeWidth="1.2" />
                     <text
-                      x={toSvgX(line.vt.traceProj.x) + 7}
-                      y={toSvgY(line.vt.traceProj.y) + 4}
-                      fill="#ea580c"
-                      fontSize="11"
+                      x={vtTraceSvg.x + 8}
+                      y={vtTraceSvg.y + 4}
+                      fill="#fb923c"
+                      fontSize="11.5"
                       fontWeight="bold"
                       fontFamily="'JetBrains Mono', monospace"
                     >
                       {line.vt.traceProj.label}
                     </text>
-                  </>
+                  </g>
                 )}
               </g>
             )}

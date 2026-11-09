@@ -9,6 +9,7 @@ import { AppHeader } from './components/navigation/AppHeader';
 import { DashboardView } from './components/navigation/DashboardView';
 import { PointsModule } from './modules/points/PointsModule';
 import { LinesModule } from './modules/lines/LinesModule';
+import { QuestionToGraphicsGenerator } from './components/questionGenerator/QuestionToGraphicsGenerator';
 import { ScanQuestionModal } from './components/ScanQuestionModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
@@ -26,6 +27,7 @@ export const resolveRoute = (input?: string): AppRoute => {
       : '')
   ).toLowerCase();
 
+  if (target.includes('generator') || target.includes('question') || target.includes('ai')) return '/question-generator';
   if (target.includes('line')) return '/projection-of-lines';
   if (target.includes('point')) return '/projection-of-points';
   return '/dashboard';
@@ -74,7 +76,9 @@ export default function App() {
       }
       try {
         const hashTag =
-          resolved === '/projection-of-lines'
+          resolved === '/question-generator'
+            ? 'generator'
+            : resolved === '/projection-of-lines'
             ? 'lines'
             : resolved === '/projection-of-points'
             ? 'points'
@@ -116,7 +120,17 @@ export default function App() {
             fallbackTitle="Module Interface Error"
             onReset={() => navigateTo('/dashboard')}
           >
-            {currentRoute === '/projection-of-points' ? (
+            {currentRoute === '/question-generator' ? (
+              <QuestionToGraphicsGenerator
+                hpColor={hpColor}
+                vpColor={vpColor}
+                isDark={isDark}
+                onNavigateToLineModule={(scannedLn) => {
+                  setPendingScannedLine(scannedLn);
+                  navigateTo('/projection-of-lines');
+                }}
+              />
+            ) : currentRoute === '/projection-of-points' ? (
               <PointsModule
                 hpColor={hpColor}
                 vpColor={vpColor}

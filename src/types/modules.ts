@@ -9,7 +9,8 @@ export type AppRoute =
   | '/'
   | '/dashboard'
   | '/projection-of-points'
-  | '/projection-of-lines';
+  | '/projection-of-lines'
+  | '/question-generator';
 
 export interface ModuleDefinition {
   id: ModuleId;

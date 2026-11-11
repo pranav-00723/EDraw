@@ -41,6 +41,8 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
   const frontViewGroupRef = useRef<THREE.Group | null>(null);
   const topViewGroupRef = useRef<THREE.Group | null>(null);
   const tracesGroupRef = useRef<THREE.Group | null>(null);
+  const foldGroupRef = useRef<THREE.Group | null>(null);
+  const [unfoldAngle, setUnfoldAngle] = useState<number>(0);
 
   // Interaction tracking
   const isDraggingRef = useRef<boolean>(false);
@@ -271,9 +273,17 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
     frontViewGroupRef.current = frontViewGroup;
     root.add(frontViewGroup);
 
+    const foldGroup = new THREE.Group();
+    foldGroupRef.current = foldGroup;
+    root.add(foldGroup);
+
+    // Move hpGroup into foldGroup
+    root.remove(hpGroup);
+    foldGroup.add(hpGroup);
+
     const topViewGroup = new THREE.Group();
     topViewGroupRef.current = topViewGroup;
-    root.add(topViewGroup);
+    foldGroup.add(topViewGroup);
 
     const tracesGroup = new THREE.Group();
     tracesGroupRef.current = tracesGroup;
@@ -545,9 +555,24 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
     topViewGroup.add(createProjector(posA_HP, posA_XY));
     topViewGroup.add(createProjector(posB_HP, posB_XY));
 
-    // 9. Traces (HT & VT) if existing
+    const createDottedExtension = (p1: THREE.Vector3, p2: THREE.Vector3, hexColor: number) => {
+      const geo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+      const mat = new THREE.LineDashedMaterial({
+        color: hexColor,
+        dashSize: 3,
+        gapSize: 2.5,
+        linewidth: 1.5,
+      });
+      const l = new THREE.Line(geo, mat);
+      l.computeLineDistances();
+      return l;
+    };
+
+    // 9. Traces (HT & VT) if existing, with dotted projection extensions
     if (line.ht.exists) {
       const htPos = new THREE.Vector3(line.ht.x, 0, line.ht.y);
+      const hPrimePos = new THREE.Vector3(line.ht.x, 0, 0);
+
       const htMesh = new THREE.Mesh(
         new THREE.SphereGeometry(2.0, 12, 12),
         new THREE.MeshBasicMaterial({ color: 0xf59e0b })
@@ -558,10 +583,19 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
       const htLabel = createTextSprite('HT', '#f59e0b', 22);
       htLabel.position.set(htPos.x + 6, 3, htPos.z + 6);
       tracesGroup.add(htLabel);
+
+      // Extend Front View (a'b') to h' on XY, then perpendicular to HT, and extend Top View (ab) to HT
+      const nearVP = posA_VP.distanceTo(hPrimePos) <= posB_VP.distanceTo(hPrimePos) ? posA_VP : posB_VP;
+      const nearHP = posA_HP.distanceTo(htPos) <= posB_HP.distanceTo(htPos) ? posA_HP : posB_HP;
+      tracesGroup.add(createDottedExtension(nearVP, hPrimePos, 0xf59e0b));
+      tracesGroup.add(createDottedExtension(hPrimePos, htPos, 0xf59e0b));
+      tracesGroup.add(createDottedExtension(nearHP, htPos, 0xf59e0b));
     }
 
     if (line.vt.exists) {
       const vtPos = new THREE.Vector3(line.vt.x, line.vt.z, 0);
+      const vPos = new THREE.Vector3(line.vt.x, 0, 0);
+
       const vtMesh = new THREE.Mesh(
         new THREE.SphereGeometry(2.0, 12, 12),
         new THREE.MeshBasicMaterial({ color: 0xf59e0b })
@@ -572,23 +606,79 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
       const vtLabel = createTextSprite('VT', '#f59e0b', 22);
       vtLabel.position.set(vtPos.x + 6, vtPos.y + 6, 2);
       tracesGroup.add(vtLabel);
+
+      // Extend Top View (ab) to v on XY, then perpendicular to VT, and extend Front View (a'b') to VT
+      const nearHP = posA_HP.distanceTo(vPos) <= posB_HP.distanceTo(vPos) ? posA_HP : posB_HP;
+      const nearVP = posA_VP.distanceTo(vtPos) <= posB_VP.distanceTo(vtPos) ? posA_VP : posB_VP;
+      tracesGroup.add(createDottedExtension(nearHP, vPos, 0xf59e0b));
+      tracesGroup.add(createDottedExtension(vPos, vtPos, 0xf59e0b));
+      tracesGroup.add(createDottedExtension(nearVP, vtPos, 0xf59e0b));
     }
 
     scene.add(root);
     updateVisibilityForPreset(activePreset);
   }, [line, hpColor, vpColor, isDark, activePreset, updateVisibilityForPreset]);
 
+  // Handle HP 90° Clockwise Unfolding & Folding Arc
+  useEffect(() => {
+    const foldGroup = foldGroupRef.current;
+    const spaceGroup = spaceLineGroupRef.current;
+    const tracesGroup = tracesGroupRef.current;
+    const scene = sceneRef.current;
+    if (!foldGroup) return;
+
+    const rad = (unfoldAngle * Math.PI) / 180;
+    foldGroup.rotation.x = rad;
+
+    // When unfolded, hide 3D space line & 3D traces so projections alone are visible
+    if (spaceGroup) {
+      spaceGroup.visible = activePreset === 'isometric' && unfoldAngle === 0;
+    }
+    if (tracesGroup) {
+      tracesGroup.visible = activePreset === 'isometric' && unfoldAngle === 0;
+    }
+
+    if (scene) {
+      const oldArc = scene.getObjectByName('lineFoldingArc');
+      if (oldArc) scene.remove(oldArc);
+      if (unfoldAngle > 0) {
+        const arcPts: THREE.Vector3[] = [];
+        const arcRadius = 40;
+        const arcX = 110;
+        const steps = 24;
+        for (let i = 0; i <= steps; i++) {
+          const a = (i / steps) * rad;
+          arcPts.push(new THREE.Vector3(arcX, -arcRadius * Math.sin(a), arcRadius * Math.cos(a)));
+        }
+        const arcGeo = new THREE.BufferGeometry().setFromPoints(arcPts);
+        const arcMat = new THREE.LineDashedMaterial({
+          color: 0xf59e0b,
+          dashSize: 3,
+          gapSize: 2,
+          linewidth: 2,
+        });
+        const arcLine = new THREE.Line(arcGeo, arcMat);
+        arcLine.computeLineDistances();
+        arcLine.name = 'lineFoldingArc';
+        scene.add(arcLine);
+      }
+    }
+  }, [unfoldAngle, activePreset]);
+
   // Camera presets
-  const applyCameraPreset = (preset: 'isometric' | 'front' | 'top') => {
+  const applyCameraPreset = (preset: 'isometric' | 'front' | 'top', isoDir: 'SE' | 'SW' | 'NE' | 'NW' = 'SE') => {
     if (!cameraRef.current) return;
     setActivePreset(preset);
     const cam = cameraRef.current;
     const target = cameraTarget.current;
 
     switch (preset) {
-      case 'isometric':
-        cam.position.set(160, 140, 200);
+      case 'isometric': {
+        const xSign = isoDir === 'SE' || isoDir === 'NE' ? 1 : -1;
+        const zSign = isoDir === 'SE' || isoDir === 'SW' ? 1 : -1;
+        cam.position.set(40 + xSign * 120, 140, zSign * 180);
         break;
+      }
       case 'front':
         // Looking directly at VP (along Z axis)
         cam.position.set(40, 20, 280);
@@ -664,16 +754,46 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
 
       {/* Top Right Camera Presets (Bebas Neue Font) */}
       <div className="absolute top-3 right-3 flex items-center gap-1 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-1 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs">
+        <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 rounded p-0.5">
+          {(['SW', 'SE', 'NW', 'NE'] as const).map((dir) => (
+            <button
+              key={dir}
+              onClick={() => applyCameraPreset('isometric', dir)}
+              style={{ fontFamily: "'Bebas Neue', sans-serif" }}
+              className={`px-1.5 py-1 text-xs sm:text-sm tracking-wider rounded transition cursor-pointer ${
+                activePreset === 'isometric'
+                  ? 'hover:bg-blue-600 hover:text-white text-slate-700 dark:text-slate-200'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+              }`}
+              title={`Isometric ${dir} View`}
+            >
+              {dir}
+            </button>
+          ))}
+        </div>
         <button
-          onClick={() => applyCameraPreset('isometric')}
+          onClick={() => {
+            const target = unfoldAngle > 45 ? 0 : 90;
+            const start = unfoldAngle;
+            const startTime = performance.now();
+            const duration = 600;
+            const step = (now: number) => {
+              const t = Math.min(1, (now - startTime) / duration);
+              const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+              setUnfoldAngle(Math.round(start + (target - start) * eased));
+              if (t < 1) requestAnimationFrame(step);
+            };
+            requestAnimationFrame(step);
+          }}
           style={{ fontFamily: "'Bebas Neue', sans-serif" }}
-          className={`px-2.5 py-1 text-sm tracking-wider rounded transition ${
-            activePreset === 'isometric'
-              ? 'bg-blue-600 text-white shadow-xs'
+          className={`px-2.5 py-1 text-sm tracking-wider rounded transition cursor-pointer ${
+            unfoldAngle > 0
+              ? 'bg-amber-500 text-white shadow-xs'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
           }`}
+          title="Unfold HP 90° clockwise to view projections alone"
         >
-          Isometric
+          {unfoldAngle === 0 ? 'Unfold HP 90°' : `Fold Back (${unfoldAngle}°)`}
         </button>
         <button
           onClick={() => applyCameraPreset('front')}

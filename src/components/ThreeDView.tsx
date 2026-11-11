@@ -557,8 +557,20 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
       color: isDark ? 0xf8fafc : 0x0f172a,
       linewidth: 1.5,
     });
+    let xyGroup = scene?.getObjectByName('xyGroup') as THREE.Group | undefined;
+    if (!xyGroup && scene) {
+      xyGroup = new THREE.Group();
+      xyGroup.name = 'xyGroup';
+      scene.add(xyGroup);
+    }
+    if (xyGroup) {
+      while (xyGroup.children.length > 0) {
+        xyGroup.remove(xyGroup.children[0]);
+      }
+    }
+
     const groundLine = new THREE.Line(groundLineGeo, groundLineMat);
-    vpGroup.add(groundLine);
+    (xyGroup || vpGroup).add(groundLine);
 
     // Thin but distinctively visible rod representing XY line
     const rodGeo = new THREE.CylinderGeometry(0.18, 0.18, widthX + extX * 2, 16);
@@ -570,7 +582,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
     const rod = new THREE.Mesh(rodGeo, rodMat);
     rod.rotation.z = Math.PI / 2;
     rod.position.set(centerX, 0, 0);
-    vpGroup.add(rod);
+    (xyGroup || vpGroup).add(rod);
 
     // End-point labels X and Y
     if (showLabels) {
@@ -581,7 +593,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
         borderColor: '#475569',
       });
       xLabel.position.set(startX - extX - 10, 0, 0);
-      vpGroup.add(xLabel);
+      (xyGroup || vpGroup).add(xLabel);
 
       const yLabel = createTextSprite('Y', {
         fontsize: 28,
@@ -590,7 +602,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
         borderColor: '#475569',
       });
       yLabel.position.set(endX + extX + 10, 0, 0);
-      vpGroup.add(yLabel);
+      (xyGroup || vpGroup).add(yLabel);
     }
 
     // 4. QUADRANT MARKERS IN 3D SPACE
@@ -661,6 +673,34 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
     // rotates UPWARDS towards +Y (above XY).
     const rad = (unfoldAngle * Math.PI) / 180;
     foldGroupRef.current.rotation.x = rad;
+
+    // Draw folding arc when unfoldAngle > 0
+    const scene = sceneRef.current;
+    if (scene) {
+      const oldArc = scene.getObjectByName('foldingArc');
+      if (oldArc) scene.remove(oldArc);
+      if (unfoldAngle > 0) {
+        const arcPts: THREE.Vector3[] = [];
+        const arcRadius = 35;
+        const arcX = planeBounds.endX + 10;
+        const steps = 24;
+        for (let i = 0; i <= steps; i++) {
+          const a = (i / steps) * rad;
+          arcPts.push(new THREE.Vector3(arcX, -arcRadius * Math.sin(a), arcRadius * Math.cos(a)));
+        }
+        const arcGeo = new THREE.BufferGeometry().setFromPoints(arcPts);
+        const arcMat = new THREE.LineDashedMaterial({
+          color: 0xf59e0b,
+          dashSize: 3,
+          gapSize: 2,
+          linewidth: 2,
+        });
+        const arcLine = new THREE.Line(arcGeo, arcMat);
+        arcLine.computeLineDistances();
+        arcLine.name = 'foldingArc';
+        scene.add(arcLine);
+      }
+    }
 
     // When unfold angle > 0 (or folding/folded), hide the 3D space point and rays
     // so ONLY front view and top view projections are visible.
@@ -1025,7 +1065,7 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
   }, [points, onSelectPoint]);
 
   // Preset Camera Views
-  const setCameraView = useCallback((view: 'iso' | 'front' | 'top') => {
+  const setCameraView = useCallback((view: 'iso' | 'front' | 'top', isoDir: 'SE' | 'SW' | 'NE' | 'NW' = 'SE') => {
     const controls = controlsRef.current;
     const camera = cameraRef.current;
     if (!controls || !camera) return;
@@ -1036,9 +1076,12 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
     const dist = Math.max(widthX * 0.9, maxVert * 1.8, maxDepth * 1.8, 160);
 
     switch (view) {
-      case 'iso':
-        camera.position.set(centerX + dist * 0.75, dist * 0.55, dist * 0.9);
+      case 'iso': {
+        const xSign = isoDir === 'SE' || isoDir === 'NE' ? 1 : -1;
+        const zSign = isoDir === 'SE' || isoDir === 'SW' ? 1 : -1;
+        camera.position.set(centerX + xSign * dist * 0.75, dist * 0.55, zSign * dist * 0.9);
         break;
+      }
       case 'front': // Elevation: Look directly along -Z at the VP (showing X and Height Z)
         camera.position.set(centerX, 0, dist * 1.4);
         break;
@@ -1138,18 +1181,23 @@ export const ThreeDView: React.FC<ThreeDViewProps> = ({
 
       {/* Camera View Presets Bar (Top Right) */}
       <div className="absolute top-3 right-3 flex items-center gap-1 bg-white/90 dark:bg-slate-900/90 p-1 rounded-lg border border-slate-200 dark:border-slate-800 shadow backdrop-blur-sm">
-        <button
-          onClick={() => setCameraView('iso')}
-          style={{ fontFamily: "'Bebas Neue', sans-serif" }}
-          className={`px-2.5 py-1 text-sm sm:text-base tracking-wider rounded transition ${
-            activeView === 'iso'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
-          }`}
-          title="Isometric 3D Projection"
-        >
-          Isometric
-        </button>
+        <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 rounded p-0.5">
+          {(['SW', 'SE', 'NW', 'NE'] as const).map((dir) => (
+            <button
+              key={dir}
+              onClick={() => setCameraView('iso', dir)}
+              style={{ fontFamily: "'Bebas Neue', sans-serif" }}
+              className={`px-1.5 py-1 text-xs sm:text-sm tracking-wider rounded transition cursor-pointer ${
+                activeView === 'iso'
+                  ? 'hover:bg-blue-600 hover:text-white text-slate-800 dark:text-slate-200'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+              title={`Isometric ${dir} View`}
+            >
+              {dir}
+            </button>
+          ))}
+        </div>
         <button
           onClick={() => setCameraView('front')}
           style={{ fontFamily: "'Bebas Neue', sans-serif" }}

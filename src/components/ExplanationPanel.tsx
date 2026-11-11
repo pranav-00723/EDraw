@@ -58,7 +58,7 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
   return (
     <div className="flex flex-col rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
       {/* Header with Navigation Tabs */}
-      <div className="flex flex-wrap items-center justify-between border-b border-slate-200 dark:border-slate-800 px-4 py-2.5 bg-slate-50 dark:bg-slate-850 gap-2">
+      <div className="flex flex-wrap items-center justify-between border-b border-slate-200 dark:border-slate-800 px-4 py-2.5 bg-slate-50 dark:bg-slate-800 gap-2">
         <div className="flex items-center gap-2">
           <Compass className="w-4 h-4 text-blue-600 dark:text-blue-400" />
           <span className="text-xs font-bold text-slate-900 dark:text-slate-100 font-sans">
@@ -152,7 +152,7 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
 
             {/* Pictorial 2D Projection Diagram for Selected Point — White Drawing Sheet */}
             <div className="relative w-full rounded-xl overflow-hidden border border-slate-300 dark:border-slate-700 bg-white p-2 shadow-sm">
-              <svg viewBox="0 0 660 250" className="w-full h-auto select-none block bg-white" style={{ minHeight: '230px' }}>
+              <svg viewBox="0 0 660 250" className="w-full h-auto select-none block bg-white grayscale contrast-125" style={{ minHeight: '230px' }}>
                 <defs>
                   {/* Subtle Technical Drawing Sheet Grid */}
                   <pattern id="pencil-sheet-grid" width="20" height="20" patternUnits="userSpaceOnUse">

@@ -100,20 +100,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             <span>V2: Straight Lines</span>
           </button>
 
-          {/* AI Question-to-Graphics Generator */}
-          <button
-            type="button"
-            onClick={() => onNavigate('/question-generator')}
-            className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
-              currentRoute === '/question-generator'
-                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-xs font-bold'
-                : 'text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-200'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span className="hidden sm:inline">AI Question Solver</span>
-            <span className="sm:hidden">Solver</span>
-          </button>
+
         </nav>
 
         {/* Right Tools: Scan Q, Plane Colors & Theme Toggle */}

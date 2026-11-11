@@ -107,7 +107,7 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
   };
 
   // Export Drawing as PNG
-  const exportAsPng = () => {
+  const exportAsPng = (asDrawingSheet: boolean) => {
     const svgEl = svgRef.current;
     if (!svgEl) return;
 
@@ -126,9 +126,13 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
 
     img.onload = () => {
       // Draw background
-      ctx.fillStyle = isDark ? '#090d16' : '#ffffff';
+      ctx.fillStyle = asDrawingSheet ? '#ffffff' : (isDark ? '#090d16' : '#ffffff');
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+      if (asDrawingSheet) {
+        ctx.filter = 'grayscale(100%) contrast(125%)';
+      }
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      ctx.filter = 'none';
       URL.revokeObjectURL(url);
 
       const link = document.createElement('a');
@@ -164,7 +168,7 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
     bg: isDark ? '#090d16' : '#ffffff',
     grid: isDark ? '#1e293b' : '#f1f5f9',
     gridMinor: isDark ? '#141e30' : '#f8fafc',
-    xyLine: isDark ? '#f8fafc' : '#0f172a',
+    xyLine: '#0f172a',
     projector: isDark ? '#475569' : '#94a3b8',
     dimension: isDark ? '#38bdf8' : '#0284c7',
     dimensionText: isDark ? '#bae6fd' : '#0369a1',
@@ -213,14 +217,22 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
 
           <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
 
-          <button
-            onClick={exportAsPng}
-            className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 font-medium transition"
-            title="Download crisp PNG drawing"
+          <select
+            defaultValue=""
+            onChange={(e) => {
+              if (e.target.value === 'sheet') exportAsPng(true);
+              if (e.target.value === 'projections') exportAsPng(false);
+              e.target.value = '';
+            }}
+            className="px-2 py-1 rounded bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 font-medium text-xs transition cursor-pointer"
+            title="Download PNG as Drawing Sheet or Projections"
           >
-            <Download className="w-3.5 h-3.5" />
-            <span>PNG</span>
-          </button>
+            <option value="" disabled>
+              Download PNG ▾
+            </option>
+            <option value="sheet">Download as Drawing Sheet (B&amp;W)</option>
+            <option value="projections">Download as Projections (Colored)</option>
+          </select>
 
           <button
             onClick={exportAsSvg}
@@ -254,9 +266,9 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
         <svg
           ref={svgRef}
           viewBox={`0 0 ${viewWidth} ${viewHeight}`}
-          className="w-full h-full"
+          className="w-full h-full grayscale contrast-125"
           style={{
-            backgroundColor: colors.bg,
+            backgroundColor: '#ffffff',
             transform: `scale(${zoom})`,
             transformOrigin: 'center center',
             transition: isDragging ? 'none' : 'transform 0.15s ease-out',

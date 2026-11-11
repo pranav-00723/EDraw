@@ -31,10 +31,14 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
   const [showRotationArcs, setShowRotationArcs] = useState(true);
   const [showTraces, setShowTraces] = useState(true);
   const [showDimensions, setShowDimensions] = useState(true);
+  const [pencilMode, setPencilMode] = useState(false);
+  const [studentName, setStudentName] = useState('');
+  const [registerNo, setRegisterNo] = useState('');
+  const sheetDark = isDark && !pencilMode;
 
   // SVG viewBox settings
   const baseWidth = 840;
-  const baseHeight = 520;
+  const baseHeight = 590;
   const originX = 240; // X origin for reference projector of End A
   const originY = 260; // Y origin representing the ground line XY
 
@@ -89,9 +93,13 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
     const url = URL.createObjectURL(svgBlob);
 
     img.onload = () => {
-      ctx.fillStyle = isDark ? '#0b1329' : '#ffffff';
+      ctx.fillStyle = sheetDark ? '#0b1329' : '#ffffff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+      if (pencilMode) {
+        ctx.filter = 'grayscale(100%) contrast(125%)';
+      }
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      ctx.filter = 'none';
       URL.revokeObjectURL(url);
 
       const link = document.createElement('a');
@@ -216,6 +224,36 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
             Traces
           </button>
 
+          {/* Pencil Sketch Mode Toggle */}
+          <button
+            onClick={() => setPencilMode(!pencilMode)}
+            className={`px-2 py-1 rounded transition flex items-center gap-1 font-mono text-[11px] cursor-pointer ${
+              pencilMode
+                ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900 font-semibold'
+                : 'text-slate-500 hover:text-slate-900'
+            }`}
+            title="Toggle Monochrome Pencil Drawing Sketch (No Colors)"
+          >
+            Pencil Sketch
+          </button>
+
+          <div className="hidden md:flex items-center gap-1 ml-1">
+            <input
+              type="text"
+              value={studentName}
+              onChange={(e) => setStudentName(e.target.value)}
+              placeholder="Name"
+              className="w-24 px-1.5 py-0.5 text-[10px] font-mono rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+            />
+            <input
+              type="text"
+              value={registerNo}
+              onChange={(e) => setRegisterNo(e.target.value)}
+              placeholder="Reg. No"
+              className="w-20 px-1.5 py-0.5 text-[10px] font-mono rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+            />
+          </div>
+
           <span className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
 
           {/* Zoom Buttons */}
@@ -263,9 +301,9 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
           onMouseLeave={handleMouseUp}
         >
           <svg
+            className={`w-full h-full select-none ${pencilMode ? 'grayscale contrast-125 bg-white' : ''}`}
             ref={svgRef}
             viewBox={`0 0 ${baseWidth} ${baseHeight}`}
-            className="w-full h-full"
             style={{
               transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
               transformOrigin: 'center center',
@@ -309,8 +347,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   x2={baseWidth - 40}
                   y2={aFrontSvg.y}
                   stroke={vpColor}
-                  strokeWidth="1.2"
-                  strokeDasharray="8,4"
+                  strokeWidth="0.9"
                   opacity="0.65"
                 />
                 <text
@@ -333,8 +370,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   x2={baseWidth - 40}
                   y2={bFrontSvg.y}
                   stroke={vpColor}
-                  strokeWidth="1.2"
-                  strokeDasharray="8,4"
+                  strokeWidth="0.9"
                   opacity="0.65"
                 />
                 <text
@@ -357,8 +393,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   x2={baseWidth - 40}
                   y2={aTopSvg.y}
                   stroke={hpColor}
-                  strokeWidth="1.2"
-                  strokeDasharray="8,4"
+                  strokeWidth="0.9"
                   opacity="0.65"
                 />
                 <text
@@ -381,8 +416,7 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                   x2={baseWidth - 40}
                   y2={bTopSvg.y}
                   stroke={hpColor}
-                  strokeWidth="1.2"
-                  strokeDasharray="8,4"
+                  strokeWidth="0.9"
                   opacity="0.65"
                 />
                 <text
@@ -407,14 +441,14 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
                 y1={originY}
                 x2={baseWidth - 30}
                 y2={originY}
-                stroke={isDark ? '#e2e8f0' : '#0f172a'}
+                stroke={sheetDark ? '#e2e8f0' : '#0f172a'}
                 strokeWidth="1.5"
               />
               {/* X and Y Terminal Labels */}
               <text
                 x={38}
                 y={originY - 8}
-                fill={isDark ? '#ffffff' : '#0f172a'}
+                fill={sheetDark ? '#ffffff' : '#0f172a'}
                 fontSize="16"
                 fontWeight="bold"
                 fontFamily="'Space Grotesk', sans-serif"
@@ -1247,68 +1281,100 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
               )}
             </g>
 
-            {/* Standard BIS SP 46 Title Block */}
-            <g
-              className="title-block"
-              transform={`translate(${baseWidth - 262}, ${baseHeight - 72})`}
-            >
+            {/* Drawing Sheet Title Block (Lower Right) */}
+            <g transform={`translate(${baseWidth - 260}, ${baseHeight - 72})`}>
               <rect
                 x="0"
                 y="0"
                 width="250"
-                height="62"
-                rx="3"
-                fill={isDark ? '#0f172a' : '#f8fafc'}
-                stroke={isDark ? '#334155' : '#cbd5e1'}
+                height="64"
+                fill={sheetDark ? '#0f172a' : '#ffffff'}
+                stroke={sheetDark ? '#94a3b8' : '#0f172a'}
                 strokeWidth="1.2"
+              />
+              {/* EDraw Watermark */}
+              <text
+                x="242"
+                y="58"
+                fill={sheetDark ? '#334155' : '#e2e8f0'}
+                fontSize="16"
+                fontFamily="sans-serif"
+                fontWeight="900"
+                textAnchor="end"
+              >
+                EDraw
+              </text>
+              <line
+                x1="0"
+                y1="18"
+                x2="250"
+                y2="18"
+                stroke={sheetDark ? '#334155' : '#0f172a'}
+                strokeWidth="0.8"
               />
               <line
                 x1="0"
-                y1="20"
+                y1="34"
                 x2="250"
-                y2="20"
-                stroke={isDark ? '#334155' : '#cbd5e1'}
+                y2="34"
+                stroke={sheetDark ? '#334155' : '#0f172a'}
+                strokeWidth="0.8"
+              />
+              <line
+                x1="130"
+                y1="34"
+                x2="130"
+                y2="64"
+                stroke={sheetDark ? '#334155' : '#0f172a'}
                 strokeWidth="0.8"
               />
               <text
                 x="8"
-                y="14"
-                fill={isDark ? '#f1f5f9' : '#0f172a'}
-                fontSize="9.5"
+                y="13"
+                fill={sheetDark ? '#f1f5f9' : '#0f172a'}
+                fontSize="9"
                 fontFamily="sans-serif"
                 fontWeight="bold"
               >
-                EDraw — PROJECTION OF STRAIGHT LINES
+                PROJECTION OF STRAIGHT LINES (1ST ANGLE)
               </text>
               <text
                 x="8"
-                y="33"
-                fill={isDark ? '#f1f5f9' : '#0f172a'}
-                fontSize="8.5"
+                y="29"
+                fill={sheetDark ? '#f1f5f9' : '#0f172a'}
+                fontSize="8"
                 fontFamily="monospace"
-                fontWeight="bold"
               >
-                Scale: 1:1 • All Dimensions Are In mm
+                Scale: 1:1 • All Dimensions in mm
               </text>
               <text
                 x="8"
-                y="46"
-                fill={vpColor}
-                fontSize="8.5"
+                y="47"
+                fill={sheetDark ? '#f1f5f9' : '#0f172a'}
+                fontSize="8"
                 fontFamily="monospace"
                 fontWeight="bold"
               >
-                ELEVATION: Front View a′b′ (on VP)
+                NAME: {studentName || '________________'}
+              </text>
+              <text
+                x="136"
+                y="47"
+                fill={sheetDark ? '#f1f5f9' : '#0f172a'}
+                fontSize="8"
+                fontFamily="monospace"
+                fontWeight="bold"
+              >
+                REG: {registerNo || '__________'}
               </text>
               <text
                 x="8"
-                y="57"
-                fill={hpColor}
-                fontSize="8.5"
+                y="59"
+                fill={sheetDark ? '#94a3b8' : '#475569'}
+                fontSize="7"
                 fontFamily="monospace"
-                fontWeight="bold"
               >
-                PLAN: Top View ab (on HP)
+                LINE {line.nameA}{line.nameB} • BIS SP 46
               </text>
             </g>
           </svg>

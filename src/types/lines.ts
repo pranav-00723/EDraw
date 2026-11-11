@@ -5,7 +5,7 @@
 
 import { HpRelation, VpRelation } from './projection';
 
-export type LineInputMode = 'END_POINTS' | 'TRUE_LENGTH_ANGLES' | 'APPARENT_VALUES';
+export type LineInputMode = 'FLEXIBLE' | 'END_POINTS' | 'TRUE_LENGTH_ANGLES' | 'APPARENT_VALUES';
 
 export type LineOrientationType =
   | 'PARALLEL_BOTH'

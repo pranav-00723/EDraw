@@ -3,13 +3,19 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   LineProblemInput,
   LineInputMode,
   EndPointSpec,
   TargetQuadrantB,
 } from '../../types/lines';
+import {
+  FlexibleLineInput,
+  createDefaultFlexibleInput,
+  solveFlexibleLineInput,
+} from '../../utils/flexibleLineSolver';
+import { FlexibleLineInputForm } from './FlexibleLineInputForm';
 import {
   Ruler,
   Compass,
@@ -39,6 +45,43 @@ export const LineInputForm: React.FC<LineInputFormProps> = ({
   vpColor,
   isDark = false,
 }) => {
+  const [isFlexibleView, setIsFlexibleView] = useState<boolean>(true);
+  const [flexInput, setFlexInput] = useState<FlexibleLineInput>(() =>
+    createDefaultFlexibleInput()
+  );
+  const [flexWarnings, setFlexWarnings] = useState<string[]>([]);
+  const [flexErrors, setFlexErrors] = useState<string[]>([]);
+
+  const handleSolveFlexible = () => {
+    const result = solveFlexibleLineInput(flexInput, input.color);
+    setFlexWarnings(result.warnings);
+    setFlexErrors(result.errors);
+    if (result.errors.length === 0) {
+      onChange(result.lineInput);
+    }
+  };
+
+  const handleClearFlexible = () => {
+    setFlexInput({
+      end1: { name: 'A', hpRelation: '', distanceHp: '', vpRelation: '', distanceVp: '' },
+      end2: { name: 'B', hpRelation: '', distanceHp: '', vpRelation: '', distanceVp: '' },
+      trueLength: '',
+      thetaDeg: '',
+      phiDeg: '',
+      frontViewLength: '',
+      topViewLength: '',
+      alphaDeg: '',
+      betaDeg: '',
+      dep: '',
+      htVpRelation: '',
+      htDistanceVp: '',
+      vtHpRelation: '',
+      vtDistanceHp: '',
+    });
+    setFlexWarnings([]);
+    setFlexErrors([]);
+  };
+
   const updateField = <K extends keyof LineProblemInput>(
     field: K,
     value: LineProblemInput[K]
@@ -127,12 +170,27 @@ export const LineInputForm: React.FC<LineInputFormProps> = ({
           <span>Problem Input Method</span>
           <span className="text-[10px] text-slate-400 font-normal">Choose formulation</span>
         </label>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 bg-slate-100 dark:bg-slate-800/80 p-1.5 rounded-lg text-xs font-medium">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 bg-slate-100 dark:bg-slate-800/80 p-1.5 rounded-lg text-xs font-medium">
           <button
             type="button"
-            onClick={() => updateField('mode', 'APPARENT_VALUES')}
-            className={`py-2 px-2 rounded-md transition text-center flex flex-col items-center justify-center gap-0.5 ${
-              input.mode === 'APPARENT_VALUES'
+            onClick={() => setIsFlexibleView(true)}
+            className={`py-2 px-2 rounded-md transition text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+              isFlexibleView
+                ? 'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-xs font-bold'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <span className="font-semibold">All Parameters</span>
+            <span className="text-[10px] opacity-80">(Enter any knowns)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIsFlexibleView(false);
+              updateField('mode', 'APPARENT_VALUES');
+            }}
+            className={`py-2 px-2 rounded-md transition text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+              !isFlexibleView && input.mode === 'APPARENT_VALUES'
                 ? 'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-xs font-bold'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
@@ -142,9 +200,12 @@ export const LineInputForm: React.FC<LineInputFormProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => updateField('mode', 'TRUE_LENGTH_ANGLES')}
-            className={`py-2 px-2 rounded-md transition text-center flex flex-col items-center justify-center gap-0.5 ${
-              input.mode === 'TRUE_LENGTH_ANGLES'
+            onClick={() => {
+              setIsFlexibleView(false);
+              updateField('mode', 'TRUE_LENGTH_ANGLES');
+            }}
+            className={`py-2 px-2 rounded-md transition text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+              !isFlexibleView && input.mode === 'TRUE_LENGTH_ANGLES'
                 ? 'bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-300 shadow-xs font-bold'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
@@ -154,9 +215,12 @@ export const LineInputForm: React.FC<LineInputFormProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => updateField('mode', 'END_POINTS')}
-            className={`py-2 px-2 rounded-md transition text-center flex flex-col items-center justify-center gap-0.5 ${
-              input.mode === 'END_POINTS'
+            onClick={() => {
+              setIsFlexibleView(false);
+              updateField('mode', 'END_POINTS');
+            }}
+            className={`py-2 px-2 rounded-md transition text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+              !isFlexibleView && input.mode === 'END_POINTS'
                 ? 'bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-300 shadow-xs font-bold'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
@@ -166,6 +230,20 @@ export const LineInputForm: React.FC<LineInputFormProps> = ({
           </button>
         </div>
       </div>
+
+      {isFlexibleView ? (
+        <FlexibleLineInputForm
+          value={flexInput}
+          onChange={setFlexInput}
+          onSolve={handleSolveFlexible}
+          onClear={handleClearFlexible}
+          warnings={flexWarnings}
+          errors={flexErrors}
+          hpColor={hpColor}
+          vpColor={vpColor}
+        />
+      ) : (
+        <>
 
       {/* Line Identification */}
       <div className="grid grid-cols-2 gap-3 bg-slate-50 dark:bg-slate-800/40 p-3 rounded-lg border border-slate-100 dark:border-slate-800">
@@ -860,6 +938,8 @@ export const LineInputForm: React.FC<LineInputFormProps> = ({
             </div>
           )}
         </div>
+      )}
+        </>
       )}
     </div>
   );

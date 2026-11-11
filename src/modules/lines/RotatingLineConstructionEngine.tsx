@@ -697,26 +697,6 @@ export const RotatingLineConstructionEngine: React.FC<RotatingLineEngineProps> =
                 </text>
 
                 {/* Reference Plane Identifiers (VP Above, HP Below in First Angle) */}
-                <text
-                  x={50}
-                  y={svgMetrics.groundY - 14}
-                  fill="#f87171"
-                  fontSize="14"
-                  fontWeight="bold"
-                  fontFamily="monospace"
-                >
-                  V.P. (Front View / Elevation)
-                </text>
-                <text
-                  x={50}
-                  y={svgMetrics.groundY + 24}
-                  fill="#60a5fa"
-                  fontSize="14"
-                  fontWeight="bold"
-                  fontFamily="monospace"
-                >
-                  H.P. (Top View / Plan)
-                </text>
               </g>
             )}
 
@@ -1035,8 +1015,7 @@ export const RotatingLineConstructionEngine: React.FC<RotatingLineEngineProps> =
                   x2={svgMetrics.locusEndX}
                   y2={svgMetrics.locusFvY}
                   stroke="#fbbf24"
-                  strokeWidth="1.6"
-                  strokeDasharray="8,4"
+                  strokeWidth="0.9"
                 />
                 {/* Locus of b' Label Badge */}
                 <g transform={`translate(${svgMetrics.locusEndX + 6}, ${svgMetrics.locusFvY - 9})`}>
@@ -1053,8 +1032,7 @@ export const RotatingLineConstructionEngine: React.FC<RotatingLineEngineProps> =
                   x2={svgMetrics.locusEndX}
                   y2={svgMetrics.locusTvY}
                   stroke="#22d3ee"
-                  strokeWidth="1.6"
-                  strokeDasharray="8,4"
+                  strokeWidth="0.9"
                 />
                 {/* Locus of b Label Badge */}
                 <g transform={`translate(${svgMetrics.locusEndX + 6}, ${svgMetrics.locusTvY - 9})`}>
@@ -1242,8 +1220,8 @@ export const RotatingLineConstructionEngine: React.FC<RotatingLineEngineProps> =
               </g>
             )}
 
-            {/* LAYER 9: TRACES (HT & VT) — Connected to VP and HP with Dotted Lines */}
-            {showTraces && (
+            {/* LAYER 9: TRACES (HT & VT) — Shown only in Final Step */}
+            {showTraces && currentStep >= 8 && (
               <g id="layer-traces">
                 {/* Horizontal Trace (HT) */}
                 {line.ht?.exists && svgMetrics.htGroundSvg && svgMetrics.htTraceSvg && (
@@ -1415,7 +1393,7 @@ export const RotatingLineConstructionEngine: React.FC<RotatingLineEngineProps> =
                 </text>
 
                 {/* Line 4: Locus */}
-                <line x1="12" y1="92" x2="32" y2="92" stroke="#fbbf24" strokeWidth="1.5" strokeDasharray="4,2" />
+                <line x1="12" y1="92" x2="32" y2="92" stroke="#fbbf24" strokeWidth="0.9" />
                 <text x="38" y="96" fill="#fde68a" fontSize="10" fontFamily="monospace">
                   Locus Line (Parallel XY)
                 </text>

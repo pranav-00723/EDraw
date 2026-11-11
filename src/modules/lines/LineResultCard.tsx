@@ -268,40 +268,21 @@ export const LineParametersCard: React.FC<LineResultCardProps> = ({
         </div>
       </div>
 
-      {/* SOLVED TRUE LENGTH BANNER (When solved from apparent values / Question B1) */}
+      {/* SOLVED TRUE LENGTH BANNER (Graphical Measurement Summary) */}
       {line.isSolvedFromApparent && apparent && (
-        <div className="p-4 rounded-xl border border-purple-300 dark:border-purple-800 bg-purple-50/80 dark:bg-purple-950/40 flex flex-col gap-2.5">
+        <div className="p-4 rounded-xl border border-purple-300 dark:border-purple-800 bg-purple-50/80 dark:bg-purple-950/40 flex flex-col gap-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-xs font-bold text-purple-950 dark:text-purple-200 flex items-center gap-1.5">
               <Sparkles className="w-4 h-4 text-purple-600" />
-              Calculated Answer: True Length (TL) = {apparent.calculatedTL.toFixed(2)} mm
+              Graphical Result: True Length (TL) = {apparent.calculatedTL.toFixed(1)} mm
             </span>
             <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded bg-purple-200 text-purple-900 dark:bg-purple-900 dark:text-purple-200">
-              Exact: √{Math.round(apparent.calculatedTL * apparent.calculatedTL)} mm
+              Measured on Sheet
             </span>
           </div>
 
-          <div className="text-xs text-slate-800 dark:text-slate-200 font-mono leading-relaxed bg-white/80 dark:bg-slate-900/80 p-3 rounded-lg border border-purple-200 dark:border-purple-800/80 space-y-1.5">
-            <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-600 dark:text-slate-400 pb-1 border-b border-slate-100 dark:border-slate-800">
-              <span>Given: FV Length (EL) = <strong>{apparent.el} mm</strong></span>
-              <span>TV Length (PL) = <strong>{apparent.pl} mm</strong></span>
-              <span>Projector Dist (DEP) = <strong>{apparent.dep} mm</strong></span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-[11px]">
-              <div>
-                • Elevation Δz = √(EL² − DEP²) = √({apparent.el}² − {apparent.dep}²) = <strong>{apparent.deltaZ.toFixed(2)} mm</strong>
-              </div>
-              <div>
-                • Plan Δy = √(PL² − DEP²) = √({apparent.pl}² − {apparent.dep}²) = <strong>{apparent.deltaY.toFixed(2)} mm</strong>
-              </div>
-            </div>
-            <div className="pt-1 text-xs text-purple-900 dark:text-purple-200 font-bold">
-              • True Length: TL = √(EL² + Δy²) = √({apparent.el}² + {apparent.deltaY.toFixed(2)}²) = √(4900 + 2000) = √6900 = {apparent.calculatedTL.toFixed(2)} mm
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600 dark:text-slate-400">
-              <div>• True angle with HP (θ) = arcsin(Δz / TL) = <strong>{apparent.thetaDeg.toFixed(2)}°</strong></div>
-              <div>• True angle with VP (φ) = arcsin(Δy / TL) = <strong>{apparent.phiDeg.toFixed(2)}°</strong></div>
-            </div>
+          <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed bg-white/80 dark:bg-slate-900/80 p-3 rounded-lg border border-purple-200 dark:border-purple-800/80">
+            Plotted from the given Front View (<strong>{apparent.el} mm</strong>), Top View (<strong>{apparent.pl} mm</strong>), and Projector Distance (<strong>{apparent.dep} mm</strong>). Rotating the projected views to the locus lines yields <strong>TL = {apparent.calculatedTL.toFixed(1)} mm</strong>, <strong>θ = {apparent.thetaDeg.toFixed(1)}°</strong>, and <strong>φ = {apparent.phiDeg.toFixed(1)}°</strong> when measured with a scale and protractor.
           </div>
         </div>
       )}
@@ -333,7 +314,7 @@ export const LineParametersCard: React.FC<LineResultCardProps> = ({
             <span className="text-xs font-mono text-slate-500">mm</span>
           </div>
           <div className="mt-1 text-[10px] text-slate-500 font-mono">
-            {line.isSolvedFromApparent ? 'Calculated Answer' : 'Length in Space'}
+            {line.isSolvedFromApparent ? 'Measured on Sheet' : 'Length in Space'}
           </div>
         </div>
 

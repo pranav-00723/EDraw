@@ -185,6 +185,14 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const nativeCameraInputRef = useRef<HTMLInputElement | null>(null);
 
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setIsCameraActive(false);
+  };
+
   useEffect(() => {
     return () => {
       stopCamera();
@@ -382,13 +390,7 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
     }
   };
 
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-    setIsCameraActive(false);
-  };
+
 
   const capturePhoto = () => {
     if (!videoRef.current) return;

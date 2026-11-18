@@ -258,7 +258,7 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
   };
 
   /**
-   * Process image via server-side Gemini OCR and Tesseract engine
+   * Process image via server-side Gemini 3.8 Flash OCR and Tesseract engine
    */
   const processImageOcr = async (dataUrl: string, mimeType = 'image/jpeg') => {
     setIsScanning(true);
@@ -324,7 +324,7 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
         if (data.extractedSchema) {
           setExtractedSchema(data.extractedSchema);
         }
-        setOcrEngine(data.source || 'gemini-4-hydrogen');
+        setOcrEngine(data.source || 'gemini-3.8-flash');
       } else {
         throw new Error(data.error || 'Failed to extract drawing values');
       }
@@ -651,7 +651,7 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
                       )}
                     </div>
                     <p className="font-mono text-[11px] text-slate-600 dark:text-slate-300 line-clamp-2 leading-relaxed">
-                      {questionText || 'Analyzing image with Gemini...'}
+                      {questionText || 'Analyzing image with Gemini 3.8 Flash...'}
                     </p>
                   </div>
                 </div>

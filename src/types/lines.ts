@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { HpRelation, VpRelation } from './projection';
+import type { HpRelation, VpRelation } from './projection.ts';
 
 export type LineInputMode = 'FLEXIBLE' | 'END_POINTS' | 'TRUE_LENGTH_ANGLES' | 'APPARENT_VALUES';
 

@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { HpRelation, VpRelation } from './projection';
-import { TargetQuadrantB, ComputedLine, LineProblemInput } from './lines';
+import type { HpRelation, VpRelation } from './projection.ts';
+import type { TargetQuadrantB, ComputedLine, LineProblemInput } from './lines.ts';
 
 export type MasterLineCategory =
   | 'SL_01_PARALLEL_BOTH'

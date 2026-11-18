@@ -8,7 +8,14 @@ import { ComputedLine, LineProblemInput } from '../../types/lines';
 import { SAMPLE_LINE_PROBLEMS } from '../../utils/linesMath';
 import { PictorialDraftingStages } from './PictorialDraftingStages';
 import { PictorialTracesDiagram } from './PictorialTracesDiagram';
-import { ArrowRight } from 'lucide-react';
+import {
+  BookOpen,
+  ArrowRight,
+  Compass,
+  CheckCircle2,
+  Sparkles,
+  Layers,
+} from 'lucide-react';
 
 interface LineTheoryPanelProps {
   line: ComputedLine;
@@ -27,114 +34,100 @@ export const LineTheoryPanel: React.FC<LineTheoryPanelProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'procedure' | 'problems' | 'traces'>('procedure');
 
-  const tabMeta = {
-    procedure: {
-      title: `Drafting Theory & Rotating Line Procedure`,
-      takeaway: `Step-by-step BIS SP 46:2003 construction for line ${line.nameA}${line.nameB} (TL = ${line.trueLength.toFixed(1)} mm, θ = ${line.thetaDeg.toFixed(1)}°, φ = ${line.phiDeg.toFixed(1)}°).`,
-    },
-    problems: {
-      title: 'Standard Curriculum Benchmarks',
-      takeaway:
-        'Select any classic university or technical board straight-line problem to load its parameters directly into the simulator.',
-    },
-    traces: {
-      title: 'Horizontal & Vertical Traces (HT & VT)',
-      takeaway:
-        'Extend the Front View and Top View to meet XY and drop perpendicular projectors to locate where the infinite line pierces HP and VP.',
-    },
-  }[activeTab];
-
   return (
-    <section
-      aria-label="Straight Line Theory & Drafting Studio"
-      style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
-      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden"
-    >
-      {/* Grand Architectural Masthead */}
-      <header className="px-6 pt-6 pb-0 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900">
-        <div className="pb-5">
-          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
-            <span>Straight-Line Theory Studio</span>
-            <span aria-hidden="true">·</span>
-            <span>BIS SP 46:2003</span>
-            <span aria-hidden="true">·</span>
-            <span>ISO 128</span>
+    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm flex flex-col gap-5 text-slate-100">
+      {/* Top Header & Tab Navigation Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-xs">
+            <BookOpen className="w-5 h-5" />
           </div>
-
-          <h3
-            style={{ fontFamily: "'Fraunces', Georgia, serif", textWrap: 'balance' }}
-            className="mt-1.5 text-2xl sm:text-[26px] font-semibold tracking-tight text-slate-900 dark:text-slate-50 leading-snug"
-          >
-            {tabMeta.title}
-          </h3>
-
-          <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-300 max-w-2xl leading-relaxed">
-            {tabMeta.takeaway}
-          </p>
+          <div>
+            <h3 className="text-sm sm:text-base font-bold tracking-tight text-white font-sans">
+              Engineering Theory &amp; Drafting Procedure
+            </h3>
+            <p className="text-xs text-slate-400 font-mono">
+              BIS SP 46:2003 / ISO 128 Projection Principles
+            </p>
+          </div>
         </div>
 
-        {/* Clean Underline Tab Navigation */}
-        <nav
-          role="tablist"
-          aria-label="Line theory sections"
-          className="flex items-center gap-6 overflow-x-auto -mb-px"
-        >
-          {[
-            { id: 'procedure' as const, num: '01', label: 'Drafting Steps' },
-            { id: 'problems' as const, num: '02', label: 'Standard Problems' },
-            { id: 'traces' as const, num: '03', label: 'Traces (HT & VT)' },
-          ].map((tab) => {
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => setActiveTab(tab.id)}
-                className={`py-3 border-b-2 text-xs sm:text-sm font-medium whitespace-nowrap shrink-0 transition-colors duration-150 cursor-pointer flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 ${
-                  active
-                    ? 'border-slate-900 dark:border-slate-100 text-slate-900 dark:text-slate-50 font-semibold'
-                    : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                }`}
-              >
-                <span className="font-mono text-[11px] opacity-70 tabular-nums">{tab.num}</span>
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
-        </nav>
-      </header>
+        {/* Tab Switcher (Matches User Mockup Screenshot) */}
+        <div className="flex items-center p-1 rounded-xl bg-slate-800/90 border border-slate-700/80 text-xs font-medium">
+          <button
+            type="button"
+            onClick={() => setActiveTab('procedure')}
+            className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+              activeTab === 'procedure'
+                ? 'bg-blue-600 text-white font-bold shadow-xs'
+                : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            Drafting Steps (Pictorial)
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('problems')}
+            className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+              activeTab === 'problems'
+                ? 'bg-blue-600 text-white font-bold shadow-xs'
+                : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            Classroom Standard Problems
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('traces')}
+            className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+              activeTab === 'traces'
+                ? 'bg-blue-600 text-white font-bold shadow-xs'
+                : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            Traces (HT &amp; VT)
+          </button>
+        </div>
+      </div>
 
-      <div className="p-6">
-        {/* TAB 1: PICTORIAL STEP-BY-STEP DRAFTING PROCEDURE */}
-        {activeTab === 'procedure' && (
-          <PictorialDraftingStages
-            line={line}
-            hpColor={hpColor}
-            vpColor={vpColor}
-            isDark={isDark}
-          />
-        )}
+      {/* ================================================================ */}
+      {/* TAB 1: PICTORIAL STEP-BY-STEP DRAFTING PROCEDURE */}
+      {/* ================================================================ */}
+      {activeTab === 'procedure' && (
+        <PictorialDraftingStages
+          line={line}
+          hpColor={hpColor}
+          vpColor={vpColor}
+          isDark={isDark}
+        />
+      )}
 
-        {/* TAB 2: CLASSROOM STANDARD PROBLEMS */}
-        {activeTab === 'problems' && (
-          <div className="divide-y divide-slate-200 dark:divide-slate-800 border-t border-b border-slate-200 dark:border-slate-800">
-            {SAMPLE_LINE_PROBLEMS.map((sample, idx) => (
+      {/* ================================================================ */}
+      {/* TAB 2: CLASSROOM STANDARD PROBLEMS */}
+      {/* ================================================================ */}
+      {activeTab === 'problems' && (
+        <div className="flex flex-col gap-3 text-xs">
+          <div className="text-[11px] text-slate-400 bg-slate-800/60 p-3 rounded-lg border border-slate-800 font-sans flex items-center justify-between">
+            <span>Select a curriculum benchmark problem from Indian University &amp; Technical Board syllabi:</span>
+            <span className="text-[10px] font-mono text-blue-400 font-semibold">BIS SP 46 / ISO 128</span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2.5">
+            {SAMPLE_LINE_PROBLEMS.map((sample) => (
               <div
                 key={sample.id}
-                className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group"
+                className="p-3.5 rounded-xl border border-slate-800 bg-slate-850/60 hover:border-blue-500/80 transition flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 group"
               >
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
-                    <span>{String(idx + 1).padStart(2, '0')}</span>
-                    <span aria-hidden="true">·</span>
-                    <span>{sample.badge}</span>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-white group-hover:text-blue-400 transition font-sans">
+                      {sample.title}
+                    </span>
+                    <span className="px-2 py-0.5 text-[9px] font-mono font-semibold rounded bg-blue-950 text-blue-300 border border-blue-800">
+                      {sample.badge}
+                    </span>
                   </div>
-                  <h4 className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">
-                    {sample.title}
-                  </h4>
-                  <p className="mt-1 text-[13px] text-slate-600 dark:text-slate-400 leading-relaxed max-w-2xl">
+                  <p className="mt-1 text-[11px] text-slate-400 leading-relaxed font-sans">
                     {sample.description}
                   </p>
                 </div>
@@ -143,7 +136,7 @@ export const LineTheoryPanel: React.FC<LineTheoryPanelProps> = ({
                   <button
                     type="button"
                     onClick={() => onSelectProblem(sample.input)}
-                    className="px-4 py-2 rounded-lg bg-slate-900 dark:bg-slate-100 hover:bg-slate-800 dark:hover:bg-white text-white dark:text-slate-900 text-xs font-semibold shrink-0 flex items-center gap-1.5 transition-colors duration-150 cursor-pointer whitespace-nowrap self-start sm:self-center"
+                    className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs font-semibold shrink-0 shadow-xs flex items-center gap-1.5 transition cursor-pointer"
                   >
                     <span>Load Problem</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -152,76 +145,82 @@ export const LineTheoryPanel: React.FC<LineTheoryPanelProps> = ({
               </div>
             ))}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* TAB 3: TRACES (HT & VT) */}
-        {activeTab === 'traces' && (
-          <div className="flex flex-col gap-6">
-            <PictorialTracesDiagram
-              line={line}
-              hpColor={hpColor}
-              vpColor={vpColor}
-              isDark={isDark}
-            />
+      {/* ================================================================ */}
+      {/* TAB 3: TRACES (HT & VT) WITH PICTORIAL EXTENSION DIAGRAM */}
+      {/* ================================================================ */}
+      {activeTab === 'traces' && (
+        <div className="flex flex-col gap-4 text-xs">
+          {/* Pictorial Traces Canvas */}
+          <PictorialTracesDiagram
+            line={line}
+            hpColor={hpColor}
+            vpColor={vpColor}
+            isDark={isDark}
+          />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-200 dark:border-slate-800">
-              {/* Horizontal Trace (HT) */}
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                    <span className="inline-block w-2.5 h-2.5 rounded-xs shrink-0" style={{ backgroundColor: hpColor }} />
-                    <span>Horizontal Trace (HT)</span>
-                  </span>
-                  <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
-                    Pierces HP
-                  </span>
-                </div>
-                <p className="text-[13px] text-slate-600 dark:text-slate-300 leading-relaxed">
-                  Extend Front View <em>a′b′</em> to meet XY at <strong>h′</strong>, then drop a vertical projector to meet the extended Top View <em>ab</em> at <strong>h (HT)</strong>.
-                </p>
-                <div className="pt-1 font-mono text-xs tabular-nums">
+          {/* Theoretical Rules & Calculations */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            {/* Horizontal Trace (HT) */}
+            <div className="p-3.5 rounded-xl bg-slate-850/70 border border-slate-800 flex flex-col gap-2">
+              <span className="font-bold text-white text-xs flex items-center gap-2 font-sans">
+                <span className="w-2.5 h-2.5 rounded-xs" style={{ backgroundColor: hpColor }} />
+                <span>Horizontal Trace (HT) — Intersection with HP</span>
+              </span>
+              <ul className="space-y-1.5 text-[11.5px] text-slate-300 list-disc list-inside leading-relaxed font-sans">
+                <li>
+                  <strong>2D Procedure:</strong> Extend Front View <em>a′b′</em> until it intersects reference line XY at <strong>h′</strong>.
+                </li>
+                <li>
+                  From <strong>h′</strong>, draw a vertical projector perpendicular to XY to meet the extended Top View <em>ab</em> at <strong>h (HT)</strong>.
+                </li>
+                <li>
+                  <strong>Current Status:</strong>{' '}
                   {line.ht.exists ? (
-                    <span className="text-emerald-700 dark:text-emerald-400 font-semibold">
-                      HT at ({line.ht.x.toFixed(1)}, {line.ht.y.toFixed(1)}, 0) mm
+                    <span className="font-mono text-emerald-400 font-bold">
+                      HT exists at ({line.ht.x.toFixed(1)}, {line.ht.y.toFixed(1)}, 0) mm
                     </span>
                   ) : (
-                    <span className="text-amber-700 dark:text-amber-400">
-                      Parallel to HP — HT does not exist
+                    <span className="font-mono text-amber-400">
+                      Line is parallel to HP (HT does not exist).
                     </span>
                   )}
-                </div>
-              </div>
+                </li>
+              </ul>
+            </div>
 
-              {/* Vertical Trace (VT) */}
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                    <span className="inline-block w-2.5 h-2.5 rounded-xs shrink-0" style={{ backgroundColor: vpColor }} />
-                    <span>Vertical Trace (VT)</span>
-                  </span>
-                  <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
-                    Pierces VP
-                  </span>
-                </div>
-                <p className="text-[13px] text-slate-600 dark:text-slate-300 leading-relaxed">
-                  Extend Top View <em>ab</em> to meet XY at <strong>v</strong>, then draw a vertical projector to meet the extended Front View <em>a′b′</em> at <strong>v′ (VT)</strong>.
-                </p>
-                <div className="pt-1 font-mono text-xs tabular-nums">
+            {/* Vertical Trace (VT) */}
+            <div className="p-3.5 rounded-xl bg-slate-850/70 border border-slate-800 flex flex-col gap-2">
+              <span className="font-bold text-white text-xs flex items-center gap-2 font-sans">
+                <span className="w-2.5 h-2.5 rounded-xs" style={{ backgroundColor: vpColor }} />
+                <span>Vertical Trace (VT) — Intersection with VP</span>
+              </span>
+              <ul className="space-y-1.5 text-[11.5px] text-slate-300 list-disc list-inside leading-relaxed font-sans">
+                <li>
+                  <strong>2D Procedure:</strong> Extend Top View <em>ab</em> until it intersects reference line XY at <strong>v</strong>.
+                </li>
+                <li>
+                  From <strong>v</strong>, draw a vertical projector perpendicular to XY to meet the extended Front View <em>a′b′</em> at <strong>v′ (VT)</strong>.
+                </li>
+                <li>
+                  <strong>Current Status:</strong>{' '}
                   {line.vt.exists ? (
-                    <span className="text-blue-700 dark:text-blue-400 font-semibold">
-                      VT at ({line.vt.x.toFixed(1)}, 0, {line.vt.z.toFixed(1)}) mm
+                    <span className="font-mono text-amber-400 font-bold">
+                      VT exists at ({line.vt.x.toFixed(1)}, 0, {line.vt.z.toFixed(1)}) mm
                     </span>
                   ) : (
-                    <span className="text-amber-700 dark:text-amber-400">
-                      Parallel to VP — VT does not exist
+                    <span className="font-mono text-amber-400">
+                      Line is parallel to VP (VT does not exist).
                     </span>
                   )}
-                </div>
-              </div>
+                </li>
+              </ul>
             </div>
           </div>
-        )}
-      </div>
-    </section>
+        </div>
+      )}
+    </div>
   );
 };

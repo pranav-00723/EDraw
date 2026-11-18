@@ -4,8 +4,7 @@
  */
 
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI, Type } from '@google/genai';
+import { Type, GoogleGenAI } from '@google/genai';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
@@ -22,21 +21,27 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
-const isProduction = process.env.NODE_ENV === 'production';
+const isProduction =
+  process.env.NODE_ENV === 'production' ||
+  process.env.npm_lifecycle_event === 'start' ||
+  Boolean(process.env.K_SERVICE);
 
 // Support JSON payload up to 25MB for high-res textbook photo uploads & camera snapshots
 app.use(express.json({ limit: '25mb' }));
 
-// Initialize GoogleGenAI per gemini-api skill guidelines
+// Initialize GoogleGenAI only when a valid API key is configured
 const apiKey = process.env.GEMINI_API_KEY || '';
-const ai = new GoogleGenAI({
-  apiKey,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    },
-  },
-});
+const ai =
+  apiKey && apiKey.trim().length > 10 && !apiKey.includes('YOUR_')
+    ? new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          },
+        },
+      })
+    : null;
 
 /**
  * Standard Engineering Graphics Output Schema
@@ -454,7 +459,7 @@ app.post('/api/scan-question', async (req, res) => {
 
     let recognizedText = text || '';
 
-    if (apiKey && apiKey.trim().length > 10 && !apiKey.includes('YOUR_')) {
+    if (ai) {
       try {
         const parts: any[] = [];
 
@@ -498,7 +503,7 @@ CRITICAL RULES TO PREVENT MISINTERPRETATION:
         parts.push({ text: promptText });
 
         const generatePromise = ai.models.generateContent({
-          model: 'gemini-4-hydrogen',
+          model: 'gemini-3.8-flash',
           contents: { parts },
           config: {
             systemInstruction:
@@ -596,7 +601,7 @@ CRITICAL RULES TO PREVENT MISINTERPRETATION:
         return res.json({
           success: true,
           rawText: recognizedText,
-          source: 'gemini-4-hydrogen',
+          source: 'gemini-3.8-flash',
           extractedSchema,
           normalizedModel,
           solution,
@@ -652,6 +657,7 @@ CRITICAL RULES TO PREVENT MISINTERPRETATION:
 // Configure Vite middleware in development or static serving in production
 async function startServer() {
   if (!isProduction) {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',

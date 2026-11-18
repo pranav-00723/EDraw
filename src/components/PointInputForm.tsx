@@ -1,17 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { PointInput, HpRelation, VpRelation, PresetProblem } from '../types/projection';
-import { POINT_COLORS, MARKER_COLOR_GRID, SAMPLE_PROBLEMS } from '../utils/projectionMath';
+import { POINT_COLORS, MARKER_COLOR_GRID } from '../utils/projectionMath';
 import {
   Plus,
   Trash2,
   Check,
   Edit2,
-  RefreshCw,
-  BookOpen,
   AlertCircle,
-  HelpCircle,
-  ChevronDown,
-  Layers,
 } from 'lucide-react';
 
 interface PointInputFormProps {
@@ -39,9 +34,7 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
   onDeletePoint,
   onSelectPoint,
   onResetAll,
-  onLoadPreset,
   onGenerate,
-  isDark = false,
   hpColor = '#2563eb',
   vpColor = '#dc2626',
   onChangeHpColor,
@@ -139,7 +132,6 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
       setNameError('Point name is required (e.g. A, B, P).');
       isValid = false;
     } else {
-      // Check duplicate name unless editing the same point
       const isDuplicate = points.some(
         (p) => p.name.toUpperCase() === cleanName && p.id !== editingId
       );
@@ -154,7 +146,7 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
     if (!onHp) {
       const valHp = Number(distanceHp);
       if (isNaN(valHp) || valHp <= 0) {
-        setHpError('Enter a positive distance in mm, or check "On HP".');
+        setHpError('Enter a positive distance in mm, or check "Lies On HP".');
         isValid = false;
       } else {
         setHpError(null);
@@ -166,7 +158,7 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
     if (!onVp) {
       const valVp = Number(distanceVp);
       if (isNaN(valVp) || valVp <= 0) {
-        setVpError('Enter a positive distance in mm, or check "On VP".');
+        setVpError('Enter a positive distance in mm, or check "Lies On VP".');
         isValid = false;
       } else {
         setVpError(null);
@@ -213,40 +205,50 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-4 w-full">
-      {/* Main Form Card */}
-      <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col gap-4">
-        {/* Card Header & Controls */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+    <div className="flex flex-col gap-4 w-full font-['Plus_Jakarta_Sans',sans-serif]">
+      {/* Unified Engineering Parameter Inspector */}
+      <div className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden divide-y divide-slate-200/80 dark:divide-slate-800">
+        {/* Panel Header */}
+        <div className="px-5 py-4 flex items-start justify-between gap-3 bg-slate-50/60 dark:bg-slate-900">
           <div>
-            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <span>{editingId ? 'Edit Point Parameters' : 'Define Point Parameters'}</span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono">
+            <div className="flex items-center gap-2">
+              <h2 className="text-[15px] font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+                {editingId ? 'Edit Point Parameters' : 'Define Point Parameters'}
+              </h2>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              <span className="font-mono tabular-nums text-slate-700 dark:text-slate-300">
                 {points.length} {points.length === 1 ? 'Point' : 'Points'} Active
               </span>
-            </h2>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-              Specify the point position relative to the Horizontal and Vertical planes.
+              <span className="mx-1.5" aria-hidden="true">·</span>
+              <span>Relative to HP &amp; VP</span>
             </p>
           </div>
+
           {editingId && (
             <button
+              type="button"
               onClick={handleResetForm}
-              className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium"
+              className="px-2.5 py-1.5 rounded-md text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 border border-transparent hover:border-blue-200 dark:hover:border-blue-800 transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
               + New Point
             </button>
           )}
         </div>
 
-        {/* 1. Point Identifier & Marker Colour Grid */}
-        <div className="space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex-1 max-w-xs">
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+        {/* 1. Point Identifier & Marker Colour */}
+        <div className="px-5 py-4 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+            {/* Point Name Input */}
+            <div className="sm:col-span-5">
+              <label
+                htmlFor="point-name-input"
+                className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5"
+              >
                 Point Name <span className="text-red-500">*</span>
               </label>
               <input
+                id="point-name-input"
                 type="text"
                 maxLength={4}
                 value={name}
@@ -254,53 +256,65 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
                   setName(e.target.value);
                   setNameError(null);
                 }}
-                placeholder="e.g. A, B, P"
-                className={`w-full px-3 py-1.5 text-xs font-mono rounded-lg border bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 uppercase ${
+                placeholder="e.g. A"
+                className={`w-full h-9 px-3 text-sm font-mono font-semibold uppercase tracking-wider rounded-md border bg-slate-50/70 dark:bg-slate-950/60 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 transition-colors ${
                   nameError
-                    ? 'border-red-500 focus:ring-red-400'
-                    : 'border-slate-300 dark:border-slate-700 focus:ring-blue-500'
+                    ? 'border-red-500 focus:ring-red-500/20'
+                    : 'border-slate-300 dark:border-slate-700 focus:border-blue-600 focus:ring-blue-600/15'
                 }`}
               />
-              {nameError && (
-                <p className="text-[10px] text-red-500 mt-1 flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" />
-                  <span>{nameError}</span>
-                </p>
-              )}
             </div>
 
-            {/* Current Active Marker Preview & Custom Hex Selector */}
-            <div className="flex items-center gap-2 pt-1 sm:pt-4">
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs">
-                <span className="w-3.5 h-3.5 rounded-full shadow-xs flex-shrink-0" style={{ backgroundColor: color }} />
-                <span className="font-mono font-medium text-slate-700 dark:text-slate-300">{color.toUpperCase()}</span>
+            {/* Active Marker Hex Readout + Custom Color Trigger */}
+            <div className="sm:col-span-7">
+              <span className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                Active Marker Colour
+              </span>
+              <div className="h-9 flex items-center justify-between rounded-md border border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-950/60 overflow-hidden">
+                <div className="flex items-center gap-2 px-3 min-w-0">
+                  <span
+                    className="w-3.5 h-3.5 rounded-xs border border-black/15 dark:border-white/20 shrink-0"
+                    style={{ backgroundColor: color }}
+                  />
+                  <span className="font-mono text-xs font-medium tabular-nums text-slate-700 dark:text-slate-200 truncate">
+                    {color.toUpperCase()}
+                  </span>
+                </div>
+
+                <label
+                  className="h-full px-3 flex items-center gap-1.5 border-l border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 cursor-pointer transition-colors shrink-0"
+                  title="Choose custom marker color"
+                >
+                  <span>Custom</span>
+                  <input
+                    type="color"
+                    value={color}
+                    onChange={(e) => setColor(e.target.value)}
+                    className="w-4 h-4 rounded-xs cursor-pointer border-0 p-0 bg-transparent"
+                  />
+                </label>
               </div>
-              <label
-                className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-xs transition"
-                title="Choose custom marker color"
-              >
-                <span>Custom</span>
-                <input
-                  type="color"
-                  value={color}
-                  onChange={(e) => setColor(e.target.value)}
-                  className="w-4 h-4 rounded cursor-pointer border-0 p-0 ml-0.5"
-                />
-              </label>
             </div>
           </div>
 
+          {nameError && (
+            <p className="text-[11px] text-red-600 dark:text-red-400 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>{nameError}</span>
+            </p>
+          )}
+
           {/* Marker Colour Grid */}
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                Marker Colour Grid
-              </label>
-              <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                16 Curated Drafting Colors
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                Marker Swatches
+              </span>
+              <span className="text-[11px] font-mono text-slate-400 dark:text-slate-500">
+                16 Drafting Colors
               </span>
             </div>
-            <div className="grid grid-cols-8 gap-1.5 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
+            <div className="grid grid-cols-8 gap-1.5 p-2 rounded-md bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800">
               {MARKER_COLOR_GRID.map((swatch) => {
                 const isSelected = color.toLowerCase() === swatch.hex.toLowerCase();
                 return (
@@ -309,10 +323,12 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
                     type="button"
                     onClick={() => setColor(swatch.hex)}
                     title={`${swatch.name} (${swatch.hex})`}
-                    className={`h-7 rounded-md transition transform hover:scale-105 flex items-center justify-center relative shadow-xs ${
+                    aria-label={`Select color ${swatch.name}`}
+                    aria-pressed={isSelected}
+                    className={`h-7 rounded-sm border border-black/10 dark:border-white/10 transition-opacity flex items-center justify-center cursor-pointer ${
                       isSelected
-                        ? 'ring-2 ring-offset-2 ring-blue-600 dark:ring-blue-400 z-10 scale-105 shadow-md'
-                        : 'hover:opacity-90'
+                        ? 'ring-2 ring-slate-900 dark:ring-white ring-offset-2 ring-offset-slate-50 dark:ring-offset-slate-950'
+                        : 'hover:opacity-85'
                     }`}
                     style={{ backgroundColor: swatch.hex }}
                   >
@@ -326,20 +342,26 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
           </div>
         </div>
 
-        {/* 2. SECTION A — HORIZONTAL PLANE (HP) */}
-        <div className="p-3 rounded-lg bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
-          <div className="flex items-center justify-between mb-2">
+        {/* 2. HORIZONTAL PLANE (HP) */}
+        <div className="px-5 py-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded shadow-xs" style={{ backgroundColor: hpColor }} />
-              <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                Section A: Position Relative to HP
-              </span>
+              <span
+                className="w-2.5 h-2.5 rounded-xs shrink-0 border border-black/10 dark:border-white/15"
+                style={{ backgroundColor: hpColor }}
+              />
+              <h3 className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                Horizontal Plane (HP)
+              </h3>
               <label
-                className="flex items-center gap-1 ml-1 px-1.5 py-0.5 rounded text-[10px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 text-[11px] font-mono text-slate-600 dark:text-slate-300 cursor-pointer transition-colors"
                 title="Change HP Color"
               >
-                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: hpColor }} />
-                <span>HP Color</span>
+                <span
+                  className="w-2 h-2 rounded-xs"
+                  style={{ backgroundColor: hpColor }}
+                />
+                <span>Color</span>
                 <input
                   type="color"
                   value={hpColor}
@@ -349,8 +371,7 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
               </label>
             </div>
 
-            {/* "On HP" Checkbox */}
-            <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-slate-800 dark:text-slate-200">
+            <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700 dark:text-slate-300 select-none">
               <input
                 type="checkbox"
                 checked={onHp}
@@ -358,52 +379,77 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
                   setOnHp(e.target.checked);
                   setHpError(null);
                 }}
-                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
+                className="rounded-xs border-slate-300 dark:border-slate-600 accent-blue-600 w-3.5 h-3.5 cursor-pointer"
               />
               <span>Lies On HP (Height = 0)</span>
             </label>
           </div>
 
-          {/* Above vs Below HP (Contradiction-proof selector) */}
-          <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 transition ${onHp ? 'opacity-40 pointer-events-none' : ''}`}>
-            <div>
-              <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+          <div
+            className={`grid grid-cols-1 sm:grid-cols-12 gap-3 transition-opacity duration-150 ${
+              onHp ? 'opacity-45 pointer-events-none' : ''
+            }`}
+          >
+            <div className="sm:col-span-7">
+              <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1.5">
                 Direction Relative to HP
-              </label>
-              <div className="grid grid-cols-2 gap-1 p-1 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+              </span>
+              <div className="grid grid-cols-2 p-0.5 h-9 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80">
                 <button
                   type="button"
                   disabled={onHp}
                   onClick={() => setHpChoice('ABOVE')}
-                  className={`py-1 text-xs font-medium rounded-md transition ${
+                  className={`px-2 text-xs rounded-sm transition-colors flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                     hpChoice === 'ABOVE' && !onHp
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-50 font-semibold shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-medium'
                   }`}
                 >
-                  Above HP
+                  {hpChoice === 'ABOVE' && !onHp && (
+                    <span
+                      className="w-1.5 h-1.5 rounded-full shrink-0"
+                      style={{ backgroundColor: hpColor }}
+                    />
+                  )}
+                  <span>Above HP</span>
                 </button>
                 <button
                   type="button"
                   disabled={onHp}
                   onClick={() => setHpChoice('BELOW')}
-                  className={`py-1 text-xs font-medium rounded-md transition ${
+                  className={`px-2 text-xs rounded-sm transition-colors flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                     hpChoice === 'BELOW' && !onHp
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-50 font-semibold shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-medium'
                   }`}
                 >
-                  Below HP
+                  {hpChoice === 'BELOW' && !onHp && (
+                    <span
+                      className="w-1.5 h-1.5 rounded-full shrink-0"
+                      style={{ backgroundColor: hpColor }}
+                    />
+                  )}
+                  <span>Below HP</span>
                 </button>
               </div>
             </div>
 
-            <div>
-              <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
-                Distance ({hpChoice === 'ABOVE' ? 'Above' : 'Below'} HP) in mm
+            <div className="sm:col-span-5">
+              <label
+                htmlFor="distance-hp-input"
+                className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1.5 truncate"
+              >
+                {hpChoice === 'ABOVE' ? 'Above' : 'Below'} HP
               </label>
-              <div className="relative">
+              <div
+                className={`h-9 flex items-center rounded-md border bg-white dark:bg-slate-950/60 overflow-hidden focus-within:ring-2 transition-colors ${
+                  hpError
+                    ? 'border-red-500 focus-within:ring-red-500/20'
+                    : 'border-slate-300 dark:border-slate-700 focus-within:border-blue-600 focus-within:ring-blue-600/15'
+                }`}
+              >
                 <input
+                  id="distance-hp-input"
                   type="number"
                   min="0"
                   step="1"
@@ -413,13 +459,9 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
                     setDistanceHp(e.target.value);
                     setHpError(null);
                   }}
-                  className={`w-full px-3 py-1.5 text-xs font-mono rounded-lg border bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 pr-10 ${
-                    hpError
-                      ? 'border-red-500 focus:ring-red-400'
-                      : 'border-slate-300 dark:border-slate-700 focus:ring-blue-500'
-                  }`}
+                  className="w-full h-full px-3 text-xs font-mono font-medium tabular-nums bg-transparent text-slate-900 dark:text-slate-100 focus:outline-none"
                 />
-                <span className="absolute right-3 top-1.5 text-xs text-slate-400 font-mono pointer-events-none">
+                <span className="h-full px-2.5 flex items-center bg-slate-50 dark:bg-slate-800/80 border-l border-slate-200 dark:border-slate-700 text-[11px] font-mono text-slate-500 dark:text-slate-400 select-none">
                   mm
                 </span>
               </div>
@@ -427,27 +469,33 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
           </div>
 
           {hpError && (
-            <p className="text-[10px] text-red-500 mt-1.5 flex items-center gap-1">
-              <AlertCircle className="w-3 h-3" />
+            <p className="text-[11px] text-red-600 dark:text-red-400 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               <span>{hpError}</span>
             </p>
           )}
         </div>
 
-        {/* 3. SECTION B — VERTICAL PLANE (VP) */}
-        <div className="p-3 rounded-lg bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
-          <div className="flex items-center justify-between mb-2">
+        {/* 3. VERTICAL PLANE (VP) */}
+        <div className="px-5 py-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded shadow-xs" style={{ backgroundColor: vpColor }} />
-              <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                Section B: Position Relative to VP
-              </span>
+              <span
+                className="w-2.5 h-2.5 rounded-xs shrink-0 border border-black/10 dark:border-white/15"
+                style={{ backgroundColor: vpColor }}
+              />
+              <h3 className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                Vertical Plane (VP)
+              </h3>
               <label
-                className="flex items-center gap-1 ml-1 px-1.5 py-0.5 rounded text-[10px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 text-[11px] font-mono text-slate-600 dark:text-slate-300 cursor-pointer transition-colors"
                 title="Change VP Color"
               >
-                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: vpColor }} />
-                <span>VP Color</span>
+                <span
+                  className="w-2 h-2 rounded-xs"
+                  style={{ backgroundColor: vpColor }}
+                />
+                <span>Color</span>
                 <input
                   type="color"
                   value={vpColor}
@@ -457,8 +505,7 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
               </label>
             </div>
 
-            {/* "On VP" Checkbox */}
-            <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-slate-800 dark:text-slate-200">
+            <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700 dark:text-slate-300 select-none">
               <input
                 type="checkbox"
                 checked={onVp}
@@ -466,52 +513,77 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
                   setOnVp(e.target.checked);
                   setVpError(null);
                 }}
-                className="rounded border-slate-300 text-red-600 focus:ring-red-500 w-3.5 h-3.5 cursor-pointer"
+                className="rounded-xs border-slate-300 dark:border-slate-600 accent-blue-600 w-3.5 h-3.5 cursor-pointer"
               />
               <span>Lies On VP (Depth = 0)</span>
             </label>
           </div>
 
-          {/* In Front vs Behind VP */}
-          <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 transition ${onVp ? 'opacity-40 pointer-events-none' : ''}`}>
-            <div>
-              <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
+          <div
+            className={`grid grid-cols-1 sm:grid-cols-12 gap-3 transition-opacity duration-150 ${
+              onVp ? 'opacity-45 pointer-events-none' : ''
+            }`}
+          >
+            <div className="sm:col-span-7">
+              <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1.5">
                 Direction Relative to VP
-              </label>
-              <div className="grid grid-cols-2 gap-1 p-1 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+              </span>
+              <div className="grid grid-cols-2 p-0.5 h-9 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80">
                 <button
                   type="button"
                   disabled={onVp}
                   onClick={() => setVpChoice('IN_FRONT')}
-                  className={`py-1 text-xs font-medium rounded-md transition ${
+                  className={`px-2 text-xs rounded-sm transition-colors flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                     vpChoice === 'IN_FRONT' && !onVp
-                      ? 'bg-red-600 text-white shadow-xs'
-                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-50 font-semibold shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-medium'
                   }`}
                 >
-                  In Front of VP
+                  {vpChoice === 'IN_FRONT' && !onVp && (
+                    <span
+                      className="w-1.5 h-1.5 rounded-full shrink-0"
+                      style={{ backgroundColor: vpColor }}
+                    />
+                  )}
+                  <span>In Front</span>
                 </button>
                 <button
                   type="button"
                   disabled={onVp}
                   onClick={() => setVpChoice('BEHIND')}
-                  className={`py-1 text-xs font-medium rounded-md transition ${
+                  className={`px-2 text-xs rounded-sm transition-colors flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                     vpChoice === 'BEHIND' && !onVp
-                      ? 'bg-red-600 text-white shadow-xs'
-                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-50 font-semibold shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-medium'
                   }`}
                 >
-                  Behind VP
+                  {vpChoice === 'BEHIND' && !onVp && (
+                    <span
+                      className="w-1.5 h-1.5 rounded-full shrink-0"
+                      style={{ backgroundColor: vpColor }}
+                    />
+                  )}
+                  <span>Behind VP</span>
                 </button>
               </div>
             </div>
 
-            <div>
-              <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-400 mb-1">
-                Distance ({vpChoice === 'IN_FRONT' ? 'In Front of' : 'Behind'} VP) in mm
+            <div className="sm:col-span-5">
+              <label
+                htmlFor="distance-vp-input"
+                className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1.5 truncate"
+              >
+                {vpChoice === 'IN_FRONT' ? 'In Front of' : 'Behind'} VP
               </label>
-              <div className="relative">
+              <div
+                className={`h-9 flex items-center rounded-md border bg-white dark:bg-slate-950/60 overflow-hidden focus-within:ring-2 transition-colors ${
+                  vpError
+                    ? 'border-red-500 focus-within:ring-red-500/20'
+                    : 'border-slate-300 dark:border-slate-700 focus-within:border-blue-600 focus-within:ring-blue-600/15'
+                }`}
+              >
                 <input
+                  id="distance-vp-input"
                   type="number"
                   min="0"
                   step="1"
@@ -521,13 +593,9 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
                     setDistanceVp(e.target.value);
                     setVpError(null);
                   }}
-                  className={`w-full px-3 py-1.5 text-xs font-mono rounded-lg border bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 pr-10 ${
-                    vpError
-                      ? 'border-red-500 focus:ring-red-400'
-                      : 'border-slate-300 dark:border-slate-700 focus:ring-red-500'
-                  }`}
+                  className="w-full h-full px-3 text-xs font-mono font-medium tabular-nums bg-transparent text-slate-900 dark:text-slate-100 focus:outline-none"
                 />
-                <span className="absolute right-3 top-1.5 text-xs text-slate-400 font-mono pointer-events-none">
+                <span className="h-full px-2.5 flex items-center bg-slate-50 dark:bg-slate-800/80 border-l border-slate-200 dark:border-slate-700 text-[11px] font-mono text-slate-500 dark:text-slate-400 select-none">
                   mm
                 </span>
               </div>
@@ -535,78 +603,87 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
           </div>
 
           {vpError && (
-            <p className="text-[10px] text-red-500 mt-1.5 flex items-center gap-1">
-              <AlertCircle className="w-3 h-3" />
+            <p className="text-[11px] text-red-600 dark:text-red-400 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               <span>{vpError}</span>
             </p>
           )}
         </div>
 
-        {/* 4. OPTIONAL LATERAL X COORDINATE (ALONG GROUND LINE XY) */}
-        <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
-          <div className="flex items-center justify-between">
-            <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700 dark:text-slate-300">
-              <input
-                type="checkbox"
-                checked={showOptionalX}
-                onChange={(e) => setShowOptionalX(e.target.checked)}
-                className="rounded border-slate-300 text-slate-700 focus:ring-slate-500 w-3.5 h-3.5 cursor-pointer"
-              />
-              <span>Enable Lateral Offset along XY Axis (Optional X)</span>
-            </label>
-            <span className="text-[10px] text-slate-400 font-mono">
-              Default X = 0 mm
-            </span>
-          </div>
-
-          {showOptionalX && (
-            <div className="mt-2.5 pt-2 border-t border-slate-200 dark:border-slate-700/60 flex items-center gap-3">
-              <span className="text-xs text-slate-600 dark:text-slate-400">
-                Lateral X (mm):
-              </span>
-              <input
-                type="number"
-                step="5"
-                value={coordX}
-                onChange={(e) => setCoordX(e.target.value)}
-                placeholder="0"
-                className="w-28 px-2 py-1 text-xs font-mono rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
-              />
-              <span className="text-[11px] text-slate-400">
-                (Negative = left of origin, Positive = right)
+        {/* 4. OPTIONAL LATERAL X & HIDDEN BRACKET OPTIONS */}
+        <div className="px-5 py-4 space-y-3">
+          {/* Optional X Coordinate */}
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700 dark:text-slate-300 select-none">
+                <input
+                  type="checkbox"
+                  checked={showOptionalX}
+                  onChange={(e) => setShowOptionalX(e.target.checked)}
+                  className="rounded-xs border-slate-300 dark:border-slate-600 accent-blue-600 w-3.5 h-3.5 cursor-pointer"
+                />
+                <span>Lateral Offset along XY (Optional X)</span>
+              </label>
+              <span className="text-[11px] font-mono text-slate-400 dark:text-slate-500">
+                X = 0 mm
               </span>
             </div>
-          )}
-        </div>
 
-        {/* 5. HIDDEN POINT BRACKET NOTATION TOGGLE */}
-        <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
-          <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700 dark:text-slate-300">
+            {showOptionalX && (
+              <div className="mt-2.5 pl-5.5 flex flex-wrap items-center gap-3">
+                <div className="h-8 w-32 flex items-center rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950/60 overflow-hidden focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-600/15">
+                  <input
+                    type="number"
+                    step="5"
+                    value={coordX}
+                    onChange={(e) => setCoordX(e.target.value)}
+                    placeholder="0"
+                    aria-label="Lateral X in millimeters"
+                    className="w-full h-full px-2.5 text-xs font-mono tabular-nums bg-transparent text-slate-900 dark:text-slate-100 focus:outline-none"
+                  />
+                  <span className="h-full px-2 flex items-center bg-slate-50 dark:bg-slate-800/80 border-l border-slate-200 dark:border-slate-700 text-[11px] font-mono text-slate-500 dark:text-slate-400 select-none">
+                    mm
+                  </span>
+                </div>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Negative = left, Positive = right
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Hidden Point Bracket Notation Toggle */}
+          <label className="flex items-start gap-2 cursor-pointer text-xs font-medium text-slate-700 dark:text-slate-300 select-none">
             <input
               type="checkbox"
               checked={isHidden}
               onChange={(e) => setIsHidden(e.target.checked)}
-              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
+              className="mt-0.5 rounded-xs border-slate-300 dark:border-slate-600 accent-blue-600 w-3.5 h-3.5 cursor-pointer shrink-0"
             />
-            <span>Point is Hidden / Obstructed (display in brackets: ({name.toLowerCase()}), ({name.toLowerCase()}′))</span>
+            <span className="leading-relaxed">
+              Point is Hidden / Obstructed{' '}
+              <span className="font-mono text-slate-500 dark:text-slate-400">
+                ({name.toLowerCase()}), ({name.toLowerCase()}′)
+              </span>
+            </span>
           </label>
         </div>
 
-        {/* Action Buttons: Add/Update Point (all final outputs update immediately) */}
-        <div className="flex items-center gap-2 pt-2">
+        {/* 5. Action Buttons */}
+        <div className="px-5 py-3.5 bg-slate-50/70 dark:bg-slate-950/40 flex items-center gap-2.5">
           <button
             type="button"
             onClick={handleSave}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-xs transition shadow-sm cursor-pointer"
+            className="flex-1 h-9 px-4 rounded-md bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-xs transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer whitespace-nowrap"
           >
             {editingId ? (
               <>
-                <Check className="w-4 h-4" />
+                <Check className="w-4 h-4 shrink-0" />
                 <span>Update Point {name.toUpperCase()} &amp; Project</span>
               </>
             ) : (
               <>
-                <Plus className="w-4 h-4" />
+                <Plus className="w-4 h-4 shrink-0" />
                 <span>Add Point {name.toUpperCase()} &amp; Project</span>
               </>
             )}
@@ -615,7 +692,7 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
           <button
             type="button"
             onClick={onResetAll}
-            className="py-2.5 px-3 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium text-xs transition cursor-pointer"
+            className="h-9 px-3.5 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium text-xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
             title="Reset all points to default"
           >
             Reset All
@@ -623,54 +700,70 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
         </div>
       </div>
 
-      {/* Point List Table / Chips */}
+      {/* Configured Points List */}
       {points.length > 0 && (
-        <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+        <div className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900 flex items-center justify-between gap-2">
+            <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-200">
               Configured Points in Drawing
-            </span>
-            <span className="text-[10px] text-slate-400">
-              Click a point to highlight in 3D &amp; 2D
+            </h3>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+              Select to inspect
             </span>
           </div>
 
-          <div className="space-y-1.5">
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {points.map((pt) => {
               const isSelected = pt.id === selectedPointId;
               return (
                 <div
                   key={pt.id}
                   onClick={() => onSelectPoint(pt.id)}
-                  className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition border text-xs ${
+                  className={`px-4 py-2.5 flex items-center justify-between gap-2 cursor-pointer transition-colors ${
                     isSelected
-                      ? 'border-blue-500 bg-blue-50/60 dark:bg-blue-950/30'
-                      : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                      ? 'bg-blue-50/70 dark:bg-blue-950/35'
+                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
                   }`}
                 >
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-2.5 min-w-0">
                     <span
-                      className="w-3 h-3 rounded-full flex-shrink-0"
+                      className="w-2.5 h-2.5 rounded-xs shrink-0 border border-black/10 dark:border-white/15"
                       style={{ backgroundColor: pt.color }}
                     />
-                    <div>
-                      <span className="font-bold font-mono text-slate-900 dark:text-slate-100 mr-2">
-                        Point {pt.name}
-                      </span>
-                      <span className="text-slate-500 dark:text-slate-400 text-[11px]">
-                        {pt.hpRelation === 'ON' ? 'On HP' : `${pt.distanceHp}mm ${pt.hpRelation.toLowerCase()}`}, {' '}
-                        {pt.vpRelation === 'ON' ? 'On VP' : `${pt.distanceVp}mm ${pt.vpRelation === 'IN_FRONT' ? 'in front' : 'behind'}`}
-                        {pt.showOptionalX && pt.x !== 0 && ` (X: ${pt.x}mm)`}
-                      </span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-xs text-slate-900 dark:text-slate-100">
+                          Point {pt.name}
+                        </span>
+                        {isSelected && (
+                          <span className="text-[10px] font-mono font-semibold text-blue-600 dark:text-blue-400">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400 truncate">
+                        {pt.hpRelation === 'ON'
+                          ? 'On HP'
+                          : `${pt.distanceHp}mm ${pt.hpRelation.toLowerCase()}`}
+                        {' · '}
+                        {pt.vpRelation === 'ON'
+                          ? 'On VP'
+                          : `${pt.distanceVp}mm ${pt.vpRelation === 'IN_FRONT' ? 'in front' : 'behind'}`}
+                        {pt.showOptionalX && pt.x !== 0 && ` · X: ${pt.x}mm`}
+                      </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  <div
+                    className="flex items-center gap-1 shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <button
                       type="button"
                       onClick={() => onSelectPoint(pt.id)}
-                      className="p-1 rounded text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-800 transition"
+                      className="p-1.5 rounded-md text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-100/60 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                       title="Edit point"
+                      aria-label={`Edit Point ${pt.name}`}
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
@@ -678,8 +771,9 @@ export const PointInputForm: React.FC<PointInputFormProps> = ({
                       <button
                         type="button"
                         onClick={() => onDeletePoint(pt.id)}
-                        className="p-1 rounded text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800 transition"
+                        className="p-1.5 rounded-md text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-100/60 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                         title="Delete point"
+                        aria-label={`Delete Point ${pt.name}`}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>

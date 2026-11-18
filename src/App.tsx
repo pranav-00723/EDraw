@@ -151,6 +151,7 @@ export default function App() {
             ) : (
               <DashboardView
                 onNavigate={navigateTo}
+                onOpenScanModal={() => setIsGlobalScanOpen(true)}
                 hpColor={hpColor}
                 vpColor={vpColor}
                 isDark={isDark}

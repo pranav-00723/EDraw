@@ -10,10 +10,13 @@ import { PointInputForm } from '../../components/PointInputForm';
 import { ThreeDView } from '../../components/ThreeDView';
 import { TwoDOrthographicView } from '../../components/TwoDOrthographicView';
 import { ExplanationPanel } from '../../components/ExplanationPanel';
-import { PointQuadrantCard, PointParametersCard } from '../../components/QuadrantResultCard';
+import {
+  PointQuadrantCard,
+  PointParametersCard,
+} from '../../components/QuadrantResultCard';
 import { ScanQuestionModal } from '../../components/ScanQuestionModal';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Box, Layers, SlidersHorizontal, CheckCircle2 } from 'lucide-react';
 
 interface PointsModuleProps {
   hpColor: string;
@@ -32,13 +35,12 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
   isDark = false,
   initialPointInput,
 }) => {
-  // Active Points state
-  // Default to standard initial problem: Point A (30 mm above HP, 40 mm in front of VP)
+  // Active Points state — defaults to standard 1st Quadrant problem (Point A: 30mm above HP, 40mm in front of VP)
   const [points, setPoints] = useState<PointInput[]>([
     initialPointInput || {
       id: 'pt-default-1',
       name: 'A',
-      color: '#2563eb',
+      color: '#7138E8',
       hpRelation: 'ABOVE',
       distanceHp: 30,
       vpRelation: 'IN_FRONT',
@@ -48,6 +50,13 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
     },
   ]);
 
+  const [selectedPointId, setSelectedPointId] = useState<string | null>(
+    initialPointInput?.id || 'pt-default-1'
+  );
+  const [activeTab, setActiveTab] = useState<'both' | '3d' | '2d'>('both');
+  const [mobileSection, setMobileSection] = useState<'all' | 'inputs' | 'views' | 'analysis'>('all');
+  const [isScanModalOpen, setIsScanModalOpen] = useState<boolean>(false);
+
   useEffect(() => {
     if (initialPointInput) {
       setPoints([initialPointInput]);
@@ -55,17 +64,17 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
     }
   }, [initialPointInput]);
 
-  const [selectedPointId, setSelectedPointId] = useState<string | null>('pt-default-1');
-  const [activeTab, setActiveTab] = useState<'both' | '3d' | '2d'>('both');
-  const [isScanModalOpen, setIsScanModalOpen] = useState<boolean>(false);
-
   // Compute all points coordinates and projections
   const computedPoints = useMemo(() => {
     return points.map(computePointCoordinates);
   }, [points]);
 
   const selectedPoint = useMemo(() => {
-    return computedPoints.find((p) => p.id === selectedPointId) || computedPoints[0] || null;
+    return (
+      computedPoints.find((p) => p.id === selectedPointId) ||
+      computedPoints[0] ||
+      null
+    );
   }, [computedPoints, selectedPointId]);
 
   // Point Management Handlers
@@ -94,7 +103,7 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
     const defaultPoint: PointInput = {
       id: `pt-${Date.now()}`,
       name: 'A',
-      color: '#2563eb',
+      color: '#7138E8',
       hpRelation: 'ABOVE',
       distanceHp: 30,
       vpRelation: 'IN_FRONT',
@@ -116,78 +125,116 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
   };
 
   const handleGenerate = () => {
-    // Triggers recalculation (already reactive via useMemo)
+    // Triggers recalculation (reactive via useMemo)
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-      {/* Module Title Ribbon */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-xl shadow-xs">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 text-xs font-bold font-mono rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-              MODULE V1
-            </span>
-            <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-              Projection of Points
-            </h1>
-          </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Single &amp; Multi-Point Analysis relative to Horizontal Plane (HP) and Vertical Plane (VP)
-          </p>
+    <div className="w-full px-3 sm:px-5 py-4 bg-[#F8F7FC]/60 dark:bg-slate-950/40">
+      {/* Compact Workspace Toolbar */}
+      <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2.5">
+        {/* Mobile & Tablet Panel Filter Tabs */}
+        <div className="flex lg:hidden items-center gap-1 p-1 rounded-xl bg-white dark:bg-slate-900 border border-[#E8E2F5] dark:border-slate-800 text-xs font-semibold overflow-x-auto max-w-full">
+          {(
+            [
+              { id: 'all', label: 'All Panels', icon: null },
+              { id: 'inputs', label: 'Inputs', icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
+              { id: 'views', label: '3D & 2D', icon: <Box className="w-3.5 h-3.5" /> },
+              { id: 'analysis', label: 'Answer', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setMobileSection(item.id)}
+              className={`px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors whitespace-nowrap cursor-pointer ${
+                mobileSection === item.id
+                  ? 'bg-[#7138E8] text-white'
+                  : 'text-[#77758F] dark:text-slate-300'
+              }`}
+            >
+              {item.icon}
+              <span>{item.label}</span>
+            </button>
+          ))}
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Scan Question Button */}
+        {/* Active Point Summary Pill (Desktop) */}
+        <div className="hidden lg:flex items-center gap-2 text-xs text-[#77758F] dark:text-slate-400">
+          <span className="px-2.5 py-1 rounded-lg bg-[#F1EBFF] dark:bg-purple-950/60 text-[#7138E8] dark:text-purple-300 font-mono font-bold text-[11px]">
+            V1 · BIS SP 46
+          </span>
+          {selectedPoint && (
+            <span className="font-mono text-[11px] text-[#202044] dark:text-slate-300">
+              Active: <strong>Point {selectedPoint.name}</strong> ({selectedPoint.x}, {selectedPoint.y}, {selectedPoint.z}) mm
+            </span>
+          )}
+        </div>
+
+        {/* Right Quick Controls: Scan Q->Ans + Layout Focus */}
+        <div className="flex items-center gap-2 ml-auto">
           <button
+            type="button"
             onClick={() => setIsScanModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-semibold shadow-xs cursor-pointer transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-white text-xs font-semibold shadow-xs cursor-pointer transition-opacity hover:opacity-95 whitespace-nowrap"
+            style={{
+              background: 'linear-gradient(90deg, #7138E8 0%, #9565F5 100%)',
+            }}
             title="Scan or paste textbook question to solve automatically"
           >
-            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+            <Sparkles className="w-3.5 h-3.5 text-amber-200" />
             <span>Scan Q ➔ Ans</span>
           </button>
 
-          {/* View Layout Tabs */}
-          <div className="flex items-center p-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-medium">
+          <div className="hidden sm:flex items-center p-1 rounded-xl bg-white dark:bg-slate-900 border border-[#E8E2F5] dark:border-slate-800 text-[11px] font-semibold">
             <button
+              type="button"
               onClick={() => setActiveTab('both')}
-              className={`px-3 py-1.5 rounded-md transition ${
+              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap ${
                 activeTab === 'both'
-                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs font-bold'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  ? 'bg-[#F1EBFF] dark:bg-purple-950/70 text-[#7138E8] dark:text-purple-300'
+                  : 'text-[#77758F] dark:text-slate-400 hover:text-[#202044]'
               }`}
             >
-              Dual View (3D + 2D)
+              <span>Dual View</span>
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab('3d')}
-              className={`px-3 py-1.5 rounded-md transition ${
+              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap ${
                 activeTab === '3d'
-                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs font-bold'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  ? 'bg-[#F1EBFF] dark:bg-purple-950/70 text-[#7138E8] dark:text-purple-300'
+                  : 'text-[#77758F] dark:text-slate-400 hover:text-[#202044]'
               }`}
             >
-              3D Cartesian
+              <Box className="w-3 h-3" />
+              <span>3D</span>
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab('2d')}
-              className={`px-3 py-1.5 rounded-md transition ${
+              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap ${
                 activeTab === '2d'
-                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs font-bold'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  ? 'bg-[#F1EBFF] dark:bg-purple-950/70 text-[#7138E8] dark:text-purple-300'
+                  : 'text-[#77758F] dark:text-slate-400 hover:text-[#202044]'
               }`}
             >
-              2D Orthographic
+              <Layers className="w-3 h-3" />
+              <span>2D</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* Main Content Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Input Form & Point Management */}
-        <div className="lg:col-span-4 flex flex-col gap-4">
+      {/* Main 3-Column CAD + EdTech Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-[270px_minmax(0,1fr)] xl:grid-cols-[258px_minmax(0,1fr)_282px] 2xl:grid-cols-[285px_minmax(0,1fr)_315px] gap-4 items-start">
+        {/* LEFT PANEL: Input Parameters */}
+        <div
+          className={`${
+            mobileSection === 'all' || mobileSection === 'inputs'
+              ? 'block'
+              : 'hidden lg:block'
+          }`}
+        >
           <PointInputForm
             points={points}
             selectedPointId={selectedPointId}
@@ -206,50 +253,24 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
           />
         </div>
 
-        {/* Right Column: 4 Sequenced Answer Outputs & Detailed Explanations */}
-        <div className="lg:col-span-8 flex flex-col gap-6">
-          {/* 1st Answer Output: The Quadrant */}
-          <PointQuadrantCard
-            point={selectedPoint}
-            allPoints={computedPoints}
-            onSelectPoint={setSelectedPointId}
-            hpColor={hpColor}
-            vpColor={vpColor}
-            isDark={isDark}
-          />
-
-          {/* 2nd Answer Output: The Parameters Displayed */}
-          <PointParametersCard
-            point={selectedPoint}
-            allPoints={computedPoints}
-            hpColor={hpColor}
-            vpColor={vpColor}
-            isDark={isDark}
-          />
-
-          {/* 3rd Answer Output: 3D Cutting Representation */}
+        {/* CENTRE PANEL: 3D Visualisation + Orthographic Projection */}
+        <div
+          className={`flex flex-col gap-4 min-w-0 ${
+            mobileSection === 'all' || mobileSection === 'views'
+              ? 'flex'
+              : 'hidden lg:flex'
+          }`}
+        >
           {(activeTab === 'both' || activeTab === '3d') && (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <h2
-                  style={{ fontFamily: "'Bebas Neue', sans-serif" }}
-                  className="text-lg sm:text-xl tracking-wider text-slate-900 dark:text-slate-100 flex items-center gap-2"
-                >
-                  <span className="w-2.5 h-2.5 rounded-full bg-blue-600 shadow-xs" />
-                  <span>3D CUTTING REPRESENTATION</span>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between px-1">
+                <h2 className="text-[11px] font-bold uppercase tracking-wider text-[#77758F] dark:text-slate-400 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[#7138E8]" />
+                  <span>3D Cutting Representation</span>
                 </h2>
-                <div className="flex items-center gap-2 text-[11px] font-mono text-slate-500">
-                  <span className="flex items-center gap-1">
-                    <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: hpColor }} />
-                    HP
-                  </span>
-                  <span>•</span>
-                  <span className="flex items-center gap-1">
-                    <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: vpColor }} />
-                    VP
-                  </span>
-                  <span>• Thin XY Line</span>
-                </div>
+                <span className="text-[11px] font-mono text-[#77758F] dark:text-slate-400">
+                  HP • VP • Thin XY Line
+                </span>
               </div>
               <ErrorBoundary fallbackTitle="3D Simulation Encountered an Issue">
                 <ThreeDView
@@ -266,18 +287,14 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
             </div>
           )}
 
-          {/* Generated 2D Orthographic Projection */}
           {(activeTab === 'both' || activeTab === '2d') && (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <h2
-                  style={{ fontFamily: "'Bebas Neue', sans-serif" }}
-                  className="text-lg sm:text-xl tracking-wider text-slate-900 dark:text-slate-100 flex items-center gap-2"
-                >
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 shadow-xs" />
-                  <span>GENERATED PROJECTION</span>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between px-1 flex-wrap gap-1">
+                <h2 className="text-[11px] font-bold uppercase tracking-wider text-[#77758F] dark:text-slate-400 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span>Generated Projection</span>
                 </h2>
-                <span className="text-[11px] font-mono text-slate-500">
+                <span className="text-[11px] font-mono text-[#77758F] dark:text-slate-400">
                   VP: Lowercase with Prime (a′) • HP: Lowercase without Prime (a) • Thin XY Line
                 </span>
               </div>
@@ -291,8 +308,33 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
               />
             </div>
           )}
+        </div>
 
-          {/* Pedagogical Explanation & Engineering Rules Panel */}
+        {/* RIGHT PANEL: Quadrant Banner + Key Details + Quick Insights + Step-by-Step Construction */}
+        <div
+          className={`flex flex-col gap-3.5 min-w-0 lg:col-span-2 xl:col-span-1 ${
+            mobileSection === 'all' || mobileSection === 'analysis'
+              ? 'flex'
+              : 'hidden lg:flex'
+          }`}
+        >
+          <PointQuadrantCard
+            point={selectedPoint}
+            allPoints={computedPoints}
+            onSelectPoint={setSelectedPointId}
+            hpColor={hpColor}
+            vpColor={vpColor}
+            isDark={isDark}
+          />
+
+          <PointParametersCard
+            point={selectedPoint}
+            allPoints={computedPoints}
+            hpColor={hpColor}
+            vpColor={vpColor}
+            isDark={isDark}
+          />
+
           <ExplanationPanel
             point={selectedPoint}
             allPoints={computedPoints}
@@ -311,9 +353,7 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
         onApplyPoint={(scannedPoint) => {
           handleAddPoint(scannedPoint);
         }}
-        onApplyLine={() => {
-          // If user scanned a line while in points module, inform or apply
-        }}
+        onApplyLine={() => {}}
       />
     </div>
   );

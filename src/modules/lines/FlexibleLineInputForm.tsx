@@ -9,7 +9,7 @@ import {
   FlexibleEndPoint,
 } from '../../utils/flexibleLineSolver';
 import { HpRelation, VpRelation } from '../../types/projection';
-import { Sparkles, Trash2, AlertTriangle } from 'lucide-react';
+import { Play, Trash2, AlertTriangle } from 'lucide-react';
 
 interface FlexibleLineInputFormProps {
   value: FlexibleLineInput;
@@ -49,25 +49,34 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
     });
   };
 
+  const inputClass =
+    'w-full h-8 px-2.5 text-xs font-mono font-semibold tabular-nums rounded-lg border border-[#E8E2F5] dark:border-slate-700 bg-white dark:bg-slate-900 text-[#202044] dark:text-slate-100 focus:border-[#7138E8] focus:ring-2 focus:ring-[#7138E8]/15 focus:outline-none transition-all disabled:opacity-50 disabled:bg-[#F8F7FC] dark:disabled:bg-slate-800/60';
+
+  const selectClass =
+    'w-full h-8 px-2 text-xs font-medium rounded-lg border border-[#E8E2F5] dark:border-slate-700 bg-white dark:bg-slate-900 text-[#202044] dark:text-slate-100 focus:border-[#7138E8] focus:ring-2 focus:ring-[#7138E8]/15 focus:outline-none cursor-pointer transition-all';
+
   const renderEndPointSection = (
     which: 'end1' | 'end2',
     label: string,
     ep: FlexibleEndPoint
   ) => (
-    <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 flex flex-col gap-2.5">
+    <div className="p-3 rounded-xl border border-[#E8E2F5] dark:border-slate-800 bg-[#F8F7FC]/80 dark:bg-slate-950/40 flex flex-col gap-2.5">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-bold text-slate-700 dark:text-slate-200 font-sans">
+        <span className="text-xs font-bold text-[#202044] dark:text-slate-100">
           {label}
         </span>
         <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-mono text-slate-500">Name:</span>
+          <span className="text-[11px] font-medium text-[#77758F] dark:text-slate-400">
+            Name
+          </span>
           <input
             type="text"
             maxLength={2}
             value={ep.name}
             onChange={(e) => updateEnd(which, { name: e.target.value.toUpperCase() })}
             placeholder={which === 'end1' ? 'A' : 'B'}
-            className="w-12 px-2 py-1 text-xs font-mono font-bold text-center rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+            aria-label={`${label} name`}
+            className="w-11 h-7 px-1.5 text-xs font-mono font-bold text-center uppercase rounded-lg border border-[#E8E2F5] dark:border-slate-700 bg-white dark:bg-slate-900 text-[#202044] dark:text-slate-100 focus:border-[#7138E8] focus:ring-2 focus:ring-[#7138E8]/15 focus:outline-none"
           />
         </div>
       </div>
@@ -82,13 +91,14 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
         </span>
         <select
           value={ep.hpRelation}
+          aria-label={`${label} relation to HP`}
           onChange={(e) =>
             updateEnd(which, {
               hpRelation: e.target.value as HpRelation | '',
               distanceHp: e.target.value === 'ON' ? '0' : ep.distanceHp,
             })
           }
-          className="col-span-5 px-2 py-1 text-xs rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+          className={`col-span-5 ${selectClass}`}
         >
           <option value="">-- Empty --</option>
           <option value="ABOVE">Above HP</option>
@@ -102,6 +112,7 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
             step="any"
             disabled={ep.hpRelation === 'ON'}
             value={ep.hpRelation === 'ON' ? '0' : ep.distanceHp}
+            aria-label={`${label} distance from HP in mm`}
             onChange={(e) =>
               updateEnd(which, {
                 distanceHp: e.target.value,
@@ -109,9 +120,9 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
               })
             }
             placeholder="mm"
-            className="w-full px-2 py-1 pr-7 text-xs font-mono rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 disabled:opacity-50"
+            className={`${inputClass} pr-7`}
           />
-          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-mono text-slate-400">
+          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-mono text-[#77758F]">
             mm
           </span>
         </div>
@@ -127,13 +138,14 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
         </span>
         <select
           value={ep.vpRelation}
+          aria-label={`${label} relation to VP`}
           onChange={(e) =>
             updateEnd(which, {
               vpRelation: e.target.value as VpRelation | '',
               distanceVp: e.target.value === 'ON' ? '0' : ep.distanceVp,
             })
           }
-          className="col-span-5 px-2 py-1 text-xs rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+          className={`col-span-5 ${selectClass}`}
         >
           <option value="">-- Empty --</option>
           <option value="IN_FRONT">In Front of VP</option>
@@ -147,6 +159,7 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
             step="any"
             disabled={ep.vpRelation === 'ON'}
             value={ep.vpRelation === 'ON' ? '0' : ep.distanceVp}
+            aria-label={`${label} distance from VP in mm`}
             onChange={(e) =>
               updateEnd(which, {
                 distanceVp: e.target.value,
@@ -154,9 +167,9 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
               })
             }
             placeholder="mm"
-            className="w-full px-2 py-1 pr-7 text-xs font-mono rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 disabled:opacity-50"
+            className={`${inputClass} pr-7`}
           />
-          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-mono text-slate-400">
+          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-mono text-[#77758F]">
             mm
           </span>
         </div>
@@ -171,7 +184,7 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
     placeholder = 'Empty'
   ) => (
     <div className="flex flex-col gap-1">
-      <label className="text-[11px] font-mono font-medium text-slate-600 dark:text-slate-300">
+      <label className="text-[11px] font-semibold text-[#77758F] dark:text-slate-300 truncate">
         {label}
       </label>
       <div className="relative">
@@ -182,9 +195,9 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
           value={value[fieldKey] as string}
           onChange={(e) => updateField(fieldKey, e.target.value)}
           placeholder={placeholder}
-          className="w-full px-2.5 py-1.5 pr-8 text-xs font-mono rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 outline-none"
+          className="w-full h-8 px-2.5 pr-7 text-xs font-mono font-semibold tabular-nums rounded-lg border border-[#E8E2F5] dark:border-slate-700 bg-[#F8F7FC] dark:bg-slate-950/60 text-[#202044] dark:text-slate-100 focus:bg-white dark:focus:bg-slate-900 focus:border-[#7138E8] focus:ring-2 focus:ring-[#7138E8]/15 focus:outline-none transition-all"
         />
-        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono text-slate-400">
+        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono text-[#77758F]">
           {unit}
         </span>
       </div>
@@ -193,17 +206,17 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
-          Enter <strong>any</strong> known values from your question and leave the rest empty.
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11.5px] text-[#77758F] dark:text-slate-400 leading-snug">
+          Enter <strong className="text-[#202044] dark:text-slate-200">any</strong> known values from the problem and leave unknowns blank.
         </p>
         <button
           type="button"
           onClick={onClear}
-          className="text-[11px] font-mono text-slate-500 hover:text-rose-600 flex items-center gap-1 px-2 py-1 rounded hover:bg-rose-50 dark:hover:bg-rose-950/30 transition cursor-pointer shrink-0"
+          className="text-[11px] font-semibold text-[#77758F] hover:text-rose-600 flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 transition cursor-pointer shrink-0 whitespace-nowrap"
         >
           <Trash2 className="w-3 h-3" />
-          Clear
+          <span>Clear</span>
         </button>
       </div>
 
@@ -236,22 +249,23 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
       </div>
 
       {/* Horizontal Trace (HT) & Vertical Trace (VT) */}
-      <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 flex flex-col gap-2.5">
-        <span className="text-xs font-bold text-slate-700 dark:text-slate-200 font-sans">
+      <div className="p-3 rounded-xl border border-[#E8E2F5] dark:border-slate-800 bg-[#F8F7FC]/80 dark:bg-slate-950/40 flex flex-col gap-2.5">
+        <span className="text-xs font-bold text-[#202044] dark:text-slate-100">
           11. Traces (HT &amp; VT)
         </span>
 
         {/* HT relative to VP */}
         <div className="grid grid-cols-12 gap-1.5 items-center">
-          <span className="col-span-3 text-[11px] font-mono font-semibold text-slate-600 dark:text-slate-300">
+          <span className="col-span-3 text-[11px] font-mono font-semibold text-[#77758F] dark:text-slate-300">
             HT wrt VP
           </span>
           <select
             value={value.htVpRelation}
+            aria-label="HT relative to VP"
             onChange={(e) =>
               updateField('htVpRelation', e.target.value as VpRelation | '')
             }
-            className="col-span-5 px-2 py-1 text-xs rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+            className={`col-span-5 ${selectClass}`}
           >
             <option value="">-- Empty --</option>
             <option value="IN_FRONT">In Front of VP</option>
@@ -265,6 +279,7 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
               step="any"
               disabled={value.htVpRelation === 'ON'}
               value={value.htVpRelation === 'ON' ? '0' : value.htDistanceVp}
+              aria-label="HT distance from VP"
               onChange={(e) => {
                 onChange({
                   ...value,
@@ -273,9 +288,9 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
                 });
               }}
               placeholder="mm"
-              className="w-full px-2 py-1 pr-7 text-xs font-mono rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 disabled:opacity-50"
+              className={`${inputClass} pr-7`}
             />
-            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-mono text-slate-400">
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-mono text-[#77758F]">
               mm
             </span>
           </div>
@@ -283,15 +298,16 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
 
         {/* VT relative to HP */}
         <div className="grid grid-cols-12 gap-1.5 items-center">
-          <span className="col-span-3 text-[11px] font-mono font-semibold text-slate-600 dark:text-slate-300">
+          <span className="col-span-3 text-[11px] font-mono font-semibold text-[#77758F] dark:text-slate-300">
             VT wrt HP
           </span>
           <select
             value={value.vtHpRelation}
+            aria-label="VT relative to HP"
             onChange={(e) =>
               updateField('vtHpRelation', e.target.value as HpRelation | '')
             }
-            className="col-span-5 px-2 py-1 text-xs rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+            className={`col-span-5 ${selectClass}`}
           >
             <option value="">-- Empty --</option>
             <option value="ABOVE">Above HP</option>
@@ -305,6 +321,7 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
               step="any"
               disabled={value.vtHpRelation === 'ON'}
               value={value.vtHpRelation === 'ON' ? '0' : value.vtDistanceHp}
+              aria-label="VT distance from HP"
               onChange={(e) => {
                 onChange({
                   ...value,
@@ -313,9 +330,9 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
                 });
               }}
               placeholder="mm"
-              className="w-full px-2 py-1 pr-7 text-xs font-mono rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 disabled:opacity-50"
+              className={`${inputClass} pr-7`}
             />
-            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-mono text-slate-400">
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-mono text-[#77758F]">
               mm
             </span>
           </div>
@@ -323,10 +340,10 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
       </div>
 
       {errors.length > 0 && (
-        <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 text-[11px] text-rose-800 dark:text-rose-200 flex flex-col gap-1.5">
+        <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-[11px] text-rose-800 dark:text-rose-200 flex flex-col gap-1.5">
           <div className="flex items-center gap-1.5 font-bold text-rose-700 dark:text-rose-300">
             <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
-            <span>Conflicting Values Detected — Please check your values again:</span>
+            <span>Conflicting Values Detected:</span>
           </div>
           <ul className="list-disc pl-5 space-y-0.5">
             {errors.map((err, i) => (
@@ -337,7 +354,7 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
       )}
 
       {warnings.length > 0 && errors.length === 0 && (
-        <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-200 flex items-start gap-2">
+        <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-200 flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
           <div>{warnings.join(' ')}</div>
         </div>
@@ -346,10 +363,13 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
       <button
         type="button"
         onClick={onSolve}
-        className="w-full py-2.5 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-xs transition cursor-pointer"
+        className="w-full h-10 px-4 rounded-xl text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-[0_10px_24px_-8px_rgba(113,56,232,0.55)] hover:opacity-95 transition-opacity cursor-pointer whitespace-nowrap"
+        style={{
+          background: 'linear-gradient(90deg, #7138E8 0%, #9565F5 100%)',
+        }}
       >
-        <Sparkles className="w-4 h-4" />
-        Solve &amp; Plot Projections
+        <Play className="w-3.5 h-3.5 fill-current" />
+        <span>Solve &amp; Plot Projections</span>
       </button>
     </div>
   );

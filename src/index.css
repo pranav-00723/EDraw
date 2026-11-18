@@ -1,1 +1,29 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  body {
+    font-family: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    background-color: #F8F7FC;
+    color: #202044;
+  }
+}
+
+.bg-cad-grid {
+  background-image:
+    linear-gradient(to right, rgba(113, 56, 232, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(113, 56, 232, 0.06) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.dark .bg-cad-grid {
+  background-image:
+    linear-gradient(to right, rgba(149, 101, 245, 0.09) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(149, 101, 245, 0.09) 1px, transparent 1px);
+  background-size: 24px 24px;
+}

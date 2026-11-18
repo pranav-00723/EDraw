@@ -1,6 +1,6 @@
 import React from 'react';
 import { ComputedPoint } from '../types/projection';
-import { Compass, CheckCircle2, Ruler, Layers } from 'lucide-react';
+import { Check, BarChart2, Lightbulb } from 'lucide-react';
 
 interface QuadrantCardProps {
   point: ComputedPoint | null;
@@ -11,200 +11,157 @@ interface QuadrantCardProps {
   vpColor?: string;
 }
 
+const getShortQuadrantLabels = (point: ComputedPoint) => {
+  const validQuads = point.validQuadrants || [1];
+
+  if (validQuads.length === 4) {
+    return {
+      bannerTitle: 'Point on XY Line (Both Planes)',
+      shortBadge: 'On XY (Q1–Q4)',
+    };
+  }
+  if (validQuads.includes(1) && validQuads.includes(4)) {
+    return {
+      bannerTitle: 'Point on HP & In Front of VP',
+      shortBadge: 'Q1 & Q4 (On HP)',
+    };
+  }
+  if (validQuads.includes(2) && validQuads.includes(3)) {
+    return {
+      bannerTitle: 'Point on HP & Behind VP',
+      shortBadge: 'Q2 & Q3 (On HP)',
+    };
+  }
+  if (validQuads.includes(1) && validQuads.includes(2)) {
+    return {
+      bannerTitle: 'Point on VP & Above HP',
+      shortBadge: 'Q1 & Q2 (On VP)',
+    };
+  }
+  if (validQuads.includes(3) && validQuads.includes(4)) {
+    return {
+      bannerTitle: 'Point on VP & Below HP',
+      shortBadge: 'Q3 & Q4 (On VP)',
+    };
+  }
+  if (validQuads.includes(1)) {
+    return {
+      bannerTitle: 'Point in First Quadrant',
+      shortBadge: 'I Quadrant',
+    };
+  }
+  if (validQuads.includes(2)) {
+    return {
+      bannerTitle: 'Point in Second Quadrant',
+      shortBadge: 'II Quadrant',
+    };
+  }
+  if (validQuads.includes(3)) {
+    return {
+      bannerTitle: 'Point in Third Quadrant',
+      shortBadge: 'III Quadrant',
+    };
+  }
+  return {
+    bannerTitle: 'Point in Fourth Quadrant',
+    shortBadge: 'IV Quadrant',
+  };
+};
+
+const getPositionPhrases = (point: ComputedPoint) => {
+  const vpPhrase =
+    point.vpRelation === 'ON'
+      ? 'On VP'
+      : point.vpRelation === 'IN_FRONT'
+      ? 'In Front of VP'
+      : 'Behind VP';
+  const hpPhrase =
+    point.hpRelation === 'ON'
+      ? 'On HP'
+      : point.hpRelation === 'ABOVE'
+      ? 'Above HP'
+      : 'Below HP';
+  return { vpPhrase, hpPhrase };
+};
+
 /**
- * 1st Answer Output: The Quadrant
+ * 1st Answer Output: Purple Gradient Quadrant Status Card
  */
 export const PointQuadrantCard: React.FC<QuadrantCardProps> = ({
   point,
   allPoints,
   onSelectPoint,
-  isDark = false,
-  hpColor = '#2563eb',
-  vpColor = '#dc2626',
 }) => {
   if (!point) return null;
 
-  const validQuads = point.validQuadrants || [1];
-  const isQ1 = validQuads.includes(1);
-  const isQ2 = validQuads.includes(2);
-  const isQ3 = validQuads.includes(3);
-  const isQ4 = validQuads.includes(4);
-
-  let resultingQuadrantName = '';
-  if (validQuads.length === 4) {
-    resultingQuadrantName = 'Quadrants 1, 2, 3, 4 (On XY Line)';
-  } else if (validQuads.includes(1) && validQuads.includes(4)) {
-    resultingQuadrantName = 'Quadrants 1 & 4 (On HP, In Front of VP)';
-  } else if (validQuads.includes(2) && validQuads.includes(3)) {
-    resultingQuadrantName = 'Quadrants 2 & 3 (On HP, Behind VP)';
-  } else if (validQuads.includes(1) && validQuads.includes(2)) {
-    resultingQuadrantName = 'Quadrants 1 & 2 (On VP, Above HP)';
-  } else if (validQuads.includes(3) && validQuads.includes(4)) {
-    resultingQuadrantName = 'Quadrants 3 & 4 (On VP, Below HP)';
-  } else if (validQuads.includes(1)) {
-    resultingQuadrantName = '1st Quadrant';
-  } else if (validQuads.includes(2)) {
-    resultingQuadrantName = '2nd Quadrant';
-  } else if (validQuads.includes(3)) {
-    resultingQuadrantName = '3rd Quadrant';
-  } else if (validQuads.includes(4)) {
-    resultingQuadrantName = '4th Quadrant';
-  }
+  const { bannerTitle } = getShortQuadrantLabels(point);
+  const { vpPhrase, hpPhrase } = getPositionPhrases(point);
 
   return (
-    <div className="flex flex-col rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-xs">
-            <Compass className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2
-                style={{ fontFamily: "'Bebas Neue', sans-serif" }}
-                className="text-xl tracking-wider text-slate-900 dark:text-slate-100"
-              >
-                ANSWER
-              </h2>
-              <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded-md bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                1. QUADRANT
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 font-mono">
-              Spatial Quadrant Location for Point {point.name}
-            </p>
-          </div>
+    <div
+      className="relative rounded-2xl p-4 text-white shadow-[0_12px_28px_-10px_rgba(113,56,232,0.55)] overflow-hidden"
+      style={{
+        background: 'linear-gradient(135deg, #7138E8 0%, #9565F5 100%)',
+      }}
+    >
+      {/* Subtle 3D Cube Wireframe Watermark */}
+      <svg
+        viewBox="0 0 100 100"
+        className="pointer-events-none absolute -right-3 -bottom-3 w-24 h-24 text-white/[0.15]"
+        fill="none"
+        aria-hidden="true"
+      >
+        <path
+          d="M50 10L85 30V70L50 90L15 70V30L50 10Z"
+          stroke="currentColor"
+          strokeWidth="2"
+        />
+        <path
+          d="M50 10V50M50 50L85 70M50 50L15 70M15 30L50 50L85 30"
+          stroke="currentColor"
+          strokeWidth="1.5"
+        />
+      </svg>
+
+      <div className="relative z-10 flex items-center gap-3">
+        <div className="w-9 h-9 rounded-full bg-[#10B981] text-white flex items-center justify-center shrink-0 shadow-sm ring-2 ring-white/25">
+          <Check className="w-5 h-5 stroke-[2.75]" />
         </div>
-
-        {allPoints.length > 1 && (
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-slate-400 font-sans">Active Point:</span>
-            {allPoints.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => onSelectPoint && onSelectPoint(p.id)}
-                className={`px-2 py-0.5 rounded font-mono font-bold transition text-xs ${
-                  p.id === point.id
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300'
-                }`}
-              >
-                {p.name}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Main Content */}
-      <div className="p-4 flex flex-col gap-4">
-        {/* Identified Quadrant Hero Banner */}
-        <div className="p-3.5 rounded-xl bg-gradient-to-r from-blue-50/80 via-indigo-50/50 to-slate-50/80 dark:from-slate-800/80 dark:via-slate-800/50 dark:to-slate-900/80 border border-blue-200/80 dark:border-slate-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div>
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Quadrant Placement for Point {point.name}
-            </div>
-            <div className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2 mt-0.5">
-              <span>
-                HP: {point.hpRelation === 'ON' ? 'On HP' : `${point.distHp} mm ${point.hpRelation === 'ABOVE' ? 'Above HP' : 'Below HP'}`}
-              </span>
-              <span className="text-slate-400">•</span>
-              <span>
-                VP: {point.vpRelation === 'ON' ? 'On VP' : `${point.distVp} mm ${point.vpRelation === 'IN_FRONT' ? 'In Front of VP' : 'Behind VP'}`}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-blue-600 text-white font-mono text-sm font-bold shadow-sm">
-            <Compass className="w-4 h-4 text-blue-200" />
-            <span>{resultingQuadrantName}</span>
-          </div>
-        </div>
-
-        {/* 4 Quadrants Reference Grid with Active Highlight */}
-        <div>
-          <div className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-            Standard Quadrant Rule Mapping
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
-            {/* Rule 1 */}
-            <div
-              className={`p-2.5 rounded-lg border transition ${
-                isQ1
-                  ? 'border-blue-500 bg-blue-50/80 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200 shadow-xs font-bold ring-1 ring-blue-400'
-                  : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 text-slate-600 dark:text-slate-400'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span>HP above, VP in front</span>
-                <span className="flex items-center gap-1 font-bold">
-                  ➔ 1st quadrant
-                  {isQ1 && <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 ml-1" />}
-                </span>
-              </div>
-            </div>
-
-            {/* Rule 2 */}
-            <div
-              className={`p-2.5 rounded-lg border transition ${
-                isQ2
-                  ? 'border-red-500 bg-red-50/80 dark:bg-red-950/40 text-red-900 dark:text-red-200 shadow-xs font-bold ring-1 ring-red-400'
-                  : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 text-slate-600 dark:text-slate-400'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span>HP above, Behind VP</span>
-                <span className="flex items-center gap-1 font-bold">
-                  ➔ 2nd quadrant
-                  {isQ2 && <CheckCircle2 className="w-3.5 h-3.5 text-red-600 dark:text-red-400 ml-1" />}
-                </span>
-              </div>
-            </div>
-
-            {/* Rule 3 */}
-            <div
-              className={`p-2.5 rounded-lg border transition ${
-                isQ3
-                  ? 'border-emerald-500 bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 shadow-xs font-bold ring-1 ring-emerald-400'
-                  : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 text-slate-600 dark:text-slate-400'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span>HP below, Behind VP</span>
-                <span className="flex items-center gap-1 font-bold">
-                  ➔ 3rd quadrant
-                  {isQ3 && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 ml-1" />}
-                </span>
-              </div>
-            </div>
-
-            {/* Rule 4 */}
-            <div
-              className={`p-2.5 rounded-lg border transition ${
-                isQ4
-                  ? 'border-purple-500 bg-purple-50/80 dark:bg-purple-950/40 text-purple-900 dark:text-purple-200 shadow-xs font-bold ring-1 ring-purple-400'
-                  : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 text-slate-600 dark:text-slate-400'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span>HP below, VP in front</span>
-                <span className="flex items-center gap-1 font-bold">
-                  ➔ 4th quadrant
-                  {isQ4 && <CheckCircle2 className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 ml-1" />}
-                </span>
-              </div>
-            </div>
-          </div>
+        <div className="min-w-0">
+          <h3 className="text-[14px] sm:text-[15px] font-bold leading-snug text-white">
+            {bannerTitle}
+          </h3>
+          <p className="text-xs text-white/85 mt-0.5 truncate">
+            {vpPhrase}, {hpPhrase}
+          </p>
         </div>
       </div>
+
+      {allPoints.length > 1 && (
+        <div className="relative z-10 mt-3 pt-2.5 border-t border-white/20 flex flex-wrap items-center gap-1.5 text-[11px]">
+          <span className="text-white/75 font-medium">Point:</span>
+          {allPoints.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => onSelectPoint && onSelectPoint(p.id)}
+              className={`px-2 py-0.5 rounded-lg font-mono font-bold transition cursor-pointer ${
+                p.id === point.id
+                  ? 'bg-white text-[#7138E8] shadow-xs'
+                  : 'bg-white/15 text-white hover:bg-white/25'
+              }`}
+            >
+              {p.name}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
 
 /**
- * 2nd Answer Output: The Parameters Displayed
+ * 2nd Answer Output: Key Details & Quick Insights Cards
  */
 export const PointParametersCard: React.FC<QuadrantCardProps> = ({
   point,
@@ -213,142 +170,151 @@ export const PointParametersCard: React.FC<QuadrantCardProps> = ({
 }) => {
   if (!point) return null;
 
+  const { bannerTitle, shortBadge } = getShortQuadrantLabels(point);
+  const { vpPhrase, hpPhrase } = getPositionPhrases(point);
+
   return (
-    <div className="flex flex-col rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white shadow-xs">
-            <Ruler className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2
-                style={{ fontFamily: "'Bebas Neue', sans-serif" }}
-                className="text-xl tracking-wider text-slate-900 dark:text-slate-100"
-              >
-                ANSWER
-              </h2>
-              <span className="px-2 py-0.5 text-[10px] font-mono font-bold rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                2. PARAMETERS DISPLAYED
-              </span>
+    <div className="flex flex-col gap-3.5">
+      {/* Key Details Card */}
+      <div className="rounded-2xl bg-white dark:bg-slate-900 border border-[#E8E2F5] dark:border-slate-800 shadow-[0_10px_30px_-12px_rgba(113,56,232,0.08)] p-4">
+        <div className="flex items-center justify-between gap-2 pb-3 border-b border-[#F0ECF9] dark:border-slate-800">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-[#F1EBFF] dark:bg-purple-950/60 text-[#7138E8] dark:text-purple-300 flex items-center justify-center shrink-0">
+              <BarChart2 className="w-4 h-4" />
             </div>
-            <p className="text-xs text-slate-500 font-mono">
-              Coordinates, Distances from Reference Planes &amp; Projections
-            </p>
+            <h3 className="text-[14px] font-bold text-[#202044] dark:text-slate-100">
+              Key Details
+            </h3>
           </div>
+          <span className="text-[11px] font-mono font-semibold text-[#77758F] dark:text-slate-400">
+            Point {point.name}
+          </span>
         </div>
 
-        <div className="px-2.5 py-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-xs font-semibold">
-          Point {point.name}
+        <div className="mt-3 space-y-2.5 text-xs">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[#77758F] dark:text-slate-400 font-medium">
+              Distance from HP
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-[#F1EBFF] dark:bg-purple-950/60 text-[#7138E8] dark:text-purple-300 font-mono font-bold tabular-nums">
+              {point.distHp} mm
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[#77758F] dark:text-slate-400 font-medium">
+              Distance from VP
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-[#F1EBFF] dark:bg-purple-950/60 text-[#7138E8] dark:text-purple-300 font-mono font-bold tabular-nums">
+              {point.distVp} mm
+            </span>
+          </div>
+
+          {point.x !== 0 && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[#77758F] dark:text-slate-400 font-medium">
+                Lateral Offset (X)
+              </span>
+              <span className="px-2.5 py-1 rounded-lg bg-[#F1EBFF] dark:bg-purple-950/60 text-[#7138E8] dark:text-purple-300 font-mono font-bold tabular-nums">
+                {point.x} mm
+              </span>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[#77758F] dark:text-slate-400 font-medium">
+              Quadrant
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-[#F1EBFF] dark:bg-purple-950/60 text-[#7138E8] dark:text-purple-300 font-semibold">
+              {shortBadge}
+            </span>
+          </div>
+
+          <div className="pt-2 border-t border-[#F0ECF9] dark:border-slate-800 grid grid-cols-2 gap-2">
+            <div className="p-2 rounded-xl bg-[#F8F7FC] dark:bg-slate-800/60 border border-[#E8E2F5] dark:border-slate-800">
+              <div className="text-[10px] font-semibold text-[#77758F] dark:text-slate-400">
+                Front View (VP)
+              </div>
+              <div
+                className="text-sm font-mono font-bold mt-0.5"
+                style={{ color: vpColor }}
+              >
+                {point.frontViewLabel}
+              </div>
+              <div className="text-[10px] text-[#77758F] dark:text-slate-400 truncate">
+                {point.frontViewDesc}
+              </div>
+            </div>
+
+            <div className="p-2 rounded-xl bg-[#F8F7FC] dark:bg-slate-800/60 border border-[#E8E2F5] dark:border-slate-800">
+              <div className="text-[10px] font-semibold text-[#77758F] dark:text-slate-400">
+                Top View (HP)
+              </div>
+              <div
+                className="text-sm font-mono font-bold mt-0.5"
+                style={{ color: hpColor }}
+              >
+                {point.topViewLabel}
+              </div>
+              <div className="text-[10px] text-[#77758F] dark:text-slate-400 truncate">
+                {point.topViewDesc}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Parameters Content */}
-      <div className="p-4 flex flex-col gap-3">
-        {/* Grid of Key Numerical Parameters */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {/* Distance to HP */}
-          <div
-            className="p-3 rounded-xl border flex flex-col justify-between"
-            style={{ borderColor: `${hpColor}40`, backgroundColor: `${hpColor}0d` }}
-          >
-            <div className="flex items-center justify-between text-[11px] font-semibold" style={{ color: hpColor }}>
-              <span>Distance to HP</span>
-              <span className="text-[10px] font-mono">|z|</span>
-            </div>
-            <div className="mt-2 flex items-baseline gap-1">
-              <span className="text-xl sm:text-2xl font-bold font-mono text-slate-900 dark:text-slate-100">
-                {point.distHp}
-              </span>
-              <span className="text-xs font-mono text-slate-500">mm</span>
-            </div>
-            <div className="mt-1 text-[10px] text-slate-500 font-mono">
-              {point.hpRelation === 'ON' ? 'On HP' : point.hpRelation === 'ABOVE' ? 'Above HP' : 'Below HP'}
-            </div>
-          </div>
+      {/* Quick Insights Card */}
+      <div className="relative rounded-2xl bg-white dark:bg-slate-900 border border-[#E8E2F5] dark:border-slate-800 shadow-[0_10px_30px_-12px_rgba(113,56,232,0.08)] p-4 overflow-hidden">
+        {/* Drafting Compass Watermark */}
+        <svg
+          viewBox="0 0 64 64"
+          className="pointer-events-none absolute -right-2 -bottom-2 w-20 h-20 text-[#7138E8]/15"
+          fill="none"
+          aria-hidden="true"
+        >
+          <circle cx="32" cy="14" r="5" stroke="currentColor" strokeWidth="2.5" />
+          <path
+            d="M30 19L16 56M34 19L48 56M20 42H44"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          />
+        </svg>
 
-          {/* Distance to VP */}
-          <div
-            className="p-3 rounded-xl border flex flex-col justify-between"
-            style={{ borderColor: `${vpColor}40`, backgroundColor: `${vpColor}0d` }}
-          >
-            <div className="flex items-center justify-between text-[11px] font-semibold" style={{ color: vpColor }}>
-              <span>Distance to VP</span>
-              <span className="text-[10px] font-mono">|y|</span>
-            </div>
-            <div className="mt-2 flex items-baseline gap-1">
-              <span className="text-xl sm:text-2xl font-bold font-mono text-slate-900 dark:text-slate-100">
-                {point.distVp}
-              </span>
-              <span className="text-xs font-mono text-slate-500">mm</span>
-            </div>
-            <div className="mt-1 text-[10px] text-slate-500 font-mono">
-              {point.vpRelation === 'ON' ? 'On VP' : point.vpRelation === 'IN_FRONT' ? 'In Front of VP' : 'Behind VP'}
-            </div>
+        <div className="relative z-10 flex items-center gap-2 pb-2.5 border-b border-[#F0ECF9] dark:border-slate-800">
+          <div className="w-7 h-7 rounded-lg bg-[#F1EBFF] dark:bg-purple-950/60 text-[#7138E8] dark:text-purple-300 flex items-center justify-center shrink-0">
+            <Lightbulb className="w-4 h-4" />
           </div>
-
-          {/* Front View Label on VP */}
-          <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-              <span>Front View (VP)</span>
-              <span className="text-[10px] font-mono">Elevation</span>
-            </div>
-            <div className="mt-2 flex items-baseline gap-1">
-              <span className="text-xl sm:text-2xl font-bold font-mono" style={{ color: vpColor }}>
-                {point.frontViewLabel}
-              </span>
-            </div>
-            <div className="mt-1 text-[10px] text-slate-500 font-mono truncate">
-              {point.frontViewDesc}
-            </div>
-          </div>
-
-          {/* Top View Label on HP */}
-          <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-              <span>Top View (HP)</span>
-              <span className="text-[10px] font-mono">Plan</span>
-            </div>
-            <div className="mt-2 flex items-baseline gap-1">
-              <span className="text-xl sm:text-2xl font-bold font-mono" style={{ color: hpColor }}>
-                {point.topViewLabel}
-              </span>
-            </div>
-            <div className="mt-1 text-[10px] text-slate-500 font-mono truncate">
-              {point.topViewDesc}
-            </div>
-          </div>
+          <h3 className="text-[14px] font-bold text-[#202044] dark:text-slate-100">
+            Quick Insights
+          </h3>
         </div>
 
-        {/* View Projections Summary */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1">
-          <div className="p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: vpColor }} />
-              <div>
-                <span className="font-semibold text-slate-800 dark:text-slate-200">Elevation Projector: </span>
-                <span className="text-slate-600 dark:text-slate-400">{point.frontViewDesc}</span>
-              </div>
-            </div>
-            <span className="font-mono font-bold text-sm" style={{ color: vpColor }}>
-              {point.frontViewLabel}
+        <ul className="relative z-10 mt-3 space-y-2 text-xs text-[#202044] dark:text-slate-200">
+          <li className="flex items-start gap-2">
+            <span className="mt-0.5 w-4 h-4 rounded-full bg-[#F1EBFF] dark:bg-purple-950/70 text-[#7138E8] dark:text-purple-300 flex items-center justify-center shrink-0">
+              <Check className="w-2.5 h-2.5 stroke-[3]" />
             </span>
-          </div>
-
-          <div className="p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: hpColor }} />
-              <div>
-                <span className="font-semibold text-slate-800 dark:text-slate-200">Plan Projector: </span>
-                <span className="text-slate-600 dark:text-slate-400">{point.topViewDesc}</span>
-              </div>
-            </div>
-            <span className="font-mono font-bold text-sm" style={{ color: hpColor }}>
-              {point.topViewLabel}
+            <span>{bannerTitle}</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="mt-0.5 w-4 h-4 rounded-full bg-[#F1EBFF] dark:bg-purple-950/70 text-[#7138E8] dark:text-purple-300 flex items-center justify-center shrink-0">
+              <Check className="w-2.5 h-2.5 stroke-[3]" />
             </span>
-          </div>
-        </div>
+            <span>
+              {vpPhrase}, {hpPhrase}
+            </span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="mt-0.5 w-4 h-4 rounded-full bg-[#F1EBFF] dark:bg-purple-950/70 text-[#7138E8] dark:text-purple-300 flex items-center justify-center shrink-0">
+              <Check className="w-2.5 h-2.5 stroke-[3]" />
+            </span>
+            <span>
+              Projectors aligned vertically ({point.frontViewLabel} &amp; {point.topViewLabel})
+            </span>
+          </li>
+        </ul>
       </div>
     </div>
   );

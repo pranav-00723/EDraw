@@ -6,9 +6,9 @@
 import React from 'react';
 import {
   Home,
-  Compass,
-  Ruler,
-  FileText,
+  LayoutGrid,
+  TrendingUp,
+  Sparkles,
   BookOpen,
   BarChart3,
   Settings,
@@ -51,26 +51,26 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
   }[] = [
     {
       id: 'dashboard',
-      label: 'Dashboard',
+      label: 'Home',
       icon: <Home className="w-[18px] h-[18px] shrink-0" />,
       route: '/dashboard',
     },
     {
       id: 'points',
       label: 'Projection of Points',
-      icon: <Compass className="w-[18px] h-[18px] shrink-0" />,
+      icon: <LayoutGrid className="w-[18px] h-[18px] shrink-0" />,
       route: '/projection-of-points',
     },
     {
       id: 'lines',
-      label: 'Straight Lines',
-      icon: <Ruler className="w-[18px] h-[18px] shrink-0" />,
+      label: 'Projection of Straight Lines',
+      icon: <TrendingUp className="w-[18px] h-[18px] shrink-0" />,
       route: '/projection-of-lines',
     },
     {
       id: 'generator',
-      label: 'Question Generator',
-      icon: <FileText className="w-[18px] h-[18px] shrink-0" />,
+      label: 'Question-to-Graphics Generator',
+      icon: <Sparkles className="w-[18px] h-[18px] shrink-0" />,
       route: '/question-generator',
     },
     {
@@ -104,13 +104,33 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
 
   const sidebarContent = (
     <div
-      className="h-full w-full flex flex-col justify-between p-4 text-white rounded-[24px] select-none"
+      className="relative h-full w-full flex flex-col justify-between p-4 text-white rounded-[24px] select-none overflow-hidden shadow-[0_18px_40px_-14px_rgba(74,27,174,0.45)]"
       style={{
-        background: 'linear-gradient(180deg, #7952D6 0%, #6035B5 100%)',
+        background: 'linear-gradient(180deg, #7138E8 0%, #612AD6 58%, #4F1EC0 100%)',
       }}
     >
+      {/* Subtle Wireframe Cube Watermark at Bottom */}
+      <svg
+        viewBox="0 0 180 180"
+        className="pointer-events-none absolute -bottom-6 -left-4 w-48 h-48 text-white/[0.08]"
+        fill="none"
+        aria-hidden="true"
+      >
+        <path
+          d="M90 18L154 54V126L90 162L26 126V54L90 18Z"
+          stroke="currentColor"
+          strokeWidth="1.5"
+        />
+        <path
+          d="M90 18V90M90 90L154 126M90 90L26 126M26 54L90 90L154 54"
+          stroke="currentColor"
+          strokeWidth="1.25"
+        />
+        <circle cx="90" cy="90" r="4" fill="currentColor" />
+      </svg>
+
       {/* Top Brand Logo Tile */}
-      <div>
+      <div className="relative z-10">
         <div className="flex items-center justify-between lg:justify-center pt-2 pb-5">
           <button
             type="button"
@@ -118,13 +138,12 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
               onSelectSection('dashboard', '/dashboard');
               onCloseMobile();
             }}
-            className="flex flex-col items-center gap-2.5 group cursor-pointer focus-visible:outline-2 focus-visible:outline-white rounded-2xl"
+            className="flex flex-col items-center gap-2.5 group cursor-pointer focus-visible:outline-2 focus-visible:outline-white rounded-2xl px-2"
           >
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#8D68E8] to-[#572CA8] border border-white/25 shadow-[0_12px_28px_-6px_rgba(32,12,78,0.45)] flex items-center justify-center transition-transform duration-150 group-hover:scale-[1.03]">
-              {/* Geometric Orthographic Planes & Compass Mark */}
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#9565F5] to-[#5722C9] border border-white/25 shadow-[0_12px_28px_-6px_rgba(32,12,78,0.45)] flex items-center justify-center transition-transform duration-150 group-hover:scale-[1.03]">
               <svg
                 viewBox="0 0 40 40"
-                className="w-9 h-9 text-white"
+                className="w-8 h-8 text-white"
                 fill="none"
                 aria-hidden="true"
               >
@@ -133,7 +152,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                   stroke="currentColor"
                   strokeWidth="2"
                   strokeLinejoin="round"
-                  strokeOpacity="0.9"
+                  strokeOpacity="0.95"
                 />
                 <path
                   d="M20 5V18M20 18L31 24M20 18L9 24"
@@ -146,10 +165,10 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
               </svg>
             </div>
             <div className="text-center">
-              <div className="text-lg font-extrabold tracking-tight text-white leading-none">
+              <div className="text-lg font-bold tracking-wider text-white leading-none">
                 EDRAW
               </div>
-              <div className="text-[11px] text-white/75 font-medium mt-1">
+              <div className="text-[11px] text-white/80 font-medium mt-1 leading-tight">
                 Engineering Graphics
               </div>
             </div>
@@ -158,7 +177,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
           <button
             type="button"
             onClick={onCloseMobile}
-            className="lg:hidden p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+            className="lg:hidden p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white cursor-pointer"
             aria-label="Close navigation menu"
           >
             <X className="w-4 h-4" />
@@ -166,7 +185,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
         </div>
 
         {/* Navigation Links */}
-        <nav className="mt-2 flex flex-col gap-1" aria-label="Main Navigation">
+        <nav className="mt-1 flex flex-col gap-1" aria-label="Main Navigation">
           {navItems.map((item) => {
             const isActive = activeSection === item.id;
             return (
@@ -174,10 +193,10 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                 key={item.id}
                 type="button"
                 onClick={() => handleItemClick(item)}
-                className={`relative w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[13px] transition-colors duration-150 cursor-pointer text-left ${
+                className={`relative w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[13px] leading-snug transition-all duration-150 cursor-pointer text-left ${
                   isActive
-                    ? 'bg-white/16 text-white font-semibold shadow-xs'
-                    : 'text-white/75 hover:text-white hover:bg-white/10 font-medium'
+                    ? 'bg-white/20 text-white font-semibold shadow-xs backdrop-blur-xs'
+                    : 'text-white/80 hover:text-white hover:bg-white/10 font-medium'
                 }`}
               >
                 {isActive && (
@@ -186,35 +205,24 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                     aria-hidden="true"
                   />
                 )}
-                <span className={isActive ? 'text-white' : 'text-white/75'}>
+                <span className={isActive ? 'text-white' : 'text-white/80'}>
                   {item.icon}
                 </span>
-                <span className="truncate">{item.label}</span>
+                <span className="leading-tight">{item.label}</span>
               </button>
             );
           })}
         </nav>
       </div>
 
-      {/* Bottom Quick Problem Scan Card (matching reference sidebar widget) */}
-      <div className="mt-6 rounded-2xl bg-white dark:bg-slate-900 text-[#202033] dark:text-slate-100 p-3.5 shadow-[0_12px_30px_-8px_rgba(32,12,78,0.35)]">
-        <div className="text-xs font-bold text-[#202033] dark:text-slate-100 text-center">
+      {/* Bottom Quick Problem Scan Action Card */}
+      <div className="relative z-10 mt-5 rounded-2xl bg-white/14 border border-white/20 backdrop-blur-md p-3.5">
+        <div className="text-xs font-bold text-white text-center">
           Quick Problem Scan
         </div>
-        <p className="text-[11px] text-[#77758A] dark:text-slate-400 text-center mt-0.5 font-mono">
+        <p className="text-[11px] text-white/75 text-center mt-0.5 font-mono">
           BIS SP 46 · 1st Angle
         </p>
-
-        {/* Minimal 3D Drafting Planes Mini Graphic */}
-        <div className="my-2.5 py-2 rounded-xl bg-[#F8F7FC] dark:bg-slate-800/70 flex items-center justify-center">
-          <svg viewBox="0 0 88 52" className="w-20 h-12" fill="none" aria-hidden="true">
-            <path d="M18 10V36L44 44V18L18 10Z" fill="#7952D6" fillOpacity="0.18" stroke="#7952D6" strokeWidth="1.4" />
-            <path d="M18 36L44 44L72 34L46 26L18 36Z" fill="#6035B5" fillOpacity="0.12" stroke="#6035B5" strokeWidth="1.4" />
-            <line x1="32" y1="22" x2="54" y2="30" stroke="#7952D6" strokeWidth="2" strokeLinecap="round" />
-            <circle cx="32" cy="22" r="2.5" fill="#7952D6" />
-            <circle cx="54" cy="30" r="2.5" fill="#6035B5" />
-          </svg>
-        </div>
 
         <button
           type="button"
@@ -222,7 +230,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
             onOpenScanModal();
             onCloseMobile();
           }}
-          className="w-full py-2 px-3 rounded-xl bg-[#7952D6] hover:bg-[#6035B5] text-white text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+          className="mt-2.5 w-full py-2 px-3 rounded-xl bg-white hover:bg-[#F1EBFF] text-[#7138E8] text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-xs"
         >
           <Camera className="w-3.5 h-3.5" />
           <span>Scan Question</span>
@@ -234,8 +242,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
   return (
     <>
       {/* Desktop Sticky Sidebar */}
-      <aside className="hidden lg:block w-[236px] xl:w-[250px] shrink-0 p-3 pr-0">
-        <div className="sticky top-3 h-[calc(100vh-1.5rem)] max-h-[900px]">
+      <aside className="hidden lg:block w-[232px] xl:w-[244px] shrink-0 p-3 pr-0">
+        <div className="sticky top-3 h-[calc(100vh-1.5rem)] max-h-[920px]">
           {sidebarContent}
         </div>
       </aside>
@@ -244,7 +252,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
       {isMobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden flex">
           <div
-            className="fixed inset-0 bg-[#202033]/50 backdrop-blur-xs"
+            className="fixed inset-0 bg-[#202044]/50 backdrop-blur-xs"
             onClick={onCloseMobile}
             aria-hidden="true"
           />

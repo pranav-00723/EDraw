@@ -29,81 +29,140 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
   onSelectPoint,
   isDark = false,
 }) => {
-  const [activeTab, setActiveTab] = useState<'details' | 'rules' | 'quadrants'>('details');
+  const [activeTab, setActiveTab] = useState<'steps' | 'details' | 'rules' | 'quadrants'>('steps');
   const [selectedQuadrant, setSelectedQuadrant] = useState<QuadrantType>('FIRST');
 
   if (!point) {
     return (
-      <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center text-xs text-slate-500">
-        No point selected. Add or select a point to see its technical explanation.
+      <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-[#E8E2F5] dark:border-slate-800 text-center text-xs text-[#77758F]">
+        No point selected. Add or select a point to see its construction steps.
       </div>
     );
   }
 
-  const getBadgeStyle = (q: string) => {
-    switch (q) {
-      case 'FIRST':
-        return 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800';
-      case 'SECOND':
-        return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-950/50 dark:text-red-300 dark:border-red-800';
-      case 'THIRD':
-        return 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800';
-      case 'FOURTH':
-        return 'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-950/50 dark:text-purple-300 dark:border-purple-800';
-      default:
-        return 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800';
-    }
-  };
-
   return (
-    <div className="flex flex-col rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+    <div className="flex flex-col rounded-2xl bg-white dark:bg-slate-900 border border-[#E8E2F5] dark:border-slate-800 shadow-[0_10px_30px_-12px_rgba(113,56,232,0.08)] overflow-hidden">
       {/* Header with Navigation Tabs */}
-      <div className="flex flex-wrap items-center justify-between border-b border-slate-200 dark:border-slate-800 px-4 py-2.5 bg-slate-50 dark:bg-slate-800 gap-2">
-        <div className="flex items-center gap-2">
-          <Compass className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-          <span className="text-xs font-bold text-slate-900 dark:text-slate-100 font-sans">
-            Pedagogical Engineering Analysis &amp; Theory
-          </span>
+      <div className="px-4 py-3 border-b border-[#F0ECF9] dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-[#F1EBFF] dark:bg-purple-950/60 text-[#7138E8] dark:text-purple-300 flex items-center justify-center shrink-0">
+              <BookOpen className="w-4 h-4" />
+            </div>
+            <span className="text-[14px] font-bold text-[#202044] dark:text-slate-100">
+              Step-by-Step Construction
+            </span>
+          </div>
         </div>
 
-        <div className="flex items-center gap-1 text-[11px]">
+        <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-[#F8F7FC] dark:bg-slate-800 border border-[#E8E2F5] dark:border-slate-700 text-[11px] font-semibold">
+          <button
+            type="button"
+            onClick={() => setActiveTab('steps')}
+            className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${
+              activeTab === 'steps'
+                ? 'bg-gradient-to-r from-[#7138E8] to-[#9565F5] text-white shadow-xs'
+                : 'text-[#77758F] dark:text-slate-400 hover:text-[#202044] dark:hover:text-white'
+            }`}
+          >
+            Steps
+          </button>
           <button
             type="button"
             onClick={() => setActiveTab('details')}
-            className={`px-2.5 py-1 rounded-md font-medium transition cursor-pointer ${
+            className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${
               activeTab === 'details'
-                ? 'bg-blue-600 text-white shadow-xs font-bold'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-750'
+                ? 'bg-gradient-to-r from-[#7138E8] to-[#9565F5] text-white shadow-xs'
+                : 'text-[#77758F] dark:text-slate-400 hover:text-[#202044] dark:hover:text-white'
             }`}
           >
-            Point {point.name} Result (Pictorial)
+            2D Proof
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('rules')}
-            className={`px-2.5 py-1 rounded-md font-medium transition cursor-pointer ${
+            className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${
               activeTab === 'rules'
-                ? 'bg-blue-600 text-white shadow-xs font-bold'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-750'
+                ? 'bg-gradient-to-r from-[#7138E8] to-[#9565F5] text-white shadow-xs'
+                : 'text-[#77758F] dark:text-slate-400 hover:text-[#202044] dark:hover:text-white'
             }`}
           >
-            Rules &amp; 90° Fold (Pictorial)
+            90° Fold
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('quadrants')}
-            className={`px-2.5 py-1 rounded-md font-medium transition cursor-pointer ${
+            className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${
               activeTab === 'quadrants'
-                ? 'bg-blue-600 text-white shadow-xs font-bold'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-750'
+                ? 'bg-gradient-to-r from-[#7138E8] to-[#9565F5] text-white shadow-xs'
+                : 'text-[#77758F] dark:text-slate-400 hover:text-[#202044] dark:hover:text-white'
             }`}
           >
-            Quadrant Matrix (Pictorial)
+            Quadrants
           </button>
         </div>
       </div>
 
       <div className="p-4 flex flex-col gap-4">
+        {/* ============================================================== */}
+        {/* TAB 0: STEP-BY-STEP CONSTRUCTION (MATCHING REFERENCE CARD)     */}
+        {/* ============================================================== */}
+        {activeTab === 'steps' && (
+          <div className="space-y-3">
+            <ol className="space-y-2.5 text-xs text-[#202044] dark:text-slate-200">
+              <li className="flex items-start gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-[#F1EBFF] dark:bg-purple-950/70 text-[#7138E8] dark:text-purple-300 font-mono font-bold text-[11px] flex items-center justify-center shrink-0 mt-0.5">
+                  1
+                </span>
+                <span className="leading-relaxed">
+                  Locate point{' '}
+                  <strong className="font-mono">
+                    {point.name}({point.x}, {point.y}, {point.z})
+                  </strong>{' '}
+                  in 3D space relative to HP and VP.
+                </span>
+              </li>
+
+              <li className="flex items-start gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-[#F1EBFF] dark:bg-purple-950/70 text-[#7138E8] dark:text-purple-300 font-mono font-bold text-[11px] flex items-center justify-center shrink-0 mt-0.5">
+                  2
+                </span>
+                <span className="leading-relaxed">
+                  Project perpendicularly onto HP to obtain Top View{' '}
+                  <strong className="font-mono">{point.topViewLabel}</strong> (
+                  {point.topViewDesc} after 90° CW fold).
+                </span>
+              </li>
+
+              <li className="flex items-start gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-[#F1EBFF] dark:bg-purple-950/70 text-[#7138E8] dark:text-purple-300 font-mono font-bold text-[11px] flex items-center justify-center shrink-0 mt-0.5">
+                  3
+                </span>
+                <span className="leading-relaxed">
+                  Project perpendicularly onto VP to obtain Front View{' '}
+                  <strong className="font-mono">{point.frontViewLabel}</strong> (
+                  {point.frontViewDesc}).
+                </span>
+              </li>
+
+              <li className="flex items-start gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-[#F1EBFF] dark:bg-purple-950/70 text-[#7138E8] dark:text-purple-300 font-mono font-bold text-[11px] flex items-center justify-center shrink-0 mt-0.5">
+                  4
+                </span>
+                <span className="leading-relaxed">
+                  Align <strong className="font-mono">{point.frontViewLabel}</strong> and{' '}
+                  <strong className="font-mono">{point.topViewLabel}</strong> on a single vertical projector perpendicular to XY.
+                </span>
+              </li>
+            </ol>
+
+            {/* Lavender Callout Summary */}
+            <div className="p-3 rounded-xl bg-[#F1EBFF]/80 dark:bg-purple-950/35 border border-[#E8E2F5] dark:border-purple-900/50 text-[11.5px] text-[#5B24CE] dark:text-purple-200 leading-relaxed flex items-start gap-2">
+              <Info className="w-4 h-4 text-[#7138E8] dark:text-purple-300 shrink-0 mt-0.5" />
+              <p>{point.explanation}</p>
+            </div>
+          </div>
+        )}
         {/* ============================================================== */}
         {/* TAB 1: POINT SPECIFIC TECHNICAL BREAKDOWN & MINI PICTOGRAM */}
         {/* ============================================================== */}

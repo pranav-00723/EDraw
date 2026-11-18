@@ -228,13 +228,13 @@ export default function App() {
 
   return (
     <div
-      className={`min-h-screen font-['Plus_Jakarta_Sans',sans-serif] ${
+      className={`min-h-screen font-['Space_Grotesk',sans-serif] ${
         isDark
           ? 'dark bg-slate-950 text-slate-100'
-          : 'bg-[#F8F7FC] text-[#202033]'
+          : 'bg-[#F8F7FC] text-[#202044]'
       } transition-colors duration-200`}
     >
-      <div className="max-w-[1440px] mx-auto min-h-screen flex">
+      <div className="max-w-[1600px] mx-auto min-h-screen flex">
         {/* Vertical Purple Gradient Sidebar */}
         <AppSidebar
           activeSection={activeSidebarSection}
@@ -264,6 +264,7 @@ export default function App() {
                 onToggleTheme={() => setIsDark(!isDark)}
                 onOpenScanModal={() => setIsGlobalScanOpen(true)}
                 onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
+                onOpenSettings={() => setIsSettingsOpen(true)}
               />
 
               {/* Dynamic Route View protected by ErrorBoundary */}

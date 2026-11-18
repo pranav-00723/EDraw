@@ -297,6 +297,8 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
             point={selectedPoint}
             allPoints={computedPoints}
             onSelectPoint={setSelectedPointId}
+            hpColor={hpColor}
+            vpColor={vpColor}
             isDark={isDark}
           />
         </div>

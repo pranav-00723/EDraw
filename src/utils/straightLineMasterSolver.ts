@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import {
+import type {
   MasterLineCategory,
   MasterValidationStatus,
   NormalizedConstraintModel,
@@ -12,10 +12,10 @@ import {
   AuxiliaryPlaneGeometry,
   MasterConstructionStep,
   ConstructionMethodType,
-} from '../types/masterLines';
-import { ComputedLine, LineProblemInput, TargetQuadrantB } from '../types/lines';
-import { HpRelation, VpRelation } from '../types/projection';
-import { computeLineProjection } from './linesMath';
+} from '../types/masterLines.ts';
+import type { ComputedLine, LineProblemInput, TargetQuadrantB } from '../types/lines.ts';
+import type { HpRelation, VpRelation } from '../types/projection.ts';
+import { computeLineProjection } from './linesMath.ts';
 
 const DEG_TO_RAD = Math.PI / 180;
 const RAD_TO_DEG = 180 / Math.PI;

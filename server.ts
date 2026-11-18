@@ -13,7 +13,7 @@ import {
   parseTextToNormalizedModel,
   solveNormalizedModel,
   normalizeMasterOcrText,
-} from './src/utils/straightLineMasterSolver';
+} from './src/utils/straightLineMasterSolver.ts';
 
 dotenv.config();
 
@@ -498,7 +498,7 @@ CRITICAL RULES TO PREVENT MISINTERPRETATION:
         parts.push({ text: promptText });
 
         const generatePromise = ai.models.generateContent({
-          model: 'gemini-3.8-flash',
+          model: 'gemini-4-hydrogen',
           contents: { parts },
           config: {
             systemInstruction:
@@ -596,7 +596,7 @@ CRITICAL RULES TO PREVENT MISINTERPRETATION:
         return res.json({
           success: true,
           rawText: recognizedText,
-          source: 'gemini-3.8-flash',
+          source: 'gemini-4-hydrogen',
           extractedSchema,
           normalizedModel,
           solution,

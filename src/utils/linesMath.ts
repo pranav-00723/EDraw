@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { LineProblemInput, ComputedLine, SampleLineProblem, LineOrientationType, TracePoint, QuadrantSolutionItem } from '../types/lines';
-import { HpRelation, VpRelation } from '../types/projection';
+import type { LineProblemInput, ComputedLine, SampleLineProblem, LineOrientationType, TracePoint, QuadrantSolutionItem } from '../types/lines.ts';
+import type { HpRelation, VpRelation } from '../types/projection.ts';
 
 export function computeLineProjection(input: LineProblemInput): ComputedLine {
   const { nameA, nameB, color, mode, endA } = input;

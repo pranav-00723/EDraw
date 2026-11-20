@@ -50,6 +50,23 @@ export default function App() {
   const [isGlobalScanOpen, setIsGlobalScanOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('edraw_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleSidebarCollapse = useCallback(() => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('edraw_sidebar_collapsed', String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
 
   // Plane Colors state (HP & VP) shared across all modules
   const [hpColor, setHpColor] = useState<string>('#2563eb');
@@ -243,6 +260,8 @@ export default function App() {
           onOpenSettings={() => setIsSettingsOpen(true)}
           isMobileOpen={isMobileSidebarOpen}
           onCloseMobile={() => setIsMobileSidebarOpen(false)}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={handleToggleSidebarCollapse}
         />
 
         {/* Rounded Main Workspace Shell */}

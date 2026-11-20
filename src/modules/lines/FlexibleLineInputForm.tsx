@@ -183,11 +183,11 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
     fieldKey: keyof FlexibleLineInput,
     placeholder = 'Empty'
   ) => (
-    <div className="flex flex-col gap-1">
-      <label className="text-[11px] font-semibold text-[#77758F] dark:text-slate-300 truncate">
+    <div className="grid grid-cols-12 gap-2 items-center px-3 py-2 rounded-xl border border-[#E8E2F5] dark:border-slate-800 bg-[#F8F7FC]/75 dark:bg-slate-950/40">
+      <label className="col-span-7 text-[11.5px] font-semibold text-[#202044] dark:text-slate-200 leading-tight">
         {label}
       </label>
-      <div className="relative">
+      <div className="col-span-5 relative">
         <input
           type="number"
           step="any"
@@ -195,7 +195,7 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
           value={value[fieldKey] as string}
           onChange={(e) => updateField(fieldKey, e.target.value)}
           placeholder={placeholder}
-          className="w-full h-8 px-2.5 pr-7 text-xs font-mono font-semibold tabular-nums rounded-lg border border-[#E8E2F5] dark:border-slate-700 bg-[#F8F7FC] dark:bg-slate-950/60 text-[#202044] dark:text-slate-100 focus:bg-white dark:focus:bg-slate-900 focus:border-[#7138E8] focus:ring-2 focus:ring-[#7138E8]/15 focus:outline-none transition-all"
+          className="w-full h-8 px-2.5 pr-7 text-xs font-mono font-semibold tabular-nums rounded-lg border border-[#E8E2F5] dark:border-slate-700 bg-white dark:bg-slate-900 text-[#202044] dark:text-slate-100 focus:border-[#7138E8] focus:ring-2 focus:ring-[#7138E8]/15 focus:outline-none transition-all"
         />
         <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono text-[#77758F]">
           {unit}
@@ -205,7 +205,7 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
   );
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2.5">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[11.5px] text-[#77758F] dark:text-slate-400 leading-snug">
           Enter <strong className="text-[#202044] dark:text-slate-200">any</strong> known values from the problem and leave unknowns blank.
@@ -220,35 +220,19 @@ export const FlexibleLineInputForm: React.FC<FlexibleLineInputFormProps> = ({
         </button>
       </div>
 
-      {/* Point 1 & Point 2 */}
+      {/* 1–11 Sequential Input Parameters */}
       {renderEndPointSection('end1', '1. Point 1 (Start End)', value.end1)}
       {renderEndPointSection('end2', '2. Point 2 (Other End)', value.end2)}
+      {renderNumberField('3. True Length (TL)', 'mm', 'trueLength')}
+      {renderNumberField('4. True Angle wrt HP (θ)', '°', 'thetaDeg')}
+      {renderNumberField('5. True Angle wrt VP (φ)', '°', 'phiDeg')}
+      {renderNumberField('6. Front View Length', 'mm', 'frontViewLength')}
+      {renderNumberField('7. Top View Length', 'mm', 'topViewLength')}
+      {renderNumberField('8. FV Angle wrt XY (α)', '°', 'alphaDeg')}
+      {renderNumberField('9. TV Angle wrt XY (β)', '°', 'betaDeg')}
+      {renderNumberField('10. End Projectors (DEP)', 'mm', 'dep')}
 
-      {/* True Length & DEP */}
-      <div className="grid grid-cols-2 gap-2.5">
-        {renderNumberField('3. True Length (TL)', 'mm', 'trueLength')}
-        {renderNumberField('10. End Projectors (DEP)', 'mm', 'dep')}
-      </div>
-
-      {/* True Inclinations */}
-      <div className="grid grid-cols-2 gap-2.5">
-        {renderNumberField('4. True Angle wrt HP (θ)', '°', 'thetaDeg')}
-        {renderNumberField('5. True Angle wrt VP (φ)', '°', 'phiDeg')}
-      </div>
-
-      {/* Apparent Lengths */}
-      <div className="grid grid-cols-2 gap-2.5">
-        {renderNumberField('6. Front View Length', 'mm', 'frontViewLength')}
-        {renderNumberField('7. Top View Length', 'mm', 'topViewLength')}
-      </div>
-
-      {/* Apparent Inclinations */}
-      <div className="grid grid-cols-2 gap-2.5">
-        {renderNumberField('8. FV Angle wrt XY (α)', '°', 'alphaDeg')}
-        {renderNumberField('9. TV Angle wrt XY (β)', '°', 'betaDeg')}
-      </div>
-
-      {/* Horizontal Trace (HT) & Vertical Trace (VT) */}
+      {/* 11. Horizontal Trace (HT) & Vertical Trace (VT) */}
       <div className="p-3 rounded-xl border border-[#E8E2F5] dark:border-slate-800 bg-[#F8F7FC]/80 dark:bg-slate-950/40 flex flex-col gap-2.5">
         <span className="text-xs font-bold text-[#202044] dark:text-slate-100">
           11. Traces (HT &amp; VT)

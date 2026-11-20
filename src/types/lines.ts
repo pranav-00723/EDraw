@@ -53,6 +53,14 @@ export interface LineProblemInput {
   targetQuadrantB?: TargetQuadrantB; // Quadrant i, ii, iii, or iv for End B
   hiddenA?: boolean; // When true, rendered in brackets e.g. (a) or (a′)
   hiddenB?: boolean; // When true, rendered in brackets e.g. (b) or (b′)
+  constructionHint?:
+    | 'rotating'
+    | 'triangle'
+    | 'tl-locus'
+    | 'tl-views'
+    | 'fv-alpha-phi'
+    | 'tv-beta-theta'
+    | 'apparent-views';
 }
 
 export interface QuadrantSolutionItem {

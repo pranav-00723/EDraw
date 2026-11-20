@@ -51,7 +51,7 @@ export const MASTER_REGRESSION_TESTS: RegressionTestDefinition[] = [
       thetaDeg: 30,
       phiDeg: 0,
     },
-    expectedExplanation: 'Valid line inclined to HP and parallel to VP. Front view shows True Length (80 mm) at true angle θ=30°. Top view is parallel to XY with length TL·cos(30°) = 69.28 mm.',
+    expectedExplanation: 'Valid line inclined to HP and parallel to VP. Front view shows True Length (80 mm) at true angle θ=30°. Dropping vertical projectors onto the horizontal through a yields the top view (69.28 mm) parallel to XY.',
     tags: ['Inclined HP', 'Parallel VP', 'True Angle'],
   },
   {
@@ -75,7 +75,7 @@ export const MASTER_REGRESSION_TESTS: RegressionTestDefinition[] = [
       thetaDeg: 30,
       phiDeg: 45,
     },
-    expectedExplanation: 'Feasible orientation (sin² 30° + sin² 45° = 0.25 + 0.5 = 0.75 ≤ 1.0), but endpoint placement and quadrant are unspecified, producing multiple valid spatial positions.',
+    expectedExplanation: 'Feasible orientation (θ + φ = 75° ≤ 90°, so rotating compass arcs intersect the horizontal loci), but endpoint placement and quadrant are unspecified, producing multiple valid spatial positions.',
     tags: ['Degrees of Freedom', 'Multiple Solutions', 'Ambiguity'],
   },
   {
@@ -122,7 +122,7 @@ export const MASTER_REGRESSION_TESTS: RegressionTestDefinition[] = [
       topViewLength: 60,
       dep: 0,
     },
-    expectedExplanation: 'Valid geometry with |dX| = 0 mm, |dY| = 60 mm, and |dZ| = 80 mm. Since TL² = EL² + ΔY² = PL² + ΔZ², DEP = 0 and both end projectors lie on the same vertical line.',
+    expectedExplanation: 'Valid geometry where the front view (80 mm) and top view (60 mm) form congruent right-angled true-length triangles (TL = 100 mm) with zero horizontal projector offset (DEP = 0 mm), placing both views along one vertical projector.',
     tags: ['Apparent Lengths', 'Profile Line', 'Zero DEP'],
   },
   {

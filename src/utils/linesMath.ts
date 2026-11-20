@@ -388,36 +388,38 @@ export function computeLineProjection(input: LineProblemInput): ComputedLine {
   const isTheta90 = Math.abs(thetaDeg - 90) < 0.5;
   const isPhi90 = Math.abs(phiDeg - 90) < 0.5;
 
+  const lA = nameA.toLowerCase();
+  const lB = nameB.toLowerCase();
   let orientation: LineOrientationType = 'INCLINED_BOTH';
   let orientationTitle = 'Line Inclined to Both HP and VP';
   let orientationDesc =
-    'General oblique line. Both front and top views are shorter than true length (EL < TL and PL < TL), and inclined to XY at apparent angles α and β.';
+    `General oblique line. Both front view (${lA}′${lB}′) and top view (${lA}${lB}) are shorter than true length and inclined to XY at apparent angles α and β, determined geometrically by arcs, loci, and projectors.`;
 
   if (isTheta90 || isPerpHP) {
     orientation = 'PERPENDICULAR_HP';
     orientationTitle = 'Line Perpendicular to HP & Parallel to VP';
     orientationDesc =
-      'Front view (a′b′) shows True Length perpendicular to XY. Top view (a, b) reduces to a single coincident point with bracket notation a(b).';
+      `Front view (${lA}′${lB}′) shows True Length perpendicular to XY. Top view reduces to a single coincident point with bracket notation ${topViewCombinedLabel}.`;
   } else if (isPhi90 || isPerpVP) {
     orientation = 'PERPENDICULAR_VP';
     orientationTitle = 'Line Perpendicular to VP & Parallel to HP';
     orientationDesc =
-      'Top view (ab) shows True Length perpendicular to XY. Front view (a′, b′) reduces to a single coincident point with bracket notation a′(b′).';
+      `Top view (${lA}${lB}) shows True Length perpendicular to XY. Front view reduces to a single coincident point with bracket notation ${frontViewCombinedLabel}.`;
   } else if (isThetaZero && isPhiZero) {
     orientation = 'PARALLEL_BOTH';
     orientationTitle = 'Line Parallel to Both HP and VP';
     orientationDesc =
-      'Both Front View (a′b′) and Top View (ab) are parallel to the XY line and show True Length (EL = PL = TL).';
+      `Both Front View (${lA}′${lB}′) and Top View (${lA}${lB}) are parallel to the XY line and show True Length.`;
   } else if (!isThetaZero && isPhiZero) {
     orientation = 'INCLINED_HP_PARALLEL_VP';
     orientationTitle = 'Line Inclined to HP & Parallel to VP';
     orientationDesc =
-      'Front view (a′b′) shows True Length and true inclination θ. Top view (ab) is parallel to XY and shorter than True Length (PL = TL·cos θ).';
+      `Front view (${lA}′${lB}′) shows True Length and true inclination θ. Dropping vertical projectors from ${lA}′ and ${lB}′ onto the horizontal through ${lA} yields Top View (${lA}${lB}) parallel to XY.`;
   } else if (isThetaZero && !isPhiZero) {
     orientation = 'INCLINED_VP_PARALLEL_HP';
     orientationTitle = 'Line Inclined to VP & Parallel to HP';
     orientationDesc =
-      'Top view (ab) shows True Length and true inclination φ. Front view (a′b′) is parallel to XY and shorter than True Length (EL = TL·cos φ).';
+      `Top view (${lA}${lB}) shows True Length and true inclination φ. Projecting vertically up from ${lA} and ${lB} onto the horizontal through ${lA}′ yields Front View (${lA}′${lB}′) parallel to XY.`;
   }
 
   return {
@@ -697,6 +699,213 @@ export const SAMPLE_LINE_PROBLEMS: SampleLineProblem[] = [
       trueLength: 74.3,
       thetaDeg: 32.5,
       phiDeg: 23.8,
+      endBQuadrant: 'ABOVE_FRONT',
+    },
+  },
+  {
+    id: 'sample-line-6-cd-triangle',
+    title: 'Line CD: End Points + DEP (Right-Triangle TL & Traces)',
+    difficulty: 'Exam Standard',
+    badge: 'End-Points + Traces',
+    description:
+      'A line CD has its end C 20 mm above HP and 25 mm in front of VP. The other end D is 45 mm above HP and 40 mm in front of VP. The distance between the end projectors is 60 mm. Draw its projections and find its true length and traces.',
+    input: {
+      mode: 'END_POINTS',
+      nameA: 'C',
+      nameB: 'D',
+      color: '#2563eb',
+      endA: {
+        name: 'C',
+        hpRelation: 'ABOVE',
+        distanceHp: 20,
+        vpRelation: 'IN_FRONT',
+        distanceVp: 25,
+      },
+      endB: {
+        name: 'D',
+        hpRelation: 'ABOVE',
+        distanceHp: 45,
+        vpRelation: 'IN_FRONT',
+        distanceVp: 40,
+      },
+      dep: 60,
+      trueLength: 66.71,
+      thetaDeg: 22.0,
+      phiDeg: 13.0,
+      endBQuadrant: 'ABOVE_FRONT',
+    },
+  },
+  {
+    id: 'sample-line-7-mn-tl-locus',
+    title: 'Line MN: True Length (65 mm) + End Distances (Inclinations & Traces)',
+    difficulty: 'Exam Standard',
+    badge: 'TL + End Distances',
+    description:
+      'A straight line MN, 65 mm long, has its end M 20 mm above HP and 25 mm in front of VP. The end N is 40 mm above HP and 65 mm in front of VP. Draw its projections, show its inclinations with HP (θ) and VP (φ), and find its traces.',
+    input: {
+      mode: 'END_POINTS',
+      constructionHint: 'tl-locus',
+      nameA: 'M',
+      nameB: 'N',
+      color: '#2563eb',
+      endA: {
+        name: 'M',
+        hpRelation: 'ABOVE',
+        distanceHp: 20,
+        vpRelation: 'IN_FRONT',
+        distanceVp: 25,
+      },
+      endB: {
+        name: 'N',
+        hpRelation: 'ABOVE',
+        distanceHp: 40,
+        vpRelation: 'IN_FRONT',
+        distanceVp: 65,
+      },
+      dep: Math.round(Math.sqrt(65 * 65 - 20 * 20 - 40 * 40) * 10000) / 10000,
+      trueLength: 65,
+      thetaDeg: 17.92,
+      phiDeg: 37.98,
+      endBQuadrant: 'ABOVE_FRONT',
+    },
+  },
+  {
+    id: 'sample-line-8-kl-both-inclinations',
+    title: 'Line KL: Both Inclinations Given (θ = 40°, φ = 50°, TL = 70 mm)',
+    difficulty: 'Exam Standard',
+    badge: 'θ + φ = 90° Profile',
+    description:
+      'A line KL, 70 mm long, is inclined to HP and VP by 40° and 50°, respectively. The end K is 20 mm above HP and 10 mm in front of VP. Draw the projections and find the traces.',
+    input: {
+      mode: 'TRUE_LENGTH_ANGLES',
+      constructionHint: 'rotating',
+      nameA: 'K',
+      nameB: 'L',
+      color: '#2563eb',
+      endA: {
+        name: 'K',
+        hpRelation: 'ABOVE',
+        distanceHp: 20,
+        vpRelation: 'IN_FRONT',
+        distanceVp: 10,
+      },
+      endB: {
+        name: 'L',
+        hpRelation: 'ABOVE',
+        distanceHp: 65,
+        vpRelation: 'IN_FRONT',
+        distanceVp: 63.62,
+      },
+      dep: 0,
+      trueLength: 70,
+      thetaDeg: 40,
+      phiDeg: 50,
+      endBQuadrant: 'ABOVE_FRONT',
+    },
+  },
+  {
+    id: 'sample-line-9-ef-fv-tv-tl',
+    title: 'Line EF: TL (75 mm), Top View (65 mm) & Front View (50 mm) Given',
+    difficulty: 'Exam Standard',
+    badge: 'TL + FV + TV',
+    description:
+      'The top view and the front view of the line EF, 75 mm long, measure 65 mm and 50 mm respectively. Its one end E is on HP and 12 mm in front of VP. Draw its projections and determine its inclinations with HP (θ) and VP (φ).',
+    input: {
+      mode: 'END_POINTS',
+      constructionHint: 'tl-views',
+      nameA: 'E',
+      nameB: 'F',
+      color: '#059669',
+      endA: {
+        name: 'E',
+        hpRelation: 'ON',
+        distanceHp: 0,
+        vpRelation: 'IN_FRONT',
+        distanceVp: 12,
+      },
+      endB: {
+        name: 'F',
+        hpRelation: 'ABOVE',
+        distanceHp: Math.round(Math.sqrt(75 * 75 - 65 * 65) * 10000) / 10000,
+        vpRelation: 'IN_FRONT',
+        distanceVp: Math.round((12 + Math.sqrt(75 * 75 - 50 * 50)) * 10000) / 10000,
+      },
+      dep: Math.round(Math.sqrt(65 * 65 + 50 * 50 - 75 * 75) * 10000) / 10000,
+      trueLength: 75,
+      thetaDeg: 29.93,
+      phiDeg: 48.19,
+      endBQuadrant: 'ABOVE_FRONT',
+    },
+  },
+  {
+    id: 'sample-line-10-pq-fv-alpha-phi',
+    title: 'Line PQ: Front View (60 mm at α = 35°) & Inclination to VP (φ = 40°)',
+    difficulty: 'Exam Standard',
+    badge: 'Rotating Line (FV + α + φ)',
+    description:
+      'The end P of a line PQ is 25 mm above HP and 30 mm in front of VP. The line is inclined at 40° to VP. Its front view is 60 mm long and inclined at 35° to XY. Draw the projections and find TL, θ, and traces using the Rotating Line Method.',
+    input: {
+      mode: 'END_POINTS',
+      constructionHint: 'fv-alpha-phi',
+      nameA: 'P',
+      nameB: 'Q',
+      color: '#7c3aed',
+      endA: {
+        name: 'P',
+        hpRelation: 'ABOVE',
+        distanceHp: 25,
+        vpRelation: 'IN_FRONT',
+        distanceVp: 30,
+      },
+      endB: {
+        name: 'Q',
+        hpRelation: 'ABOVE',
+        distanceHp: Math.round((25 + 60 * Math.sin((35 * Math.PI) / 180)) * 10000) / 10000,
+        vpRelation: 'IN_FRONT',
+        distanceVp: Math.round((30 + 60 * Math.tan((40 * Math.PI) / 180)) * 10000) / 10000,
+      },
+      dep: Math.round(60 * Math.cos((35 * Math.PI) / 180) * 10000) / 10000,
+      trueLength: Math.round((60 / Math.cos((40 * Math.PI) / 180)) * 10000) / 10000,
+      thetaDeg: 26.07,
+      phiDeg: 40,
+      frontViewLength: 60,
+      alphaDeg: 35,
+      endBQuadrant: 'ABOVE_FRONT',
+    },
+  },
+  {
+    id: 'sample-line-11-rs-tv-beta-theta',
+    title: 'Line RS: Top View (70 mm at β = 40°) & Inclination to HP (θ = 35°)',
+    difficulty: 'Exam Standard',
+    badge: 'TV + β + θ (Find TL & φ)',
+    description:
+      'The end R of a line RS is 30 mm above HP and 35 mm in front of VP. The line is inclined at 35° to HP. Its top view is 70 mm long and inclined at 40° to XY. Draw the projections and find its true length (TL) and inclination with VP (φ).',
+    input: {
+      mode: 'END_POINTS',
+      constructionHint: 'tv-beta-theta',
+      nameA: 'R',
+      nameB: 'S',
+      color: '#0284c7',
+      endA: {
+        name: 'R',
+        hpRelation: 'ABOVE',
+        distanceHp: 30,
+        vpRelation: 'IN_FRONT',
+        distanceVp: 35,
+      },
+      endB: {
+        name: 'S',
+        hpRelation: 'ABOVE',
+        distanceHp: Math.round((30 + 70 * Math.tan((35 * Math.PI) / 180)) * 10000) / 10000,
+        vpRelation: 'IN_FRONT',
+        distanceVp: Math.round((35 + 70 * Math.sin((40 * Math.PI) / 180)) * 10000) / 10000,
+      },
+      dep: Math.round(70 * Math.cos((40 * Math.PI) / 180) * 10000) / 10000,
+      trueLength: Math.round((70 / Math.cos((35 * Math.PI) / 180)) * 10000) / 10000,
+      thetaDeg: 35,
+      phiDeg: 31.77,
+      topViewLength: 70,
+      betaDeg: 40,
       endBQuadrant: 'ABOVE_FRONT',
     },
   },

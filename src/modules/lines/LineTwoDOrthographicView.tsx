@@ -1385,11 +1385,11 @@ export const LineTwoDOrthographicView: React.FC<LineTwoDOrthographicViewProps> =
           <div className="flex flex-wrap items-center gap-3">
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-xs" style={{ backgroundColor: vpColor }} />
-              <span className="text-slate-600 dark:text-slate-400">Front View (a′b′) = {line.frontViewLength.toFixed(1)} mm</span>
+              <span className="text-slate-600 dark:text-slate-400">Front View ({line.nameA.toLowerCase()}′{line.nameB.toLowerCase()}′) = {line.frontViewLength.toFixed(1)} mm</span>
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-xs" style={{ backgroundColor: hpColor }} />
-              <span className="text-slate-600 dark:text-slate-400">Top View (ab) = {line.topViewLength.toFixed(1)} mm</span>
+              <span className="text-slate-600 dark:text-slate-400">Top View ({line.nameA.toLowerCase()}{line.nameB.toLowerCase()}) = {line.topViewLength.toFixed(1)} mm</span>
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-xs bg-purple-500" />

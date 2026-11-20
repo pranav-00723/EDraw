@@ -341,7 +341,9 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
 
     const warnings: string[] = [];
     if (!isValidSpatial) {
-      warnings.push(`Geometric condition violated: sin²(θ) + sin²(φ) = ${sin2Sum.toFixed(3)} > 1.0`);
+      warnings.push(
+        `Geometrical constraint violated: With θ = ${effectiveTheta}° and φ = ${effectivePhi}° between perpendicular reference planes HP and VP, the rotated plan arc cannot intersect the horizontal locus line.`
+      );
     }
     if (hasAmbiguity) {
       warnings.push(`Ambiguous question: Missing parameters [${missing.join(', ')}]`);
@@ -397,9 +399,9 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
       missing_or_ambiguous_fields: missing,
       validation: {
         is_valid: isValidSpatial && !hasAmbiguity,
-        geometric_condition: `sin²(θ) + sin²(φ) = ${sin2Sum.toFixed(3)} ${
-          isValidSpatial ? '≤ 1.0 (PASSED)' : '> 1.0 (FAILED)'
-        }`,
+        geometric_condition: isValidSpatial
+          ? 'Rotating-line compass arcs intersect horizontal loci validly between perpendicular HP and VP (PASSED)'
+          : 'Angles exceed spatial limit between perpendicular HP and VP — compass arcs cannot meet loci (FAILED)',
         warnings,
       },
     };
@@ -766,7 +768,7 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
               Input-to-Output Traceability
             </span>
             <p className="text-[11px] text-slate-500">
-              Every input extracted from the question statement is strictly bound to the mathematical model:
+              Every input extracted from the question statement is strictly bound to the 3D geometrical construction:
             </p>
 
             <div className="divide-y divide-slate-100 dark:divide-slate-800 text-[11px] font-mono">
@@ -875,10 +877,10 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-850/60 border border-slate-200/60 dark:border-slate-800 flex items-start justify-between gap-3">
                   <div>
                     <span className="font-bold text-slate-900 dark:text-slate-100 block">
-                      1. Direction Cosines / Angle Sum Condition
+                      1. Perpendicular Planes &amp; Arc-Locus Intersection
                     </span>
                     <span className="text-slate-500 text-[11px]">
-                      Formula: sin²(θ) + sin²(φ) ≤ 1.0 (Sum of inclinations with HP and VP cannot exceed 90°)
+                      Because HP and VP are perpendicular (90° apart), the combined inclinations θ and φ permit the compass rotation arc to intersect the horizontal locus line.
                     </span>
                   </div>
                   <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 shrink-0">
@@ -893,11 +895,11 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
                       2. End Projector Perpendicularity Invariant
                     </span>
                     <span className="text-slate-500 text-[11px]">
-                      Front view endpoint b′ and Top view endpoint b must lie on a single continuous vertical line perpendicular to XY.
+                      Front view endpoint {computedLine.nameB.toLowerCase()}′ and Top view endpoint {computedLine.nameB.toLowerCase()} lie on a single continuous projector perpendicular to XY.
                     </span>
                   </div>
                   <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 shrink-0">
-                    Δx = 0.00 mm (PASSED)
+                    PERP. ALIGNED (PASSED)
                   </span>
                 </div>
 
@@ -908,7 +910,7 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
                       3. Locus Line Parallelism &amp; Zero Gap Verification
                     </span>
                     <span className="text-slate-500 text-[11px]">
-                      Locus of b′ is strictly parallel to XY at height zB. Locus of b is strictly parallel to XY at depth yB. Locus joins smoothly with auxiliary points b₁′ and b₂.
+                      Locus of {computedLine.nameB.toLowerCase()}′ is parallel to XY preserving height above HP; Locus of {computedLine.nameB.toLowerCase()} is parallel to XY preserving distance in front of VP.
                     </span>
                   </div>
                   <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 shrink-0">
@@ -920,10 +922,10 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-850/60 border border-slate-200/60 dark:border-slate-800 flex items-start justify-between gap-3">
                   <div>
                     <span className="font-bold text-slate-900 dark:text-slate-100 block">
-                      4. Plan &amp; Elevation Length Conservation
+                      4. Plan &amp; Elevation Compass Radius Conservation
                     </span>
                     <span className="text-slate-500 text-[11px]">
-                      Top view length ab = ab₁ = TL·cos(θ) = {(computedLine.trueLength * Math.cos((computedLine.thetaDeg * Math.PI) / 180)).toFixed(2)} mm. Front view length a′b′ = a′b₂′ = TL·cos(φ) = {(computedLine.trueLength * Math.cos((computedLine.phiDeg * Math.PI) / 180)).toFixed(2)} mm.
+                      Top view length {computedLine.nameA.toLowerCase()}{computedLine.nameB.toLowerCase()} equals auxiliary plan radius {computedLine.nameA.toLowerCase()}{computedLine.nameB.toLowerCase()}₁ ({computedLine.topViewLength.toFixed(2)} mm). Front view length {computedLine.nameA.toLowerCase()}′{computedLine.nameB.toLowerCase()}′ equals auxiliary elevation radius {computedLine.nameA.toLowerCase()}′{computedLine.nameB.toLowerCase()}₂′ ({computedLine.frontViewLength.toFixed(2)} mm).
                     </span>
                   </div>
                   <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 shrink-0">

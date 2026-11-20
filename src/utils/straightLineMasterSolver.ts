@@ -149,16 +149,22 @@ export function parseTextToNormalizedModel(
   model.endpoint_A.name = startName;
   model.endpoint_B.name = endName;
 
-  // 2. True Length (TL)
+  // 2. True Length (TL) — exclude endpoint HP/VP distances and FV/TV lengths
+  const tlCandidateText = probLower
+    .replace(
+      /(?:the\s+)?(?:front|top)[\s-]*view(?:\s+of\s+(?:the\s+|a\s+)?(?:straight\s+)?line(?:\s+[a-z]{1,2})?)?\s*(?:length\s*)?(?:is|=|of|measures?)?\s*\d+(?:\.\d+)?\s*mm(?:\s*long)?/gi,
+      ''
+    )
+    .replace(/(?:measure|measures|are)\s*\d+(?:\.\d+)?\s*mm\s*and\s*\d+(?:\.\d+)?\s*mm/gi, '')
+    .replace(/\d+(?:\.\d+)?\s*mm\s*(?:above|below|in\s*front|behind)/gi, '');
   const tlMatch =
-    probLower.match(/(\d+(?:\.\d+)?)\s*mm\s*(?:line|linc|lone|straight\s*line)/i) ||
-    probLower.match(/(?:true\s*length|tl)\s*(?:is|=|of)?\s*(\d+(?:\.\d+)?)\s*mm/i) ||
-    probLower.match(/(?:line|linc|lone)\s+[a-z]{1,2}\s+(\d+(?:\.\d+)?)\s*mm/i) ||
-    probLower.match(/(\d+(?:\.\d+)?)\s*mm\s*(?:long|lone|in\s*length)/i) ||
-    probLower.match(/(?:length\s*(?:of)?\s*(?:the\s*line\s*)?|line\s*length\s*(?:is)?\s*)(\d+(?:\.\d+)?)\s*mm/i) ||
-    probLower.match(/tl\s*=?\s*(\d+(?:\.\d+)?)/i) ||
-    probLower.match(/^a\s+(\d+(?:\.\d+)?)\s*mm\s+line/i) ||
-    probLower.match(/(\d+(?:\.\d+)?)\s*mm/i);
+    tlCandidateText.match(/(\d+(?:\.\d+)?)\s*mm\s*(?:line|linc|lone|straight\s*line)/i) ||
+    tlCandidateText.match(/(?:true\s*length|tl)\s*(?:is|=|of)?\s*(\d+(?:\.\d+)?)\s*mm/i) ||
+    tlCandidateText.match(/(?:line|linc|lone)\s+[a-z]{1,2}[,\s]+(\d+(?:\.\d+)?)\s*mm/i) ||
+    tlCandidateText.match(/(\d+(?:\.\d+)?)\s*mm\s*(?:long|lone|in\s*length)/i) ||
+    tlCandidateText.match(/(?:length\s*(?:of)?\s*(?:the\s*line\s*)?|line\s*length\s*(?:is)?\s*)(\d+(?:\.\d+)?)\s*mm/i) ||
+    tlCandidateText.match(/tl\s*=?\s*(\d+(?:\.\d+)?)/i) ||
+    tlCandidateText.match(/^a\s+(\d+(?:\.\d+)?)\s*mm\s+line/i);
 
   if (tlMatch) {
     model.true_length_mm = parseFloat(tlMatch[1]);
@@ -223,6 +229,13 @@ export function parseTextToNormalizedModel(
   }
 
   // 4. True Angles (theta with HP, phi with VP)
+  const bothHpVpMatch = probLower.match(
+    /inclined\s*(?:at|to)?\s*(?:the\s*)?hp\s*and\s*(?:the\s*)?vp\s*(?:by|at)?\s*(\d+(?:\.\d+)?)\s*(?:°|deg|degrees)?\s*and\s*(\d+(?:\.\d+)?)\s*(?:°|deg|degrees)?/i
+  );
+  const bothVpHpMatch = probLower.match(
+    /inclined\s*(?:at|to)?\s*(?:the\s*)?vp\s*and\s*(?:the\s*)?hp\s*(?:by|at)?\s*(\d+(?:\.\d+)?)\s*(?:°|deg|degrees)?\s*and\s*(\d+(?:\.\d+)?)\s*(?:°|deg|degrees)?/i
+  );
+
   const thetaMatch =
     probLower.match(/(?:inclined\s*(?:at)?\s*(\d+(?:\.\d+)?)\s*(?:°|deg|degrees)?\s*to\s*(?:the\s*)?hp)/i) ||
     probLower.match(/(?:(\d+(?:\.\d+)?)\s*(?:°|deg|degrees)?\s*(?:with|to)\s*(?:the\s*)?hp)/i) ||
@@ -236,6 +249,24 @@ export function parseTextToNormalizedModel(
       source: inputMode,
       explicit: true,
       confidence: 0.95,
+    };
+  } else if (bothHpVpMatch) {
+    model.inclination_hp_deg = parseFloat(bothHpVpMatch[1]);
+    model.source_of_each_constraint['inclination_hp_deg'] = {
+      value: model.inclination_hp_deg,
+      unit: 'deg',
+      source: inputMode,
+      explicit: true,
+      confidence: 0.93,
+    };
+  } else if (bothVpHpMatch) {
+    model.inclination_hp_deg = parseFloat(bothVpHpMatch[2]);
+    model.source_of_each_constraint['inclination_hp_deg'] = {
+      value: model.inclination_hp_deg,
+      unit: 'deg',
+      source: inputMode,
+      explicit: true,
+      confidence: 0.93,
     };
   } else if (isPerpHP) {
     model.inclination_hp_deg = 90;
@@ -273,6 +304,24 @@ export function parseTextToNormalizedModel(
       explicit: true,
       confidence: 0.95,
     };
+  } else if (bothHpVpMatch) {
+    model.inclination_vp_deg = parseFloat(bothHpVpMatch[2]);
+    model.source_of_each_constraint['inclination_vp_deg'] = {
+      value: model.inclination_vp_deg,
+      unit: 'deg',
+      source: inputMode,
+      explicit: true,
+      confidence: 0.93,
+    };
+  } else if (bothVpHpMatch) {
+    model.inclination_vp_deg = parseFloat(bothVpHpMatch[1]);
+    model.source_of_each_constraint['inclination_vp_deg'] = {
+      value: model.inclination_vp_deg,
+      unit: 'deg',
+      source: inputMode,
+      explicit: true,
+      confidence: 0.93,
+    };
   } else if (isPerpVP) {
     model.inclination_vp_deg = 90;
     model.source_of_each_constraint['inclination_vp_deg'] = {
@@ -296,8 +345,17 @@ export function parseTextToNormalizedModel(
   }
 
   // 5. Projected Lengths (Elevation / Front View length, Plan / Top View length)
+  const tvAndFvMeasure = probLower.match(
+    /(?:top[\s-]*view|plan)\s*and\s*(?:the\s*)?(?:front[\s-]*view|elevation)[^.]*?(?:measure|are|of)\s*(\d+(?:\.\d+)?)\s*mm\s*and\s*(\d+(?:\.\d+)?)\s*mm/i
+  );
+  const fvAndTvMeasure = probLower.match(
+    /(?:front[\s-]*view|elevation)\s*and\s*(?:the\s*)?(?:top[\s-]*view|plan)[^.]*?(?:measure|are|of)\s*(\d+(?:\.\d+)?)\s*mm\s*and\s*(\d+(?:\.\d+)?)\s*mm/i
+  );
+
   const elMatch =
-    probLower.match(/(?:front[\s-]*view|elevation)\s*(?:length\s*)?(?:is|=|of)?\s*(\d+(?:\.\d+)?)\s*mm/i) ||
+    probLower.match(
+      /(?:front[\s-]*view|elevation)(?:\s+of\s+(?:the\s+|a\s+)?(?:straight\s+)?line(?:\s+[a-z]{1,2})?)?\s*(?:length\s*)?(?:is|=|of)?\s*(\d+(?:\.\d+)?)\s*mm/i
+    ) ||
     probLower.match(/el\s*(?:is|=|of)?\s*(\d+(?:\.\d+)?)\s*mm/i) ||
     probLower.match(/(?:front[\s-]*view\s*is)\s*(\d+(?:\.\d+)?)\s*mm/i);
   if (elMatch) {
@@ -309,10 +367,30 @@ export function parseTextToNormalizedModel(
       explicit: true,
       confidence: 0.92,
     };
+  } else if (tvAndFvMeasure) {
+    model.front_view_length_mm = parseFloat(tvAndFvMeasure[2]);
+    model.source_of_each_constraint['front_view_length_mm'] = {
+      value: model.front_view_length_mm,
+      unit: 'mm',
+      source: inputMode,
+      explicit: true,
+      confidence: 0.92,
+    };
+  } else if (fvAndTvMeasure) {
+    model.front_view_length_mm = parseFloat(fvAndTvMeasure[1]);
+    model.source_of_each_constraint['front_view_length_mm'] = {
+      value: model.front_view_length_mm,
+      unit: 'mm',
+      source: inputMode,
+      explicit: true,
+      confidence: 0.92,
+    };
   }
 
   const plMatch =
-    probLower.match(/(?:top[\s-]*view|plan)\s*(?:length\s*)?(?:is|=|of)?\s*(\d+(?:\.\d+)?)\s*mm/i) ||
+    probLower.match(
+      /(?:top[\s-]*view|plan)(?:\s+of\s+(?:the\s+|a\s+)?(?:straight\s+)?line(?:\s+[a-z]{1,2})?)?\s*(?:length\s*)?(?:is|=|of)?\s*(\d+(?:\.\d+)?)\s*mm/i
+    ) ||
     probLower.match(/pl\s*(?:is|=|of)?\s*(\d+(?:\.\d+)?)\s*mm/i) ||
     probLower.match(/(?:top[\s-]*view\s*is)\s*(\d+(?:\.\d+)?)\s*mm/i);
   if (plMatch) {
@@ -324,11 +402,29 @@ export function parseTextToNormalizedModel(
       explicit: true,
       confidence: 0.92,
     };
+  } else if (tvAndFvMeasure) {
+    model.top_view_length_mm = parseFloat(tvAndFvMeasure[1]);
+    model.source_of_each_constraint['top_view_length_mm'] = {
+      value: model.top_view_length_mm,
+      unit: 'mm',
+      source: inputMode,
+      explicit: true,
+      confidence: 0.92,
+    };
+  } else if (fvAndTvMeasure) {
+    model.top_view_length_mm = parseFloat(fvAndTvMeasure[2]);
+    model.source_of_each_constraint['top_view_length_mm'] = {
+      value: model.top_view_length_mm,
+      unit: 'mm',
+      source: inputMode,
+      explicit: true,
+      confidence: 0.92,
+    };
   }
 
   // 6. Apparent Angles (alpha in FV with XY, beta in TV with XY)
   const alphaMatch =
-    probLower.match(/(?:front[\s-]*view|elevation)\s*(?:makes\s*(?:an\s*angle\s*of)?|inclined\s*at)\s*(\d+(?:\.\d+)?)\s*(?:°|deg|degrees)?\s*with\s*(?:the\s*)?xy/i) ||
+    probLower.match(/(?:front[\s-]*view|elevation)[^.]*?(?:makes\s*(?:an\s*angle\s*of)?|inclined\s*(?:at)?)\s*(\d+(?:\.\d+)?)\s*(?:°|deg|degrees)?\s*(?:with|to)\s*(?:the\s*)?xy/i) ||
     probLower.match(/α\s*=?\s*(\d+(?:\.\d+)?)/i);
   if (alphaMatch) {
     model.front_view_angle_deg = parseFloat(alphaMatch[1]);
@@ -342,7 +438,7 @@ export function parseTextToNormalizedModel(
   }
 
   const betaMatch =
-    probLower.match(/(?:top[\s-]*view|plan)\s*(?:makes\s*(?:an\s*angle\s*of)?|inclined\s*at)\s*(\d+(?:\.\d+)?)\s*(?:°|deg|degrees)?\s*with\s*(?:the\s*)?xy/i) ||
+    probLower.match(/(?:top[\s-]*view|plan)[^.]*?(?:makes\s*(?:an\s*angle\s*of)?|inclined\s*(?:at)?)\s*(\d+(?:\.\d+)?)\s*(?:°|deg|degrees)?\s*(?:with|to)\s*(?:the\s*)?xy/i) ||
     probLower.match(/β\s*=?\s*(\d+(?:\.\d+)?)/i);
   if (betaMatch) {
     model.top_view_angle_deg = parseFloat(betaMatch[1]);
@@ -357,7 +453,7 @@ export function parseTextToNormalizedModel(
 
   // 7. Distance Between End Projectors (DEP)
   const depMatch =
-    probLower.match(/(?:distance\s*between\s*(?:end\s*)?projectors|dep)\s*(?:is|=|of)?\s*(\d+(?:\.\d+)?)\s*mm/i);
+    probLower.match(/(?:distance\s*between\s*(?:the\s*)?(?:end\s*)?projectors|dep)\s*(?:is|=|of)?\s*(\d+(?:\.\d+)?)\s*mm/i);
   if (depMatch) {
     model.dep_projector_distance_mm = parseFloat(depMatch[1]);
     model.source_of_each_constraint['dep_projector_distance_mm'] = {
@@ -376,10 +472,10 @@ export function parseTextToNormalizedModel(
   const qName = endName.toLowerCase();
 
   const aHpAbove = probLower.match(new RegExp(`(?:point\\s*${pName}|end\\s*${pName}|\\b${pName}\\b)[^.]*?(\\d+(?:\\.\\d+)?)\\s*mm\\s*above\\s*(?:the\\s*)?hp`, 'i')) ||
-    probLower.match(/(\d+(?:\.\d+)?)\s*mm\s*above\s*(?:the\\s*)?hp/i);
+    probLower.match(/(\d+(?:\.\d+)?)\s*mm\s*above\s*(?:the\s*)?hp/i);
   const aHpBelow = probLower.match(new RegExp(`(?:point\\s*${pName}|end\\s*${pName}|\\b${pName}\\b)[^.]*?(\\d+(?:\\.\\d+)?)\\s*mm\\s*below\\s*(?:the\\s*)?hp`, 'i')) ||
-    probLower.match(/(\d+(?:\.\d+)?)\s*mm\s*below\s*(?:the\\s*)?hp/i);
-  const aHpOn = probLower.includes(`${pName} is in hp`) || probLower.includes(`${pName} is in the hp`) || probLower.includes(`${pName} is on hp`);
+    probLower.match(/(\d+(?:\.\d+)?)\s*mm\s*below\s*(?:the\s*)?hp/i);
+  const aHpOn = new RegExp(`\\b${pName}\\b\\s*is\\s*(?:in|on)\\s*(?:the\\s*)?hp`, 'i').test(probLower);
 
   if (aHpOn) {
     model.endpoint_A.z = 0;
@@ -598,7 +694,7 @@ export function solveNormalizedModel(model: NormalizedConstraintModel): Normaliz
     if (angleSum > 1.0005) {
       status = 'INCONSISTENT_CONSTRAINTS';
       model.category = 'SL_19_INCONSISTENT_CONSTRAINTS';
-      model.contradiction_explanation = `Geometric violation: sin²(θ) + sin²(φ) = ${angleSum.toFixed(3)} > 1.0. A straight line in Euclidean space cannot be inclined at θ=${model.inclination_hp_deg}° and φ=${model.inclination_vp_deg}°.`;
+      model.contradiction_explanation = `Impossible geometry: Because HP and VP are perpendicular reference planes (90° apart), θ = ${model.inclination_hp_deg}° and φ = ${model.inclination_vp_deg}° exceed the spatial limit and the rotated compass arc cannot intersect the horizontal locus line.`;
       model.validation_messages.push(model.contradiction_explanation);
     }
   }
@@ -627,8 +723,12 @@ export function solveNormalizedModel(model: NormalizedConstraintModel): Normaliz
   }
 
   // 2. Check for UNDERDETERMINED QUESTIONS (SL-20 / Regression TEST 5, 7, 10)
-  // TEST 10: Apparent angle given without line orientation
-  if (model.front_view_angle_deg !== null && model.inclination_hp_deg === null && model.parallel_to !== 'VP') {
+  // TEST 10: Apparent angle given without line orientation or additional length/inclination constraints
+  const hasSolvedSupportForAlpha =
+    model.true_length_mm !== null ||
+    (model.front_view_length_mm !== null && model.inclination_vp_deg !== null) ||
+    (model.front_view_length_mm !== null && model.top_view_length_mm !== null);
+  if (model.front_view_angle_deg !== null && model.inclination_hp_deg === null && model.parallel_to !== 'VP' && !hasSolvedSupportForAlpha) {
     status = 'UNDERDETERMINED';
     model.category = 'SL_20_UNDERDETERMINED';
     model.missing_constraints_explanation = `Front-view angle with XY (α = ${model.front_view_angle_deg}°) is an apparent angle, which cannot be equated to true inclination θ without knowing the line's orientation to VP, true length, or top-view projection.`;
@@ -637,7 +737,18 @@ export function solveNormalizedModel(model: NormalizedConstraintModel): Normaliz
   }
 
   // Missing dimensions or unreadable labels (TEST 7)
-  if (model.true_length_mm === null && model.front_view_length_mm === null && model.top_view_length_mm === null) {
+  const hasBothEndpointsAndDep =
+    model.endpoint_A.distHp !== null &&
+    model.endpoint_A.distVp !== null &&
+    model.endpoint_B.distHp !== null &&
+    model.endpoint_B.distVp !== null &&
+    model.dep_projector_distance_mm !== null;
+  if (
+    model.true_length_mm === null &&
+    model.front_view_length_mm === null &&
+    model.top_view_length_mm === null &&
+    !hasBothEndpointsAndDep
+  ) {
     status = 'UNDERDETERMINED';
     model.category = 'SL_20_UNDERDETERMINED';
     model.missing_constraints_explanation = 'Insufficient dimension constraints: Neither True Length nor projected view lengths are defined. Specify at least one length constraint.';
@@ -683,7 +794,7 @@ export function solveNormalizedModel(model: NormalizedConstraintModel): Normaliz
  * Solves 3D coordinates and creates standard ComputedLine for renderer
  */
 function solveGeometryCoordinates(model: NormalizedConstraintModel): ComputedLine | null {
-  const tl = model.true_length_mm ?? 50;
+  let tl = model.true_length_mm ?? 50;
   const isPerpHP = model.perpendicular_to === 'HP';
   const isPerpVP = model.perpendicular_to === 'VP';
   const isParHP = model.parallel_to === 'HP' || model.parallel_to === 'BOTH' || isPerpVP;
@@ -691,6 +802,123 @@ function solveGeometryCoordinates(model: NormalizedConstraintModel): ComputedLin
 
   let theta = model.inclination_hp_deg ?? (isPerpHP ? 90 : isParHP ? 0 : 30);
   let phi = model.inclination_vp_deg ?? (isPerpVP ? 90 : isParVP ? 0 : 45);
+
+  // Solve TL, theta, dep from Front View length (EL), apparent FV angle (α), and true VP inclination (φ) — e.g. Problem 6
+  if (
+    model.true_length_mm === null &&
+    model.front_view_length_mm !== null &&
+    model.front_view_angle_deg !== null &&
+    model.inclination_vp_deg !== null
+  ) {
+    const el = model.front_view_length_mm;
+    const alpha = model.front_view_angle_deg;
+    const phiVal = model.inclination_vp_deg;
+    const cosPhi = Math.cos(phiVal * DEG_TO_RAD);
+    const solvedTL = cosPhi > 1e-4 ? el / cosPhi : el;
+    const dep = el * Math.cos(alpha * DEG_TO_RAD);
+    const dz = el * Math.sin(alpha * DEG_TO_RAD);
+    const dy = solvedTL * Math.sin(phiVal * DEG_TO_RAD);
+    const solvedTheta = solvedTL > 1e-4 ? Math.asin(Math.min(1, dz / solvedTL)) * RAD_TO_DEG : 0;
+
+    const pAbove = model.endpoint_A.distHp ?? 25;
+    const pFront = model.endpoint_A.distVp ?? 30;
+    const inputForm: LineProblemInput = {
+      mode: 'END_POINTS',
+      constructionHint: 'fv-alpha-phi',
+      nameA: model.endpoint_A.name,
+      nameB: model.endpoint_B.name,
+      color: '#2563eb',
+      endA: {
+        name: model.endpoint_A.name,
+        hpRelation: model.endpoint_A.hpRelation ?? 'ABOVE',
+        distanceHp: pAbove,
+        vpRelation: model.endpoint_A.vpRelation ?? 'IN_FRONT',
+        distanceVp: pFront,
+      },
+      endB: {
+        name: model.endpoint_B.name,
+        hpRelation: 'ABOVE',
+        distanceHp: pAbove + dz,
+        vpRelation: 'IN_FRONT',
+        distanceVp: pFront + dy,
+      },
+      dep: Math.round(dep * 10000) / 10000,
+      trueLength: Math.round(solvedTL * 10000) / 10000,
+      thetaDeg: solvedTheta,
+      phiDeg: phiVal,
+      frontViewLength: el,
+      alphaDeg: alpha,
+      endBQuadrant: 'ABOVE_FRONT',
+      targetQuadrantB: 'FIRST',
+    };
+    return computeLineProjection(inputForm);
+  }
+
+  // Solve TL, phi, dep from Top View length (PL), apparent TV angle (β), and true HP inclination (θ) — e.g. Line RS
+  if (
+    model.true_length_mm === null &&
+    model.top_view_length_mm !== null &&
+    model.top_view_angle_deg !== null &&
+    model.inclination_hp_deg !== null
+  ) {
+    const pl = model.top_view_length_mm;
+    const beta = model.top_view_angle_deg;
+    const thetaVal = model.inclination_hp_deg;
+    const cosTheta = Math.cos(thetaVal * DEG_TO_RAD);
+    const solvedTL = cosTheta > 1e-4 ? pl / cosTheta : pl;
+    const dep = pl * Math.cos(beta * DEG_TO_RAD);
+    const dy = pl * Math.sin(beta * DEG_TO_RAD);
+    const dz = solvedTL * Math.sin(thetaVal * DEG_TO_RAD);
+    const solvedPhi = solvedTL > 1e-4 ? Math.asin(Math.min(1, dy / solvedTL)) * RAD_TO_DEG : 0;
+
+    const pAbove = model.endpoint_A.distHp ?? 30;
+    const pFront = model.endpoint_A.distVp ?? 35;
+    const inputForm: LineProblemInput = {
+      mode: 'END_POINTS',
+      constructionHint: 'tv-beta-theta',
+      nameA: model.endpoint_A.name,
+      nameB: model.endpoint_B.name,
+      color: '#2563eb',
+      endA: {
+        name: model.endpoint_A.name,
+        hpRelation: model.endpoint_A.hpRelation ?? 'ABOVE',
+        distanceHp: pAbove,
+        vpRelation: model.endpoint_A.vpRelation ?? 'IN_FRONT',
+        distanceVp: pFront,
+      },
+      endB: {
+        name: model.endpoint_B.name,
+        hpRelation: 'ABOVE',
+        distanceHp: pAbove + dz,
+        vpRelation: 'IN_FRONT',
+        distanceVp: pFront + dy,
+      },
+      dep: Math.round(dep * 10000) / 10000,
+      trueLength: Math.round(solvedTL * 10000) / 10000,
+      thetaDeg: thetaVal,
+      phiDeg: solvedPhi,
+      topViewLength: pl,
+      betaDeg: beta,
+      endBQuadrant: 'ABOVE_FRONT',
+      targetQuadrantB: 'FIRST',
+    };
+    return computeLineProjection(inputForm);
+  }
+
+  // Solve theta & phi when TL, FV length (EL), and TV length (PL) are all given — e.g. Problem 5 (EF)
+  if (
+    model.true_length_mm !== null &&
+    model.front_view_length_mm !== null &&
+    model.top_view_length_mm !== null
+  ) {
+    tl = model.true_length_mm;
+    if (model.inclination_hp_deg === null && tl > 1e-4) {
+      theta = Math.acos(Math.min(1, model.top_view_length_mm / tl)) * RAD_TO_DEG;
+    }
+    if (model.inclination_vp_deg === null && tl > 1e-4) {
+      phi = Math.acos(Math.min(1, model.front_view_length_mm / tl)) * RAD_TO_DEG;
+    }
+  }
 
   // If apparent lengths are given and TL is unknown (SL-09 / TEST 9)
   if (model.true_length_mm === null && model.front_view_length_mm !== null && model.top_view_length_mm !== null) {
@@ -712,6 +940,7 @@ function solveGeometryCoordinates(model: NormalizedConstraintModel): ComputedLin
 
     const inputForm: LineProblemInput = {
       mode: 'APPARENT_VALUES',
+      constructionHint: 'apparent-views',
       nameA: model.endpoint_A.name,
       nameB: model.endpoint_B.name,
       color: '#2563eb',
@@ -763,6 +992,25 @@ function solveGeometryCoordinates(model: NormalizedConstraintModel): ComputedLin
   if (dep === null || dep === undefined) {
     if (isPerpHP || isPerpVP) {
       dep = 0;
+    } else if (
+      model.endpoint_B.distHp !== null &&
+      model.endpoint_B.distHp !== undefined &&
+      model.endpoint_B.distVp !== null &&
+      model.endpoint_B.distVp !== undefined &&
+      model.true_length_mm !== null
+    ) {
+      const dzKnown = qAbove - pAbove;
+      const dyKnown = qFront - pFront;
+      const dxSq = Math.max(0, tl * tl - dzKnown * dzKnown - dyKnown * dyKnown);
+      dep = Math.round(Math.sqrt(dxSq) * 100) / 100;
+      if (tl > 1e-4) {
+        if (model.inclination_hp_deg === null) {
+          theta = Math.asin(Math.min(1, Math.abs(dzKnown) / tl)) * RAD_TO_DEG;
+        }
+        if (model.inclination_vp_deg === null) {
+          phi = Math.asin(Math.min(1, Math.abs(dyKnown) / tl)) * RAD_TO_DEG;
+        }
+      }
     } else {
       const thetaRad = theta * DEG_TO_RAD;
       const phiRad = phi * DEG_TO_RAD;
@@ -773,8 +1021,33 @@ function solveGeometryCoordinates(model: NormalizedConstraintModel): ComputedLin
     }
   }
 
+  let resolvedHint: LineProblemInput['constructionHint'] = 'rotating';
+  if (
+    model.true_length_mm !== null &&
+    model.front_view_length_mm !== null &&
+    model.top_view_length_mm !== null
+  ) {
+    resolvedHint = 'tl-views';
+  } else if (
+    model.true_length_mm !== null &&
+    model.endpoint_B.distHp !== null &&
+    model.endpoint_B.distVp !== null &&
+    model.inclination_hp_deg === null &&
+    model.inclination_vp_deg === null
+  ) {
+    resolvedHint = 'tl-locus';
+  } else if (
+    model.dep_projector_distance_mm !== null &&
+    model.true_length_mm === null &&
+    model.front_view_length_mm === null &&
+    model.top_view_length_mm === null
+  ) {
+    resolvedHint = 'triangle';
+  }
+
   const inputForm: LineProblemInput = {
     mode: 'END_POINTS',
+    constructionHint: resolvedHint,
     nameA: model.endpoint_A.name,
     nameB: model.endpoint_B.name,
     color: '#2563eb',
@@ -824,7 +1097,7 @@ function computeTracesAnalysis(model: NormalizedConstraintModel, line: ComputedL
       y: 0,
       z: 0,
       isFiniteSegment: false,
-      description: 'Line is parallel to HP (ΔZ = 0), so it never meets HP. HT does not exist.',
+      description: 'Line is parallel to HP (constant height above HP), so it never meets HP. HT does not exist.',
     };
   } else {
     const tHT = -zA / dZ;
@@ -859,7 +1132,7 @@ function computeTracesAnalysis(model: NormalizedConstraintModel, line: ComputedL
       y: 0,
       z: 0,
       isFiniteSegment: false,
-      description: 'Line is parallel to VP (ΔY = 0), so it never meets VP. VT does not exist.',
+      description: 'Line is parallel to VP (constant distance from VP), so it never meets VP. VT does not exist.',
     };
   } else {
     const tVT = -yA / dY;
@@ -902,104 +1175,402 @@ function computeAuxiliaryPlaneGeometry(model: NormalizedConstraintModel, line: C
     aipElevationLength: Math.round(line.trueLength * 10) / 10,
     avpPlanLength: Math.round(line.trueLength * 10) / 10,
     auxiliaryTrueLength: Math.round(line.trueLength * 10) / 10,
-    explanation: `Auxiliary ground line X₁Y₁ is drawn parallel to top view ab (inclination β=${aipAngle.toFixed(1)}°). Projectors drawn perpendicular to X₁Y₁ carry elevations zA=${line.zA}mm and zB=${line.zB}mm to reveal True Length (${line.trueLength.toFixed(1)} mm) and true angle θ=${line.thetaDeg.toFixed(1)}°.`,
+    explanation: `Auxiliary ground line X₁Y₁ is drawn parallel to top view ${line.nameA.toLowerCase()}${line.nameB.toLowerCase()} (at apparent angle β = ${aipAngle.toFixed(1)}°). Projectors drawn perpendicular to X₁Y₁ transfer the heights of ${line.nameA.toLowerCase()}′ (${Math.abs(line.zA).toFixed(1)} mm) and ${line.nameB.toLowerCase()}′ (${Math.abs(line.zB).toFixed(1)} mm) from XY to reveal True Length (${line.trueLength.toFixed(1)} mm) and true inclination θ = ${line.thetaDeg.toFixed(1)}°.`,
   };
 }
 
 /**
- * Step-by-step construction steps per BIS SP 46:2003
+ * Step-by-step purely geometrical construction procedure per BIS SP 46:2003
  */
 function generateConstructionSteps(model: NormalizedConstraintModel, line: ComputedLine) {
+  const lblA = line.nameA.toLowerCase();
+  const lblB = line.nameB.toLowerCase();
+  const zAAbs = Math.abs(line.zA).toFixed(1);
+  const yAAbs = Math.abs(line.yA).toFixed(1);
+  const zBAbs = Math.abs(line.zB).toFixed(1);
+  const yBAbs = Math.abs(line.yB).toFixed(1);
+  const zPosA = line.zA >= 0 ? 'above' : 'below';
+  const yPosA = line.yA >= 0 ? 'below' : 'above';
+  const zPosB = line.zB >= 0 ? 'above' : 'below';
+  const yPosB = line.yB >= 0 ? 'below' : 'above';
+  const tlStr = line.trueLength.toFixed(1);
+  const fvStr = line.frontViewLength.toFixed(1);
+  const tvStr = line.topViewLength.toFixed(1);
+  const depStr = line.dep.toFixed(1);
+  const diffZ = Math.abs(line.zB - line.zA).toFixed(1);
+  const diffY = Math.abs(line.yB - line.yA).toFixed(1);
+
   const steps: MasterConstructionStep[] = [
     {
       step: 1,
-      title: 'Draw Reference Ground Line XY',
-      description: 'Draw a horizontal reference line XY of convenient length to represent the intersection of HP and VP.',
+      title: 'Initial Reference Construction (XY Line)',
+      description: 'Draw a horizontal reference line XY representing the intersection of HP and VP.',
       tool: 'T-Square / Drafter',
       pencilGrade: '2H (Construction)',
     },
     {
       step: 2,
-      title: `Plot Endpoint ${line.nameA} Projections (a′, a)`,
-      description: `Draw the reference projector for ${line.nameA}. Mark front view a′ at ${Math.abs(line.zA)} mm ${line.zA >= 0 ? 'above' : 'below'} XY, and top view a at ${Math.abs(line.yA)} mm ${line.yA >= 0 ? 'below' : 'above'} XY.`,
+      title: `Locate Endpoint ${line.nameA} (${lblA}′ and ${lblA})`,
+      description: `Draw a perpendicular projector across XY for ${line.nameA}. Mark Front View ${lblA}′ at ${zAAbs} mm ${zPosA} XY and Top View ${lblA} at ${yAAbs} mm ${yPosA} XY, keeping ${lblA}′ and ${lblA} vertically aligned.`,
       tool: 'Set-Square & Divider',
       pencilGrade: '2H (Construction)',
     },
   ];
 
-  if (model.construction_method === 'ROTATING_LINE') {
+  const pushTracesIfApplicable = () => {
+    const traceParts: string[] = [];
+    if (model.known_traces.ht?.exists) {
+      traceParts.push(
+        `Horizontal Trace (HT): Extend Front View ${lblA}′${lblB}′ to meet XY at h′, draw a perpendicular projector through h′, and extend Top View ${lblA}${lblB} to intersect this projector at h (HT).`
+      );
+    } else {
+      traceParts.push(`Horizontal Trace (HT): Front View ${lblA}′${lblB}′ is parallel to XY, so HT does not exist.`);
+    }
+    if (model.known_traces.vt?.exists) {
+      traceParts.push(
+        `Vertical Trace (VT): Extend Top View ${lblA}${lblB} to meet XY at v, draw a perpendicular projector through v, and extend Front View ${lblA}′${lblB}′ to intersect this projector at v′ (VT).`
+      );
+    } else {
+      traceParts.push(`Vertical Trace (VT): Top View ${lblA}${lblB} is parallel to XY, so VT does not exist.`);
+    }
+    steps.push({
+      step: steps.length + 1,
+      title: 'Locate Horizontal & Vertical Traces (HT & VT)',
+      description: traceParts.join(' '),
+      tool: 'Ruler & Set-Square',
+      pencilGrade: '2H (Construction)',
+    });
+  };
+
+  if (model.category === 'SL_01_PARALLEL_BOTH' || model.parallel_to === 'BOTH') {
     steps.push(
       {
         step: 3,
-        title: `Draw Locus of ${line.nameB} (Elevation & Plan)`,
-        description: `Draw horizontal parallel locus lines through b′ (y = ${line.zB} mm) and through b (y = ${-line.yB} mm).`,
-        tool: 'Mini-Drafter / T-Square',
-        pencilGrade: '2H (Construction)',
+        title: `Draw Horizontal Projections Parallel to XY`,
+        description: `Since ${line.nameA}${line.nameB} is parallel to both HP and VP, both projections show True Length (${tlStr} mm) parallel to XY. From ${lblA}′, draw ${lblA}′${lblB}′ = ${tlStr} mm parallel to XY. Drop a perpendicular projector from ${lblB}′ to meet a horizontal line drawn through ${lblA} at ${lblB}.`,
+        tool: 'T-Square & Divider',
+        pencilGrade: 'HB (Final Line)',
       },
       {
         step: 4,
-        title: `Rotate True Length in Elevation (θ = ${line.thetaDeg.toFixed(1)}°)`,
-        description: `From a′, draw a line of length TL = ${line.trueLength.toFixed(1)} mm at angle θ = ${line.thetaDeg.toFixed(1)}° meeting locus of b′ at b₁′. Project vertically to XY line to get plan length.`,
-        tool: 'Protractor & Compass',
-        pencilGrade: '2H (Construction)',
-      },
-      {
-        step: 5,
-        title: `Rotate Plan Length into Final Position`,
-        description: `With center a and radius equal to plan length, draw an arc swinging to intersect the locus of b at final top view b. Connect a-b.`,
-        tool: 'Bow Compass',
-        pencilGrade: 'HB (Final Line)',
-      },
-      {
-        step: 6,
-        title: `Project to Elevation for Final Front View (a′b′)`,
-        description: `Project point b vertically to meet the locus of b′ at b′. Join a′-b′ with a firm dark continuous line.`,
-        tool: 'Set-Square & Pencil',
+        title: 'Darken Final Views',
+        description: `Darken Front View ${lblA}′${lblB}′ and Top View ${lblA}${lblB}. Neither view meets XY, so HT and VT do not exist.`,
+        tool: 'HB Pencil',
         pencilGrade: 'HB (Final Line)',
       }
     );
+  } else if (model.category === 'SL_02_PERPENDICULAR_HP' || model.perpendicular_to === 'HP') {
+    steps.push(
+      {
+        step: 3,
+        title: `Draw Vertical Front View (${lblA}′${lblB}′) & Point Top View`,
+        description: `Since ${line.nameA}${line.nameB} is perpendicular to HP, its Top View is a single point (${lblA}, ${lblB}) coinciding at ${yAAbs} mm ${yPosA} XY, and its Front View shows True Length (${tlStr} mm) perpendicular to XY. Mark ${lblB}′ vertically ${tlStr} mm from ${lblA}′ along the projector and darken ${lblA}′${lblB}′.`,
+        tool: 'Set-Square & Divider',
+        pencilGrade: 'HB (Final Line)',
+      }
+    );
+    pushTracesIfApplicable();
+  } else if (model.category === 'SL_03_PERPENDICULAR_VP' || model.perpendicular_to === 'VP') {
+    steps.push(
+      {
+        step: 3,
+        title: `Draw Vertical Top View (${lblA}${lblB}) & Point Front View`,
+        description: `Since ${line.nameA}${line.nameB} is perpendicular to VP, its Front View is a single point (${lblA}′, ${lblB}′) coinciding at ${zAAbs} mm ${zPosA} XY, and its Top View shows True Length (${tlStr} mm) perpendicular to XY. Mark ${lblB} vertically ${tlStr} mm from ${lblA} along the projector and darken ${lblA}${lblB}.`,
+        tool: 'Set-Square & Divider',
+        pencilGrade: 'HB (Final Line)',
+      }
+    );
+    pushTracesIfApplicable();
+  } else if (model.category === 'SL_04_INCLINED_HP_PARALLEL_VP' || model.parallel_to === 'VP') {
+    steps.push(
+      {
+        step: 3,
+        title: `Draw True-Length Front View (${lblA}′${lblB}′) at θ = ${line.thetaDeg.toFixed(1)}°`,
+        description: `Since ${line.nameA}${line.nameB} is parallel to VP, its Front View shows True Length (${tlStr} mm) at true inclination θ = ${line.thetaDeg.toFixed(1)}° to XY. Draw ${lblA}′${lblB}′ = ${tlStr} mm from ${lblA}′ at ${line.thetaDeg.toFixed(1)}° to XY.`,
+        tool: 'Protractor & Ruler',
+        pencilGrade: 'HB (Final Line)',
+      },
+      {
+        step: 4,
+        title: `Project Perpendicularly for Top View (${lblA}${lblB})`,
+        description: `From ${lblB}′, draw a perpendicular projector towards the top view. Through ${lblA}, draw a horizontal locus parallel to XY. Their intersection gives ${lblB}. Darken Top View ${lblA}${lblB} (${tvStr} mm).`,
+        tool: 'Set-Square & HB Pencil',
+        pencilGrade: 'HB (Final Line)',
+      }
+    );
+    pushTracesIfApplicable();
+  } else if (model.category === 'SL_05_INCLINED_VP_PARALLEL_HP' || model.parallel_to === 'HP') {
+    steps.push(
+      {
+        step: 3,
+        title: `Draw True-Length Top View (${lblA}${lblB}) at φ = ${line.phiDeg.toFixed(1)}°`,
+        description: `Since ${line.nameA}${line.nameB} is parallel to HP, its Top View shows True Length (${tlStr} mm) at true inclination φ = ${line.phiDeg.toFixed(1)}° to XY. Draw ${lblA}${lblB} = ${tlStr} mm from ${lblA} at ${line.phiDeg.toFixed(1)}° to XY.`,
+        tool: 'Protractor & Ruler',
+        pencilGrade: 'HB (Final Line)',
+      },
+      {
+        step: 4,
+        title: `Project Perpendicularly for Front View (${lblA}′${lblB}′)`,
+        description: `From ${lblB}, draw a perpendicular projector towards the front view. Through ${lblA}′, draw a horizontal locus parallel to XY. Their intersection gives ${lblB}′. Darken Front View ${lblA}′${lblB}′ (${fvStr} mm).`,
+        tool: 'Set-Square & HB Pencil',
+        pencilGrade: 'HB (Final Line)',
+      }
+    );
+    pushTracesIfApplicable();
   } else if (model.construction_method === 'AUXILIARY_PLANE') {
     steps.push(
       {
         step: 3,
         title: 'Draw Auxiliary Ground Line X₁Y₁',
-        description: `Draw auxiliary reference line X₁Y₁ parallel to plan view ab at a convenient distance.`,
+        description: `Draw auxiliary reference line X₁Y₁ parallel to Top View ${lblA}${lblB} at a convenient distance.`,
         tool: 'Parallel Ruler / Drafter',
         pencilGrade: '2H (Construction)',
       },
       {
         step: 4,
         title: 'Project Perpendicularly from Top View to X₁Y₁',
-        description: 'Draw projectors from points a and b perpendicular to X₁Y₁.',
+        description: `Draw projectors from points ${lblA} and ${lblB} perpendicular to X₁Y₁.`,
         tool: 'Set-Square',
         pencilGrade: '2H (Construction)',
       },
       {
         step: 5,
-        title: 'Transfer Elevations to Auxiliary View',
-        description: `Measure height of a′ (${Math.abs(line.zA)} mm) and b′ (${Math.abs(line.zB)} mm) above XY, and transfer them along the auxiliary projectors from X₁Y₁. Join a₁′-b₁′ to obtain True Length (${line.trueLength.toFixed(1)} mm) and θ.`,
+        title: 'Transfer Heights to Obtain True Length & Inclination',
+        description: `Measure heights of ${lblA}′ (${zAAbs} mm) and ${lblB}′ (${zBAbs} mm) from XY and transfer them along the auxiliary projectors from X₁Y₁. Join ${lblA}₁′-${lblB}₁′ to obtain True Length (${tlStr} mm) and inclination θ = ${line.thetaDeg.toFixed(1)}°.`,
         tool: 'Divider & Ruler',
         pencilGrade: 'HB (Final Line)',
       }
     );
-  } else {
-    // Direct Projection
+    pushTracesIfApplicable();
+  } else if (
+    model.dep_projector_distance_mm !== null &&
+    model.true_length_mm === null &&
+    model.front_view_length_mm === null &&
+    model.top_view_length_mm === null
+  ) {
+    // End Points + DEP -> Right-Angled Triangle Method
     steps.push(
       {
         step: 3,
-        title: `Mark End Projector at DEP = ${line.dep.toFixed(1)} mm`,
-        description: `Draw the second projector parallel to the first at distance DEP = ${line.dep.toFixed(1)} mm.`,
+        title: `Plot Second End Projector at DEP = ${depStr} mm & Endpoint ${line.nameB}`,
+        description: `Draw a second perpendicular projector ${depStr} mm horizontally away from the projector of ${line.nameA}. Mark ${lblB}′ at ${zBAbs} mm ${zPosB} XY and ${lblB} at ${yBAbs} mm ${yPosB} XY.`,
         tool: 'Divider & Set-Square',
         pencilGrade: '2H (Construction)',
       },
       {
         step: 4,
-        title: `Mark Endpoint ${line.nameB} and Draw Views`,
-        description: `Mark b′ on the second projector at ${Math.abs(line.zB)} mm and b at ${Math.abs(line.yB)} mm. Connect a′-b′ for Front View and a-b for Top View.`,
+        title: `Join Projections (${lblA}′${lblB}′ and ${lblA}${lblB})`,
+        description: `Join ${lblA}′ to ${lblB}′ for the Front View (${fvStr} mm) and ${lblA} to ${lblB} for the Top View (${tvStr} mm), darkening both projections.`,
+        tool: 'Ruler & HB Pencil',
+        pencilGrade: 'HB (Final Line)',
+      },
+      {
+        step: 5,
+        title: 'Find True Length via Right-Angled Triangle Construction',
+        description: `Take Front View ${lblA}′${lblB}′ as base, construct a perpendicular at ${lblB}′ equal to the VP-distance difference (${diffY} mm), and join its tip back to ${lblA}′: the hypotenuse equals True Length (${tlStr} mm). Equally, erecting a perpendicular of the HP-height difference (${diffZ} mm) on Top View ${lblA}${lblB} confirms True Length (${tlStr} mm).`,
+        tool: 'Set-Square & Divider',
+        pencilGrade: '2H (Construction)',
+      }
+    );
+    pushTracesIfApplicable();
+  } else if (
+    model.true_length_mm !== null &&
+    model.front_view_length_mm !== null &&
+    model.top_view_length_mm !== null
+  ) {
+    // TL + FV + TV (EF case) — start from given FV, TV, and TL!
+    steps.push(
+      {
+        step: 3,
+        title: `Locate Locus of ${lblB}′ & True Angle θ from Given TV (${tvStr} mm) and TL (${tlStr} mm)`,
+        description: `Through ${lblA}, draw a horizontal line parallel to XY and mark ${lblA}${lblB}₁ = ${tvStr} mm (given Top View length). Erect a vertical projector upward from ${lblB}₁. With ${lblA}′ as centre and compass radius equal to True Length (${tlStr} mm), strike an arc cutting this projector at ${lblB}₁′. Draw ${lblA}′${lblB}₁′ (its angle with XY is true inclination θ = ${line.thetaDeg.toFixed(1)}°) and draw a horizontal Locus of ${lblB}′ through ${lblB}₁′.`,
+        tool: 'Bow Compass & Set-Square',
+        pencilGrade: '2H (Construction)',
+      },
+      {
+        step: 4,
+        title: `Locate Locus of ${lblB} & True Angle φ from Given FV (${fvStr} mm) and TL (${tlStr} mm)`,
+        description: `Through ${lblA}′, draw a horizontal line parallel to XY and mark ${lblA}′${lblB}₂′ = ${fvStr} mm (given Front View length). Drop a vertical projector downward from ${lblB}₂′. With ${lblA} as centre and compass radius equal to True Length (${tlStr} mm), strike an arc cutting this projector at ${lblB}₂. Draw ${lblA}${lblB}₂ (its angle with XY is true inclination φ = ${line.phiDeg.toFixed(1)}°) and draw a horizontal Locus of ${lblB} through ${lblB}₂.`,
+        tool: 'Bow Compass & Set-Square',
+        pencilGrade: '2H (Construction)',
+      },
+      {
+        step: 5,
+        title: `Rotate Plan & Elevation Radii to Obtain Final Views (${lblA}${lblB} and ${lblA}′${lblB}′)`,
+        description: `Keep ${lblA} fixed and swing compass radius ${lblA}${lblB}₁ (${tvStr} mm) to intersect the Locus of ${lblB} at ${lblB}; join ${lblA}${lblB} darkly. From ${lblB}, project vertically up to the Locus of ${lblB}′ (confirmed by compass arc centered at ${lblA}′ of radius ${lblA}′${lblB}₂′ = ${fvStr} mm) to locate ${lblB}′; join ${lblA}′${lblB}′ darkly.`,
+        tool: 'Bow Compass & HB Pencil',
+        pencilGrade: 'HB (Final Line)',
+      }
+    );
+    pushTracesIfApplicable();
+  } else if (
+    model.true_length_mm !== null &&
+    model.endpoint_B.distHp !== null &&
+    model.endpoint_B.distVp !== null &&
+    model.inclination_hp_deg === null &&
+    model.inclination_vp_deg === null
+  ) {
+    // TL + End Distances (MN case)
+    steps.push(
+      {
+        step: 3,
+        title: `Geometrically Establish Top View Length (${lblA}${lblB})`,
+        description: `Construct a right-angled triangle using a vertical side equal to the endpoint height difference (${diffZ} mm) and a compass arc of radius equal to True Length (${tlStr} mm) to cut the horizontal base. The horizontal side directly gives the Top View length ${lblA}${lblB} (${tvStr} mm).`,
+        tool: 'Bow Compass & Set-Square',
+        pencilGrade: '2H (Construction)',
+      },
+      {
+        step: 4,
+        title: `Locate ${line.nameB} via Depth Locus, Compass Arc & Projector`,
+        description: `Draw a horizontal locus parallel to XY at ${yBAbs} mm ${yPosB} XY. With ${lblA} as centre and compass radius ${lblA}${lblB} (${tvStr} mm), strike an arc cutting this locus at ${lblB}. Draw a perpendicular projector through ${lblB} and mark ${lblB}′ at ${zBAbs} mm ${zPosB} XY. Join ${lblA}′${lblB}′ and ${lblA}${lblB}.`,
+        tool: 'Bow Compass & HB Pencil',
+        pencilGrade: 'HB (Final Line)',
+      },
+      {
+        step: 5,
+        title: 'Show Inclinations θ & φ via Right-Angled Triangles',
+        description: `On Top View ${lblA}${lblB}, erect a perpendicular of height difference (${diffZ} mm) at ${lblB} and join back to ${lblA}; the angle with ${lblA}${lblB} shows true inclination with HP (θ = ${line.thetaDeg.toFixed(1)}°). On Front View ${lblA}′${lblB}′, erect a perpendicular of VP-distance difference (${diffY} mm) at ${lblB}′ and join back to ${lblA}′; the angle with ${lblA}′${lblB}′ shows true inclination with VP (φ = ${line.phiDeg.toFixed(1)}°).`,
+        tool: 'Set-Square & Divider',
+        pencilGrade: '2H (Construction)',
+      }
+    );
+    pushTracesIfApplicable();
+  } else if (
+    model.true_length_mm === null &&
+    model.front_view_length_mm !== null &&
+    model.top_view_length_mm !== null
+  ) {
+    // Apparent Values: FV + TV + (DEP or apparent angle), TL unknown
+    steps.push(
+      {
+        step: 3,
+        title: `Plot Projections (${lblA}′${lblB}′ = ${fvStr} mm, ${lblA}${lblB} = ${tvStr} mm) & Loci`,
+        description: `Draw the second perpendicular projector at DEP = ${depStr} mm (or along the given apparent angle). Strike arcs from ${lblA}′ of radius ${fvStr} mm to mark ${lblB}′ and from ${lblA} of radius ${tvStr} mm to mark ${lblB} on the second projector. Join ${lblA}′${lblB}′ and ${lblA}${lblB}, and draw horizontal loci through ${lblB}′ and ${lblB}.`,
+        tool: 'Bow Compass & HB Pencil',
+        pencilGrade: 'HB (Final Line)',
+      },
+      {
+        step: 4,
+        title: `Rotate Views onto Horizontals to Find True Length (${tlStr} mm), θ & φ`,
+        description: `Swing ${lblA}′${lblB}′ onto the horizontal through ${lblA}′ to ${lblB}₂′ and drop vertically to the Locus of ${lblB} at ${lblB}₂; ${lblA}${lblB}₂ gives True Length (${tlStr} mm) and φ = ${line.phiDeg.toFixed(1)}°. Swing ${lblA}${lblB} onto the horizontal through ${lblA} to ${lblB}₁ and project up to the Locus of ${lblB}′ at ${lblB}₁′; ${lblA}′${lblB}₁′ confirms True Length (${tlStr} mm) and gives θ = ${line.thetaDeg.toFixed(1)}°.`,
+        tool: 'Bow Compass & Set-Square',
+        pencilGrade: '2H (Construction)',
+      }
+    );
+    pushTracesIfApplicable();
+  } else if (
+    model.true_length_mm === null &&
+    model.front_view_length_mm !== null &&
+    model.front_view_angle_deg !== null &&
+    model.inclination_vp_deg !== null
+  ) {
+    // FV + α + φ (PQ case)
+    steps.push(
+      {
+        step: 3,
+        title: `Draw Front View (${lblA}′${lblB}′) at Apparent Angle α = ${line.alphaDeg.toFixed(1)}°`,
+        description: `From ${lblA}′, draw Front View ${lblA}′${lblB}′ = ${fvStr} mm inclined at ${line.alphaDeg.toFixed(1)}° to XY, locating ${lblB}′. Draw a horizontal locus through ${lblB}′ parallel to XY and a perpendicular projector from ${lblB}′ toward the top view.`,
+        tool: 'Protractor & Set-Square',
+        pencilGrade: 'HB (Final Line)',
+      },
+      {
+        step: 4,
+        title: `Rotate ${lblA}′${lblB}′ Horizontal & Project to φ Ray for True Length`,
+        description: `With ${lblA}′ as centre and compass radius ${lblA}′${lblB}′ (${fvStr} mm), swing an arc onto the horizontal line through ${lblA}′ to obtain ${lblB}₂′. Drop a perpendicular projector from ${lblB}₂′ to meet a ray drawn from ${lblA} at φ = ${line.phiDeg.toFixed(1)}° to XY at ${lblB}₂. The segment ${lblA}${lblB}₂ gives True Length (${tlStr} mm).`,
+        tool: 'Bow Compass & Protractor',
+        pencilGrade: '2H (Construction)',
+      },
+      {
+        step: 5,
+        title: `Locate Final Top View (${lblA}${lblB}) & Measure θ`,
+        description: `Draw a horizontal locus parallel to XY through ${lblB}₂ to intersect the perpendicular projector dropped from ${lblB}′ at final endpoint ${lblB}. Join ${lblA}${lblB} (${tvStr} mm). Swing ${lblA}${lblB} onto the horizontal through ${lblA} to ${lblB}₁ and project up to the locus of ${lblB}′ for ${lblB}₁′; join ${lblA}′${lblB}₁′ to read true inclination θ = ${line.thetaDeg.toFixed(1)}°.`,
+        tool: 'Bow Compass & HB Pencil',
+        pencilGrade: 'HB (Final Line)',
+      }
+    );
+    pushTracesIfApplicable();
+  } else if (
+    model.true_length_mm === null &&
+    model.top_view_length_mm !== null &&
+    model.top_view_angle_deg !== null &&
+    model.inclination_hp_deg !== null
+  ) {
+    // TV + β + θ (RS case)
+    steps.push(
+      {
+        step: 3,
+        title: `Draw Top View (${lblA}${lblB}) at Apparent Angle β = ${line.betaDeg.toFixed(1)}°`,
+        description: `From ${lblA}, draw Top View ${lblA}${lblB} = ${tvStr} mm inclined at ${line.betaDeg.toFixed(1)}° to XY, locating ${lblB}. Draw a horizontal locus through ${lblB} parallel to XY and a perpendicular projector from ${lblB} toward the front view.`,
+        tool: 'Protractor & Set-Square',
+        pencilGrade: 'HB (Final Line)',
+      },
+      {
+        step: 4,
+        title: `Rotate ${lblA}${lblB} Horizontal & Project to θ Ray for True Length`,
+        description: `With ${lblA} as centre and compass radius ${lblA}${lblB} (${tvStr} mm), swing an arc onto the horizontal line through ${lblA} to obtain ${lblB}₁. Draw a perpendicular projector up from ${lblB}₁ to meet a ray drawn from ${lblA}′ at θ = ${line.thetaDeg.toFixed(1)}° to XY at ${lblB}₁′. The segment ${lblA}′${lblB}₁′ gives True Length (${tlStr} mm).`,
+        tool: 'Bow Compass & Protractor',
+        pencilGrade: '2H (Construction)',
+      },
+      {
+        step: 5,
+        title: `Locate Final Front View (${lblA}′${lblB}′) & Measure φ`,
+        description: `Draw a horizontal locus parallel to XY through ${lblB}₁′ to intersect the perpendicular projector from ${lblB} at final endpoint ${lblB}′. Join ${lblA}′${lblB}′ (${fvStr} mm). Swing ${lblA}′${lblB}′ onto the horizontal through ${lblA}′ to ${lblB}₂′ and project down to the locus of ${lblB} for ${lblB}₂; join ${lblA}${lblB}₂ to read true inclination φ = ${line.phiDeg.toFixed(1)}°.`,
+        tool: 'Bow Compass & HB Pencil',
+        pencilGrade: 'HB (Final Line)',
+      }
+    );
+    pushTracesIfApplicable();
+  } else if (model.construction_method === 'ROTATING_LINE') {
+    steps.push(
+      {
+        step: 3,
+        title: `First Rotation — Inclination with HP (θ = ${line.thetaDeg.toFixed(1)}°)`,
+        description: `Assume ${line.nameA}${line.nameB} is parallel to VP so its Front View shows True Length. From ${lblA}′, draw ${lblA}′${lblB}₁′ = ${tlStr} mm at θ = ${line.thetaDeg.toFixed(1)}° to XY. Drop a perpendicular projector from ${lblB}₁′ to meet the horizontal line through ${lblA} at ${lblB}₁, establishing the plan radius ${lblA}${lblB}₁ (${tvStr} mm).`,
+        tool: 'Protractor & Set-Square',
+        pencilGrade: '2H (Construction)',
+      },
+      {
+        step: 4,
+        title: `Second Auxiliary Position — Inclination with VP (φ = ${line.phiDeg.toFixed(1)}°) & Horizontal Loci`,
+        description: `Assume ${line.nameA}${line.nameB} is parallel to HP. From ${lblA}, draw ${lblA}${lblB}₂ = ${tlStr} mm at φ = ${line.phiDeg.toFixed(1)}° to XY, and draw horizontal loci parallel to XY through ${lblB}₁′ (Locus of ${lblB}′) and ${lblB}₂ (Locus of ${lblB}).`,
+        tool: 'Protractor & T-Square',
+        pencilGrade: '2H (Construction)',
+      },
+      {
+        step: 5,
+        title: `Rotate Plan Length by Compass Arc to Obtain Final Top View (${lblA}${lblB})`,
+        description: `Keep ${lblA} fixed as centre. With compass radius ${lblA}${lblB}₁ (${tvStr} mm), swing an arc through ${lblB}₁ to intersect the Locus of ${lblB} at ${lblB}. The compass radius remains unchanged (${lblA}${lblB} = ${lblA}${lblB}₁). Join ${lblA} and ${lblB} darkly.`,
+        tool: 'Bow Compass & HB Pencil',
+        pencilGrade: 'HB (Final Line)',
+      },
+      {
+        step: 6,
+        title: `Project Perpendicularly to Locus for Final Front View (${lblA}′${lblB}′)`,
+        description: `From ${lblB}, draw a perpendicular projector to XY to intersect the horizontal Locus of ${lblB}′ at ${lblB}′ (preserving height above HP). Join ${lblA}′ and ${lblB}′ darkly for the final Front View (${fvStr} mm).`,
+        tool: 'Set-Square & HB Pencil',
+        pencilGrade: 'HB (Final Line)',
+      }
+    );
+    pushTracesIfApplicable();
+  } else {
+    // Direct Projection Fallback
+    steps.push(
+      {
+        step: 3,
+        title: `Draw Second Projector at DEP = ${depStr} mm & Plot ${line.nameB}`,
+        description: `Draw a second perpendicular projector ${depStr} mm horizontally away from the first projector. Mark ${lblB}′ at ${zBAbs} mm ${zPosB} XY and ${lblB} at ${yBAbs} mm ${yPosB} XY.`,
+        tool: 'Divider & Set-Square',
+        pencilGrade: '2H (Construction)',
+      },
+      {
+        step: 4,
+        title: `Join Views & Verify True Length via Right-Angled Triangle`,
+        description: `Connect ${lblA}′-${lblB}′ for Front View (${fvStr} mm) and ${lblA}-${lblB} for Top View (${tvStr} mm). Constructing a perpendicular of VP-distance difference (${diffY} mm) at ${lblB}′ to ${lblA}′${lblB}′ gives hypotenuse True Length (${tlStr} mm).`,
         tool: 'Drafter & HB Pencil',
         pencilGrade: 'HB (Final Line)',
       }
     );
+    pushTracesIfApplicable();
   }
 
   model.construction_steps = steps;

@@ -5,6 +5,7 @@
 
 import express from 'express';
 import { Type, GoogleGenAI } from '@google/genai';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
@@ -21,10 +22,11 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
+const distDir = path.resolve(__dirname, 'dist');
+const distIndexHtml = path.join(distDir, 'index.html');
 const isProduction =
-  process.env.NODE_ENV === 'production' ||
-  process.env.npm_lifecycle_event === 'start' ||
-  Boolean(process.env.K_SERVICE);
+  (process.env.NODE_ENV === 'production' || process.env.npm_lifecycle_event === 'start') &&
+  fs.existsSync(distIndexHtml);
 
 // Support JSON payload up to 25MB for high-res textbook photo uploads & camera snapshots
 app.use(express.json({ limit: '25mb' }));
@@ -664,9 +666,9 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.resolve(__dirname, 'dist')));
+    app.use(express.static(distDir));
     app.get('*', (_req, res) => {
-      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+      res.sendFile(distIndexHtml);
     });
   }
 

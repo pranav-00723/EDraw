@@ -171,10 +171,10 @@ export const LineTheoryPanel: React.FC<LineTheoryPanelProps> = ({
               </span>
               <ul className="space-y-1.5 text-[11.5px] text-slate-300 list-disc list-inside leading-relaxed font-sans">
                 <li>
-                  <strong>2D Procedure:</strong> Extend Front View <em>{line.nameA.toLowerCase()}′{line.nameB.toLowerCase()}′</em> until it intersects reference line XY at <strong>h′</strong>.
+                  <strong>2D Procedure:</strong> Extend Front View <em>a′b′</em> until it intersects reference line XY at <strong>h′</strong>.
                 </li>
                 <li>
-                  From <strong>h′</strong>, draw a vertical projector perpendicular to XY to meet the extended Top View <em>{line.nameA.toLowerCase()}{line.nameB.toLowerCase()}</em> at <strong>h (HT)</strong>.
+                  From <strong>h′</strong>, draw a vertical projector perpendicular to XY to meet the extended Top View <em>ab</em> at <strong>h (HT)</strong>.
                 </li>
                 <li>
                   <strong>Current Status:</strong>{' '}
@@ -199,10 +199,10 @@ export const LineTheoryPanel: React.FC<LineTheoryPanelProps> = ({
               </span>
               <ul className="space-y-1.5 text-[11.5px] text-slate-300 list-disc list-inside leading-relaxed font-sans">
                 <li>
-                  <strong>2D Procedure:</strong> Extend Top View <em>{line.nameA.toLowerCase()}{line.nameB.toLowerCase()}</em> until it intersects reference line XY at <strong>v</strong>.
+                  <strong>2D Procedure:</strong> Extend Top View <em>ab</em> until it intersects reference line XY at <strong>v</strong>.
                 </li>
                 <li>
-                  From <strong>v</strong>, draw a vertical projector perpendicular to XY to meet the extended Front View <em>{line.nameA.toLowerCase()}′{line.nameB.toLowerCase()}′</em> at <strong>v′ (VT)</strong>.
+                  From <strong>v</strong>, draw a vertical projector perpendicular to XY to meet the extended Front View <em>a′b′</em> at <strong>v′ (VT)</strong>.
                 </li>
                 <li>
                   <strong>Current Status:</strong>{' '}

@@ -1,0 +1,22 @@
+# EDraw Firestore Security Specification
+
+## Data Invariants
+1. **Strict Owner Isolation (PII Protection)**: `/students/{studentUid}` contains PII (`gmail`, `name`, `college`). Only the authenticated, email-verified user whose `request.auth.uid == studentUid` may read, create, update, or delete their own document. Blanket `list` queries on `/students` are forbidden.
+2. **Master Gate on Subcollections**: `/students/{studentUid}/progress/{progressId}` requires the parent `/students/{studentUid}` document to exist and belong to `request.auth.uid`.
+3. **Immutable Identity & Timestamps**: `uid`, `edrawId`, `gmail`, and `createdAt` are immutable after creation. `createdAt` and `updatedAt` must equal `request.time`.
+4. **Format & Size Enforcement**: `edrawId` must match `^EDID-[0-9]{4}$`, `gmail` must match `^[a-zA-Z0-9._%+\-]+@(gmail|googlemail)\.com$`, and all strings/arrays have strict `.size()` bounds.
+5. **No Shadow Fields**: `hasAll` + `hasOnly` on create and `affectedKeys().hasOnly(...)` on update block undeclared fields.
+
+## Dirty Dozen Adversarial Payloads (All Must Return PERMISSION_DENIED)
+1. **Unauthenticated read of `/students/uid_a`**: No auth token present.
+2. **Cross-user PII read**: Authenticated user `uid_b` attempts `get` on `/students/uid_a`.
+3. **Collection scraping (`list`)**: Authenticated user attempts `list` on `/students`.
+4. **Unverified email write**: Authenticated user with `email_verified: false` attempts `create` on `/students/uid_a`.
+5. **UID spoofing on create**: Authenticated `uid_a` attempts to write `uid: "uid_b"` inside `/students/uid_a`.
+6. **Shadow field injection**: Create/update payload includes extra ghost field `isAdmin: true` or `role: "admin"`.
+7. **Invalid `edrawId` format**: Create payload supplies `edrawId: "ADMIN-9999"` instead of `EDID-XXXX`.
+8. **Immutable `edrawId` mutation**: Update payload attempts to change `edrawId` or `createdAt`.
+9. **Client-forged timestamp**: Create payload supplies client date instead of `request.time`.
+10. **Oversized string / ID poisoning**: Document ID > 128 chars or `college` > 120 chars.
+11. **Orphaned progress write**: User writes `/students/uid_a/progress/default` before parent `/students/uid_a` exists.
+12. **Unbounded array / value poisoning**: Progress update submits `completedModules` with 25 items or non-string first element.

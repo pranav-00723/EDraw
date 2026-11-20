@@ -14,6 +14,7 @@ import {
   solveNormalizedModel,
   normalizeMasterOcrText,
 } from './src/utils/straightLineMasterSolver.ts';
+import { StudentAuthService } from './server/studentAuth.ts';
 
 dotenv.config();
 
@@ -654,6 +655,145 @@ CRITICAL RULES TO PREVENT MISINTERPRETATION:
       error: err.message || 'Failed to process question scan.',
     });
   }
+});
+
+const studentAuth = new StudentAuthService();
+
+function resolveSafeBaseUrl(req: express.Request): string {
+  const configured = (process.env.APP_URL || '').trim();
+  if (configured) {
+    try {
+      const parsed = new URL(configured);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        return parsed.origin;
+      }
+    } catch {
+      // Fall through to validated request host
+    }
+  }
+
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  const proto = forwardedProto === 'https' || req.protocol === 'https' ? 'https' : 'http';
+  const rawHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  const safeHost = /^[a-zA-Z0-9.-]+(?::\d{1,5})?$/.test(rawHost) ? rawHost : `localhost:${PORT}`;
+  return `${proto}://${safeHost}`;
+}
+
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const result = await studentAuth.registerStudent(
+      {
+        name: typeof body.name === 'string' ? body.name : '',
+        gmail: typeof body.gmail === 'string' ? body.gmail : '',
+        college: typeof body.college === 'string' ? body.college : '',
+        password: typeof body.password === 'string' ? body.password : '',
+        confirmPassword: typeof body.confirmPassword === 'string' ? body.confirmPassword : '',
+      },
+      resolveSafeBaseUrl(req)
+    );
+
+    if (!result.success) {
+      return res.status(result.status).json({
+        success: false,
+        error: result.error,
+        fieldErrors: result.fieldErrors,
+      });
+    }
+
+    return res.status(201).json(result);
+  } catch (err) {
+    console.error('Error in /api/auth/register:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Unable to complete registration right now. Please try again.',
+    });
+  }
+});
+
+app.post('/api/auth/resend-verification', async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const gmail = typeof body.gmail === 'string' ? body.gmail : '';
+    const result = await studentAuth.resendVerification(gmail, resolveSafeBaseUrl(req));
+
+    if (!result.success) {
+      return res.status(result.status).json({
+        success: false,
+        error: result.error,
+      });
+    }
+
+    return res.json(result);
+  } catch (err) {
+    console.error('Error in /api/auth/resend-verification:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Unable to resend verification link right now.',
+    });
+  }
+});
+
+app.post('/api/auth/verify-email', async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const token = typeof body.token === 'string' ? body.token : '';
+    const result = await studentAuth.verifyEmailToken(token);
+
+    if (!result.success) {
+      return res.status(result.status).json({
+        success: false,
+        error: result.error,
+      });
+    }
+
+    return res.json(result);
+  } catch (err) {
+    console.error('Error in /api/auth/verify-email:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Unable to verify Gmail link right now.',
+    });
+  }
+});
+
+app.post('/api/auth/login', (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const result = studentAuth.loginStudent({
+      edrawId: typeof body.edrawId === 'string' ? body.edrawId : '',
+      password: typeof body.password === 'string' ? body.password : '',
+    });
+
+    if (!result.success) {
+      return res.status(result.status).json({
+        success: false,
+        error: result.error,
+        unverifiedGmail: result.unverifiedGmail,
+      });
+    }
+
+    return res.json(result);
+  } catch (err) {
+    console.error('Error in /api/auth/login:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Unable to sign in right now. Please try again.',
+    });
+  }
+});
+
+app.get('/api/auth/me', (req, res) => {
+  const student = studentAuth.getAuthenticatedStudent(req.headers.authorization);
+  if (!student) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+  return res.json({ success: true, student });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  studentAuth.logoutToken(req.headers.authorization);
+  return res.json({ success: true });
 });
 
 // Configure Vite middleware in development or static serving in production

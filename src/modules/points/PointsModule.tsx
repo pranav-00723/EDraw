@@ -225,8 +225,8 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
         </div>
       </div>
 
-      {/* Main 2-Column CAD + EdTech Layout (Matches Straight Lines Workspace) */}
-      <div className="grid grid-cols-1 lg:grid-cols-[315px_minmax(0,1fr)] xl:grid-cols-[345px_minmax(0,1fr)] gap-4 items-start">
+      {/* Main 3-Column CAD + EdTech Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-[270px_minmax(0,1fr)] xl:grid-cols-[258px_minmax(0,1fr)_282px] 2xl:grid-cols-[285px_minmax(0,1fr)_315px] gap-4 items-start">
         {/* LEFT PANEL: Input Parameters */}
         <div
           className={`${
@@ -253,97 +253,94 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
           />
         </div>
 
-        {/* RIGHT MAIN AREA: Answer & Insights + 3D & 2D Views + Step-by-Step Construction */}
-        <div className="min-w-0 flex flex-col gap-4">
-          {/* Quadrant Banner + Key Details + Quick Insights */}
-          <div
-            className={`flex-col gap-3.5 ${
-              mobileSection === 'all' || mobileSection === 'analysis'
-                ? 'flex'
-                : 'hidden lg:flex'
-            }`}
-          >
-            <PointQuadrantCard
-              point={selectedPoint}
-              allPoints={computedPoints}
-              onSelectPoint={setSelectedPointId}
-              hpColor={hpColor}
-              vpColor={vpColor}
-              isDark={isDark}
-            />
-
-            <PointParametersCard
-              point={selectedPoint}
-              allPoints={computedPoints}
-              hpColor={hpColor}
-              vpColor={vpColor}
-              isDark={isDark}
-            />
-          </div>
-
-          {/* 3D Visualisation + Orthographic Projection + Step-by-Step Construction */}
-          <div
-            className={`flex-col gap-5 ${
-              mobileSection === 'all' || mobileSection === 'views'
-                ? 'flex'
-                : 'hidden lg:flex'
-            }`}
-          >
-            {(activeTab === 'both' || activeTab === '3d') && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between px-1">
-                  <h2 className="text-[11px] font-bold uppercase tracking-wider text-[#77758F] dark:text-slate-400 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-[#7138E8]" />
-                    <span>3D Cutting Representation</span>
-                  </h2>
-                  <span className="text-[11px] font-mono text-[#77758F] dark:text-slate-400">
-                    HP • VP • Thin XY Line
-                  </span>
-                </div>
-                <ErrorBoundary fallbackTitle="3D Simulation Encountered an Issue">
-                  <ThreeDView
-                    points={computedPoints}
-                    selectedPointId={selectedPointId}
-                    onSelectPoint={setSelectedPointId}
-                    hpColor={hpColor}
-                    vpColor={vpColor}
-                    onChangeHpColor={onChangeHpColor}
-                    onChangeVpColor={onChangeVpColor}
-                    isDark={isDark}
-                  />
-                </ErrorBoundary>
+        {/* CENTRE PANEL: 3D Visualisation + Orthographic Projection */}
+        <div
+          className={`flex flex-col gap-4 min-w-0 ${
+            mobileSection === 'all' || mobileSection === 'views'
+              ? 'flex'
+              : 'hidden lg:flex'
+          }`}
+        >
+          {(activeTab === 'both' || activeTab === '3d') && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between px-1">
+                <h2 className="text-[11px] font-bold uppercase tracking-wider text-[#77758F] dark:text-slate-400 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[#7138E8]" />
+                  <span>3D Cutting Representation</span>
+                </h2>
+                <span className="text-[11px] font-mono text-[#77758F] dark:text-slate-400">
+                  HP • VP • Thin XY Line
+                </span>
               </div>
-            )}
-
-            {(activeTab === 'both' || activeTab === '2d') && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between px-1 flex-wrap gap-1">
-                  <h2 className="text-[11px] font-bold uppercase tracking-wider text-[#77758F] dark:text-slate-400 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <span>Generated Projection</span>
-                  </h2>
-                  <span className="text-[11px] font-mono text-[#77758F] dark:text-slate-400">
-                    VP: Lowercase with Prime (a′) • HP: Lowercase without Prime (a) • Thin XY Line
-                  </span>
-                </div>
-                <TwoDOrthographicView
+              <ErrorBoundary fallbackTitle="3D Simulation Encountered an Issue">
+                <ThreeDView
                   points={computedPoints}
                   selectedPointId={selectedPointId}
                   onSelectPoint={setSelectedPointId}
                   hpColor={hpColor}
                   vpColor={vpColor}
+                  onChangeHpColor={onChangeHpColor}
+                  onChangeVpColor={onChangeVpColor}
                   isDark={isDark}
                 />
-              </div>
-            )}
+              </ErrorBoundary>
+            </div>
+          )}
 
-            <ExplanationPanel
-              point={selectedPoint}
-              allPoints={computedPoints}
-              onSelectPoint={setSelectedPointId}
-              isDark={isDark}
-            />
-          </div>
+          {(activeTab === 'both' || activeTab === '2d') && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between px-1 flex-wrap gap-1">
+                <h2 className="text-[11px] font-bold uppercase tracking-wider text-[#77758F] dark:text-slate-400 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span>Generated Projection</span>
+                </h2>
+                <span className="text-[11px] font-mono text-[#77758F] dark:text-slate-400">
+                  VP: Lowercase with Prime (a′) • HP: Lowercase without Prime (a) • Thin XY Line
+                </span>
+              </div>
+              <TwoDOrthographicView
+                points={computedPoints}
+                selectedPointId={selectedPointId}
+                onSelectPoint={setSelectedPointId}
+                hpColor={hpColor}
+                vpColor={vpColor}
+                isDark={isDark}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT PANEL: Quadrant Banner + Key Details + Quick Insights + Step-by-Step Construction */}
+        <div
+          className={`flex flex-col gap-3.5 min-w-0 lg:col-span-2 xl:col-span-1 ${
+            mobileSection === 'all' || mobileSection === 'analysis'
+              ? 'flex'
+              : 'hidden lg:flex'
+          }`}
+        >
+          <PointQuadrantCard
+            point={selectedPoint}
+            allPoints={computedPoints}
+            onSelectPoint={setSelectedPointId}
+            hpColor={hpColor}
+            vpColor={vpColor}
+            isDark={isDark}
+          />
+
+          <PointParametersCard
+            point={selectedPoint}
+            allPoints={computedPoints}
+            hpColor={hpColor}
+            vpColor={vpColor}
+            isDark={isDark}
+          />
+
+          <ExplanationPanel
+            point={selectedPoint}
+            allPoints={computedPoints}
+            onSelectPoint={setSelectedPointId}
+            isDark={isDark}
+          />
         </div>
       </div>
 

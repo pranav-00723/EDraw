@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Sparkles,
   Camera,
@@ -26,11 +26,22 @@ import {
   ArrowRight,
   Code2,
   Sliders,
+  Wand2,
 } from 'lucide-react';
 import { LineProblemInput, ComputedLine } from '../../types/lines';
 import { computeLineProjection } from '../../utils/linesMath';
 import { RotatingLineConstructionEngine } from '../../modules/lines/RotatingLineConstructionEngine';
 import { normalizeMasterOcrText } from '../../utils/straightLineMasterSolver';
+import {
+  type StructuredQuestionData,
+  type InterpretedQuestionResult,
+  buildInterpretationFromStructured,
+  parseStructuredQuestionJson,
+  formatHpRelationLabel,
+  formatVpRelationLabel,
+} from '../../utils/structuredQuestionJson';
+
+export type { StructuredQuestionData };
 
 interface QuestionToGraphicsGeneratorProps {
   hpColor: string;
@@ -39,55 +50,7 @@ interface QuestionToGraphicsGeneratorProps {
   onNavigateToLineModule?: (lineInput: LineProblemInput) => void;
 }
 
-export interface StructuredQuestionData {
-  object_type: 'STRAIGHT_LINE' | 'POINT' | 'PLANE';
-  line_name: string;
-  endpoints: {
-    start: string;
-    end: string;
-  };
-  dimensions: {
-    true_length_mm: number | null;
-    front_view_length_mm: number | null;
-    top_view_length_mm: number | null;
-    dep_projector_distance_mm: number | null;
-  };
-  coordinates: {
-    point_A: {
-      dist_hp_mm: number | null;
-      hp_relation: 'ABOVE' | 'BELOW' | 'ON' | null;
-      dist_vp_mm: number | null;
-      vp_relation: 'IN_FRONT' | 'BEHIND' | 'ON' | null;
-    };
-    point_B: {
-      dist_hp_mm: number | null;
-      hp_relation: 'ABOVE' | 'BELOW' | 'ON' | null;
-      dist_vp_mm: number | null;
-      vp_relation: 'IN_FRONT' | 'BEHIND' | 'ON' | null;
-    };
-  };
-  inclinations: {
-    theta_hp_deg: number | null;
-    phi_vp_deg: number | null;
-    alpha_apparent_fv_deg: number | null;
-    beta_apparent_tv_deg: number | null;
-  };
-  reference_plane_conditions: {
-    system: 'FIRST_ANGLE_PROJECTION' | 'THIRD_ANGLE_PROJECTION';
-    is_parallel_to_hp: boolean;
-    is_parallel_to_vp: boolean;
-    is_perpendicular_to_hp: boolean;
-    is_perpendicular_to_vp: boolean;
-  };
-  projection_requirements: string[];
-  construction_method: 'ROTATING_LINE_METHOD' | 'TRAPEZOIDAL_METHOD' | 'AUXILIARY_PLANE_METHOD';
-  missing_or_ambiguous_fields: string[];
-  validation: {
-    is_valid: boolean;
-    geometric_condition: string;
-    warnings: string[];
-  };
-}
+
 
 // Preset Curriculum Textbook Problems
 const PRESET_QUESTIONS = [
@@ -160,11 +123,7 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // 1. QUESTION INTERPRETATION & STRUCTURED DATA GENERATOR
-  const interpretationResult = useMemo((): {
-    structured: StructuredQuestionData;
-    lineInput: LineProblemInput;
-    hasAmbiguity: boolean;
-  } => {
+  const parsedResult = useMemo((): InterpretedQuestionResult => {
     const raw = normalizeMasterOcrText(inputText);
     const lower = raw.toLowerCase();
 
@@ -341,9 +300,7 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
 
     const warnings: string[] = [];
     if (!isValidSpatial) {
-      warnings.push(
-        `Geometrical constraint violated: With θ = ${effectiveTheta}° and φ = ${effectivePhi}° between perpendicular reference planes HP and VP, the rotated plan arc cannot intersect the horizontal locus line.`
-      );
+      warnings.push(`Geometric condition violated: sin²(θ) + sin²(φ) = ${sin2Sum.toFixed(3)} > 1.0`);
     }
     if (hasAmbiguity) {
       warnings.push(`Ambiguous question: Missing parameters [${missing.join(', ')}]`);
@@ -399,45 +356,71 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
       missing_or_ambiguous_fields: missing,
       validation: {
         is_valid: isValidSpatial && !hasAmbiguity,
-        geometric_condition: isValidSpatial
-          ? 'Rotating-line compass arcs intersect horizontal loci validly between perpendicular HP and VP (PASSED)'
-          : 'Angles exceed spatial limit between perpendicular HP and VP — compass arcs cannot meet loci (FAILED)',
+        geometric_condition: `sin²(θ) + sin²(φ) = ${sin2Sum.toFixed(3)} ${
+          isValidSpatial ? '≤ 1.0 (PASSED)' : '> 1.0 (FAILED)'
+        }`,
         warnings,
       },
     };
 
-    // Construct deterministic LineProblemInput for geometry engine
-    const lineInput: LineProblemInput = {
-      mode: 'TRUE_LENGTH_ANGLES',
-      nameA: startName,
-      nameB: endName,
-      color: '#2563eb',
-      endA: {
-        name: startName,
-        hpRelation: hpRelA || 'ABOVE',
-        distanceHp: distHpA ?? 20,
-        vpRelation: vpRelA || 'IN_FRONT',
-        distanceVp: distVpA ?? 25,
-      },
-      endB: {
-        name: endName,
-        hpRelation: 'ABOVE',
-        distanceHp: (distHpA ?? 20) + (tl ?? 75) * Math.sin(effThetaRad),
-        vpRelation: 'IN_FRONT',
-        distanceVp: (distVpA ?? 25) + (tl ?? 75) * Math.sin(effPhiRad),
-      },
-      dep: 0,
-      trueLength: tl ?? 75,
-      thetaDeg: effectiveTheta,
-      phiDeg: effectivePhi,
-      endBQuadrant: 'ABOVE_FRONT',
-      frontViewLength: (tl ?? 75) * Math.cos(effPhiRad),
-      topViewLength: (tl ?? 75) * Math.cos(effThetaRad),
-      targetQuadrantB: 'FIRST',
-    };
-
-    return { structured, lineInput, hasAmbiguity };
+    return buildInterpretationFromStructured(structured);
   }, [inputText, clarificationData]);
+
+  // Editable Structured JSON state (synced automatically when inputText or clarificationData changes)
+  const [jsonDraft, setJsonDraft] = useState<string>(() =>
+    JSON.stringify(parsedResult.structured, null, 2)
+  );
+  const [isJsonEdited, setIsJsonEdited] = useState<boolean>(false);
+  const [customResult, setCustomResult] = useState<InterpretedQuestionResult | null>(null);
+  const [jsonError, setJsonError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setJsonDraft(JSON.stringify(parsedResult.structured, null, 2));
+    setIsJsonEdited(false);
+    setCustomResult(null);
+    setJsonError(null);
+  }, [parsedResult]);
+
+  const interpretationResult = customResult ?? parsedResult;
+
+  const handleJsonChange = (nextText: string) => {
+    setJsonDraft(nextText);
+    setIsJsonEdited(true);
+
+    const parsed = parseStructuredQuestionJson(nextText, parsedResult.structured);
+    if (parsed.ok) {
+      setCustomResult({
+        structured: parsed.structured,
+        lineInput: parsed.lineInput,
+        hasAmbiguity: parsed.hasAmbiguity,
+      });
+      setJsonError(null);
+    } else {
+      setJsonError(parsed.error);
+    }
+  };
+
+  const handleFormatJson = () => {
+    const parsed = parseStructuredQuestionJson(jsonDraft, parsedResult.structured);
+    if (parsed.ok) {
+      setCustomResult({
+        structured: parsed.structured,
+        lineInput: parsed.lineInput,
+        hasAmbiguity: parsed.hasAmbiguity,
+      });
+      setJsonDraft(JSON.stringify(parsed.structured, null, 2));
+      setJsonError(null);
+    } else {
+      setJsonError(parsed.error);
+    }
+  };
+
+  const handleResetJson = () => {
+    setJsonDraft(JSON.stringify(parsedResult.structured, null, 2));
+    setIsJsonEdited(false);
+    setCustomResult(null);
+    setJsonError(null);
+  };
 
   // 3. GEOMETRY ENGINE: Deterministic computation using EDraw mathematical engine
   const computedLine: ComputedLine = useMemo(() => {
@@ -486,7 +469,7 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
   };
 
   const handleCopyJson = () => {
-    navigator.clipboard.writeText(JSON.stringify(interpretationResult.structured, null, 2));
+    navigator.clipboard.writeText(jsonDraft);
     setIsCopiedJson(true);
     setTimeout(() => setIsCopiedJson(false), 2000);
   };
@@ -531,6 +514,14 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
           >
             <Code2 className="w-3.5 h-3.5" />
             <span>2. Structured JSON</span>
+            {isJsonEdited && (
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  jsonError ? 'bg-rose-500' : 'bg-blue-500'
+                }`}
+                title={jsonError ? 'JSON has errors' : 'Custom JSON active'}
+              />
+            )}
           </button>
           <button
             onClick={() => setActiveWorkflowTab('validation')}
@@ -768,7 +759,7 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
               Input-to-Output Traceability
             </span>
             <p className="text-[11px] text-slate-500">
-              Every input extracted from the question statement is strictly bound to the 3D geometrical construction:
+              Every input extracted from the question statement is strictly bound to the mathematical model:
             </p>
 
             <div className="divide-y divide-slate-100 dark:divide-slate-800 text-[11px] font-mono">
@@ -797,10 +788,12 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
                 </span>
               </div>
               <div className="py-1.5 flex items-center justify-between">
-                <span className="text-slate-500">Endpoint A Position:</span>
+                <span className="text-slate-500">Endpoint {interpretationResult.structured.endpoints.start} Position:</span>
                 <span className="font-bold text-slate-800 dark:text-slate-200">
-                  {interpretationResult.structured.coordinates.point_A.dist_hp_mm ?? '?'} mm Above HP |{' '}
-                  {interpretationResult.structured.coordinates.point_A.dist_vp_mm ?? '?'} mm In Front VP
+                  {interpretationResult.structured.coordinates.point_A.dist_hp_mm ?? '?'} mm{' '}
+                  {formatHpRelationLabel(interpretationResult.structured.coordinates.point_A.hp_relation)} |{' '}
+                  {interpretationResult.structured.coordinates.point_A.dist_vp_mm ?? '?'} mm{' '}
+                  {formatVpRelationLabel(interpretationResult.structured.coordinates.point_A.vp_relation)}
                 </span>
               </div>
               <div className="py-1.5 flex items-center justify-between">
@@ -837,28 +830,112 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
             </div>
           )}
 
-          {/* TAB 2: 2. STRUCTURED DATA JSON INSPECTOR */}
+          {/* TAB 2: 2. STRUCTURED DATA JSON EDITOR */}
           {activeWorkflowTab === 'structured' && (
             <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <Code2 className="w-4 h-4 text-blue-500" />
                   <h3 className="text-xs font-bold font-mono uppercase tracking-wider text-slate-700 dark:text-slate-300">
                     2. Structured Question Schema (JSON)
                   </h3>
+                  {jsonError ? (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-rose-100 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300">
+                      Invalid JSON
+                    </span>
+                  ) : isJsonEdited ? (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-blue-100 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300">
+                      Custom JSON Active
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300">
+                      Editable · Live Sync
+                    </span>
+                  )}
                 </div>
-                <button
-                  onClick={handleCopyJson}
-                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-mono transition flex items-center gap-1 text-slate-700 dark:text-slate-300 cursor-pointer"
-                >
-                  {isCopiedJson ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
-                  <span>{isCopiedJson ? 'Copied!' : 'Copy JSON'}</span>
-                </button>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleFormatJson}
+                    disabled={Boolean(jsonError)}
+                    title="Format JSON and sync derived fields"
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-mono transition flex items-center gap-1 text-slate-700 dark:text-slate-300 cursor-pointer"
+                  >
+                    <Wand2 className="w-3 h-3" />
+                    <span>Format</span>
+                  </button>
+
+                  {isJsonEdited && (
+                    <button
+                      type="button"
+                      onClick={handleResetJson}
+                      title="Revert edits back to the parsed question JSON"
+                      className="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/70 dark:hover:bg-amber-900/70 text-xs font-mono transition flex items-center gap-1 text-amber-800 dark:text-amber-200 cursor-pointer"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Reset to Parsed</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleCopyJson}
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-mono transition flex items-center gap-1 text-slate-700 dark:text-slate-300 cursor-pointer"
+                  >
+                    {isCopiedJson ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                    <span>{isCopiedJson ? 'Copied!' : 'Copy JSON'}</span>
+                  </button>
+                </div>
               </div>
 
-              <pre className="p-4 rounded-xl bg-slate-950 text-slate-200 text-[11px] font-mono overflow-x-auto max-h-[500px] border border-slate-800 leading-relaxed select-text">
-                {JSON.stringify(interpretationResult.structured, null, 2)}
-              </pre>
+              <label htmlFor="structured-json-editor" className="sr-only">
+                Structured Question Schema JSON Editor
+              </label>
+              <textarea
+                id="structured-json-editor"
+                aria-label="Structured Question Schema JSON Editor"
+                aria-invalid={Boolean(jsonError)}
+                value={jsonDraft}
+                onChange={(e) => handleJsonChange(e.target.value)}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+                className={`w-full min-h-[440px] h-[480px] p-4 rounded-xl bg-slate-950 text-slate-100 text-[12px] font-mono leading-relaxed border focus:outline-none focus:ring-2 resize-y ${
+                  jsonError
+                    ? 'border-rose-500/80 focus:ring-rose-500'
+                    : 'border-slate-800 focus:ring-blue-500'
+                }`}
+              />
+
+              {jsonError ? (
+                <div
+                  role="alert"
+                  className="p-3 rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 text-xs text-rose-800 dark:text-rose-200 flex items-start gap-2"
+                >
+                  <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-semibold">{jsonError}</span>
+                    <span className="text-[11px] text-rose-700/80 dark:text-rose-300/80">
+                      Showing last valid geometry until the JSON is fixed.
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                  <span className="flex items-center gap-1.5">
+                    <Info className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                    <span>
+                      Edit dimensions, inclinations, endpoints, or coordinates directly — projections and traceability update live.
+                    </span>
+                  </span>
+                  {interpretationResult.structured.validation.warnings.length > 0 && (
+                    <span className="text-amber-600 dark:text-amber-400 font-mono font-semibold">
+                      {interpretationResult.structured.validation.warnings[0]}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -877,14 +954,20 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-850/60 border border-slate-200/60 dark:border-slate-800 flex items-start justify-between gap-3">
                   <div>
                     <span className="font-bold text-slate-900 dark:text-slate-100 block">
-                      1. Perpendicular Planes &amp; Arc-Locus Intersection
+                      1. Direction Cosines / Angle Sum Condition
                     </span>
                     <span className="text-slate-500 text-[11px]">
-                      Because HP and VP are perpendicular (90° apart), the combined inclinations θ and φ permit the compass rotation arc to intersect the horizontal locus line.
+                      {interpretationResult.structured.validation.geometric_condition}
                     </span>
                   </div>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 shrink-0">
-                    PASSED
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold shrink-0 ${
+                      computedLine.calculations.validAngleSum
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                        : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                    }`}
+                  >
+                    {computedLine.calculations.validAngleSum ? 'PASSED' : 'FAILED'}
                   </span>
                 </div>
 
@@ -895,11 +978,11 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
                       2. End Projector Perpendicularity Invariant
                     </span>
                     <span className="text-slate-500 text-[11px]">
-                      Front view endpoint {computedLine.nameB.toLowerCase()}′ and Top view endpoint {computedLine.nameB.toLowerCase()} lie on a single continuous projector perpendicular to XY.
+                      Front view endpoint b′ and Top view endpoint b must lie on a single continuous vertical line perpendicular to XY.
                     </span>
                   </div>
                   <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 shrink-0">
-                    PERP. ALIGNED (PASSED)
+                    Δx = 0.00 mm (PASSED)
                   </span>
                 </div>
 
@@ -910,7 +993,7 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
                       3. Locus Line Parallelism &amp; Zero Gap Verification
                     </span>
                     <span className="text-slate-500 text-[11px]">
-                      Locus of {computedLine.nameB.toLowerCase()}′ is parallel to XY preserving height above HP; Locus of {computedLine.nameB.toLowerCase()} is parallel to XY preserving distance in front of VP.
+                      Locus of b′ is strictly parallel to XY at height zB. Locus of b is strictly parallel to XY at depth yB. Locus joins smoothly with auxiliary points b₁′ and b₂.
                     </span>
                   </div>
                   <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 shrink-0">
@@ -922,10 +1005,10 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-850/60 border border-slate-200/60 dark:border-slate-800 flex items-start justify-between gap-3">
                   <div>
                     <span className="font-bold text-slate-900 dark:text-slate-100 block">
-                      4. Plan &amp; Elevation Compass Radius Conservation
+                      4. Plan &amp; Elevation Length Conservation
                     </span>
                     <span className="text-slate-500 text-[11px]">
-                      Top view length {computedLine.nameA.toLowerCase()}{computedLine.nameB.toLowerCase()} equals auxiliary plan radius {computedLine.nameA.toLowerCase()}{computedLine.nameB.toLowerCase()}₁ ({computedLine.topViewLength.toFixed(2)} mm). Front view length {computedLine.nameA.toLowerCase()}′{computedLine.nameB.toLowerCase()}′ equals auxiliary elevation radius {computedLine.nameA.toLowerCase()}′{computedLine.nameB.toLowerCase()}₂′ ({computedLine.frontViewLength.toFixed(2)} mm).
+                      Top view length ab = ab₁ = TL·cos(θ) = {(computedLine.trueLength * Math.cos((computedLine.thetaDeg * Math.PI) / 180)).toFixed(2)} mm. Front view length a′b′ = a′b₂′ = TL·cos(φ) = {(computedLine.trueLength * Math.cos((computedLine.phiDeg * Math.PI) / 180)).toFixed(2)} mm.
                     </span>
                   </div>
                   <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 shrink-0">

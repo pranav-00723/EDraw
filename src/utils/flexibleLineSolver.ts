@@ -254,7 +254,7 @@ export function solveFlexibleLineInput(
     if (dep === undefined && tl !== undefined && dy !== undefined && dz !== undefined) {
       const dxSq = tl * tl - dy * dy - dz * dz;
       if (dxSq < -0.5) {
-        warnings.push('Height and VP-distance offsets exceed True Length, so end projectors coincide (DEP clamped to 0 mm).');
+        warnings.push('Given angles/lengths exceed True Length (ΔY² + ΔZ² > TL²). Clamping DEP to 0.');
       }
       dep = Math.sqrt(Math.max(0, dxSq));
     }
@@ -275,62 +275,6 @@ export function solveFlexibleLineInput(
     } else {
       finalDep = 40;
     }
-  }
-
-  const rawTLCheck = parseNum(flex.trueLength);
-  const rawThetaCheck = parseNum(flex.thetaDeg);
-  const rawPhiCheck = parseNum(flex.phiDeg);
-  const rawELCheck = parseNum(flex.frontViewLength);
-  const rawPLCheck = parseNum(flex.topViewLength);
-  const rawAlphaCheck = parseNum(flex.alphaDeg);
-  const rawBetaCheck = parseNum(flex.betaDeg);
-  const rawDepCheck = parseNum(flex.dep);
-  const hasBothEndsInit =
-    signedHp(flex.end1.hpRelation, flex.end1.distanceHp) !== undefined &&
-    signedVp(flex.end1.vpRelation, flex.end1.distanceVp) !== undefined &&
-    signedHp(flex.end2.hpRelation, flex.end2.distanceHp) !== undefined &&
-    signedVp(flex.end2.vpRelation, flex.end2.distanceVp) !== undefined;
-
-  let constructionHint: LineProblemInput['constructionHint'] = undefined;
-  if (
-    rawTLCheck !== undefined &&
-    hasBothEndsInit &&
-    rawDepCheck === undefined &&
-    rawThetaCheck === undefined &&
-    rawPhiCheck === undefined
-  ) {
-    constructionHint = 'tl-locus';
-  } else if (
-    rawTLCheck !== undefined &&
-    rawELCheck !== undefined &&
-    rawPLCheck !== undefined &&
-    rawDepCheck === undefined
-  ) {
-    constructionHint = 'tl-views';
-  } else if (
-    rawELCheck !== undefined &&
-    rawAlphaCheck !== undefined &&
-    rawPhiCheck !== undefined &&
-    rawTLCheck === undefined
-  ) {
-    constructionHint = 'fv-alpha-phi';
-  } else if (
-    rawPLCheck !== undefined &&
-    rawBetaCheck !== undefined &&
-    rawThetaCheck !== undefined &&
-    rawTLCheck === undefined
-  ) {
-    constructionHint = 'tv-beta-theta';
-  } else if (
-    rawELCheck !== undefined &&
-    rawPLCheck !== undefined &&
-    rawTLCheck === undefined
-  ) {
-    constructionHint = 'apparent-views';
-  } else if (rawDepCheck !== undefined && hasBothEndsInit && rawTLCheck === undefined) {
-    constructionHint = 'triangle';
-  } else if (rawTLCheck !== undefined && rawThetaCheck !== undefined && rawPhiCheck !== undefined) {
-    constructionHint = 'rotating';
   }
 
   const lineInput: LineProblemInput = {
@@ -357,7 +301,6 @@ export function solveFlexibleLineInput(
     thetaDeg: theta ?? 0,
     phiDeg: phi ?? 0,
     endBQuadrant: 'ABOVE_FRONT',
-    constructionHint,
   };
 
   const finalTL = Math.sqrt(finalDep * finalDep + finalDy * finalDy + finalDz * finalDz);

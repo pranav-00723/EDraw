@@ -4,13 +4,16 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { X, User, Palette, Sun, Moon, RotateCcw, Check } from 'lucide-react';
+import { X, User, Palette, Sun, Moon, RotateCcw, Check, LogOut } from 'lucide-react';
 import { HP_COLOR_PRESETS, VP_COLOR_PRESETS } from '../PlaneColorPicker';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   studentName: string;
+  studentEdrawId?: string;
+  studentGmail?: string;
+  studentCollege?: string;
   onChangeStudentName: (name: string) => void;
   hpColor: string;
   vpColor: string;
@@ -20,12 +23,16 @@ interface SettingsModalProps {
   isDark: boolean;
   onToggleTheme: () => void;
   onResetProgress: () => void;
+  onSignOut?: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
   studentName,
+  studentEdrawId,
+  studentGmail,
+  studentCollege,
   onChangeStudentName,
   hpColor,
   vpColor,
@@ -35,6 +42,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   isDark,
   onToggleTheme,
   onResetProgress,
+  onSignOut,
 }) => {
   const [draftName, setDraftName] = useState(studentName);
   const [savedNotice, setSavedNotice] = useState(false);
@@ -77,7 +85,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
           {/* Student Profile */}
-          <div className="space-y-2.5">
+          <div className="space-y-3">
+            {studentEdrawId && (
+              <div className="p-3.5 rounded-2xl bg-[#F8F7FC] dark:bg-slate-950 border border-[#ECE8F8] dark:border-slate-800 space-y-1 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[#77758A] dark:text-slate-400">Verified eDraw ID</span>
+                  <span className="font-mono font-bold text-[#6035B5] dark:text-purple-300 tabular-nums">
+                    {studentEdrawId}
+                  </span>
+                </div>
+                {studentGmail && (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[#77758A] dark:text-slate-400">Google Mail ID</span>
+                    <span className="font-medium text-[#202033] dark:text-slate-200 truncate">
+                      {studentGmail}
+                    </span>
+                  </div>
+                )}
+                {studentCollege && (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[#77758A] dark:text-slate-400">College</span>
+                    <span className="font-medium text-[#202033] dark:text-slate-200 truncate">
+                      {studentCollege}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
             <label className="text-xs font-semibold text-[#202033] dark:text-slate-200 flex items-center gap-2">
               <User className="w-4 h-4 text-[#7952D6]" />
               <span>Student Display Name</span>
@@ -224,6 +259,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               Reset Log
             </button>
           </div>
+
+          {onSignOut && (
+            <div className="flex items-center justify-between pt-4 border-t border-[#F0ECF9] dark:border-slate-800">
+              <div>
+                <div className="text-xs font-semibold text-[#202033] dark:text-slate-200">
+                  Student Session
+                </div>
+                <p className="text-xs text-[#77758A] dark:text-slate-400">
+                  Sign out and return to the eDraw ID login screen
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onSignOut}
+                className="px-3.5 py-2 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-semibold transition-colors cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Sign Out</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

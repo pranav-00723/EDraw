@@ -14,6 +14,9 @@ import { LinesModule } from './modules/lines/LinesModule';
 import { QuestionToGraphicsGenerator } from './components/questionGenerator/QuestionToGraphicsGenerator';
 import { ScanQuestionModal } from './components/ScanQuestionModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { StudentAuthPortal } from './components/auth/StudentAuthPortal';
+import { testConnection } from './firebase';
+import type { StudentProfileSummary } from './utils/studentAuthValidation';
 import {
   LearningState,
   DEFAULT_LEARNING_STATE,
@@ -50,22 +53,20 @@ export default function App() {
   const [isGlobalScanOpen, setIsGlobalScanOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('edraw_sidebar_collapsed') === 'true';
-    } catch {
-      return false;
-    }
+
+  // Authenticated student session (held in memory only, verified via Bearer token)
+  const [authStudent, setAuthStudent] = useState<StudentProfileSummary | null>(null);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const [initialVerifyToken, setInitialVerifyToken] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('verifyToken');
+    return token && /^[a-f0-9]{64}$/i.test(token.trim()) ? token.trim() : null;
   });
 
-  const handleToggleSidebarCollapse = useCallback(() => {
-    setIsSidebarCollapsed((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem('edraw_sidebar_collapsed', String(next));
-      } catch {}
-      return next;
-    });
+  // Verify Firestore connectivity on startup
+  useEffect(() => {
+    void testConnection();
   }, []);
 
   // Plane Colors state (HP & VP) shared across all modules
@@ -243,6 +244,64 @@ export default function App() {
   const [pendingScannedLine, setPendingScannedLine] = useState<any>(null);
   const [pendingScannedPoint, setPendingScannedPoint] = useState<any>(null);
 
+  const handleConsumedVerifyToken = useCallback(() => {
+    setInitialVerifyToken(null);
+    if (typeof window !== 'undefined') {
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('verifyToken');
+        window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+      } catch {
+        // Ignore in sandboxed iframe environments
+      }
+    }
+  }, []);
+
+  const handleLoginSuccess = useCallback(
+    (student: StudentProfileSummary, token: string) => {
+      setAuthStudent(student);
+      setSessionToken(token);
+      updateLearning((prev) => ({
+        ...prev,
+        studentName: student.name,
+      }));
+      navigateTo('/dashboard');
+    },
+    [navigateTo, updateLearning]
+  );
+
+  const handleSignOut = useCallback(async () => {
+    if (sessionToken) {
+      try {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${sessionToken}`,
+          },
+        });
+      } catch {
+        // Clear local session regardless of network state
+      }
+    }
+    setAuthStudent(null);
+    setSessionToken(null);
+    setIsSettingsOpen(false);
+    setIsGlobalScanOpen(false);
+    setIsMobileSidebarOpen(false);
+  }, [sessionToken]);
+
+  if (!authStudent) {
+    return (
+      <StudentAuthPortal
+        isDark={isDark}
+        onToggleTheme={() => setIsDark((prev) => !prev)}
+        onLoginSuccess={handleLoginSuccess}
+        initialVerifyToken={initialVerifyToken}
+        onConsumedVerifyToken={handleConsumedVerifyToken}
+      />
+    );
+  }
+
   return (
     <div
       className={`min-h-screen font-['Space_Grotesk',sans-serif] ${
@@ -258,10 +317,9 @@ export default function App() {
           onSelectSection={handleSelectSidebarSection}
           onOpenScanModal={() => setIsGlobalScanOpen(true)}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          onSignOut={handleSignOut}
           isMobileOpen={isMobileSidebarOpen}
           onCloseMobile={() => setIsMobileSidebarOpen(false)}
-          isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={handleToggleSidebarCollapse}
         />
 
         {/* Rounded Main Workspace Shell */}
@@ -274,6 +332,8 @@ export default function App() {
                 onNavigate={navigateTo}
                 onSelectSection={handleSelectSidebarSection}
                 studentName={learningState.studentName}
+                studentEdrawId={authStudent.edrawId}
+                studentCollege={authStudent.college}
                 hpColor={hpColor}
                 vpColor={vpColor}
                 onChangeHpColor={setHpColor}
@@ -284,6 +344,7 @@ export default function App() {
                 onOpenScanModal={() => setIsGlobalScanOpen(true)}
                 onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
                 onOpenSettings={() => setIsSettingsOpen(true)}
+                onSignOut={handleSignOut}
               />
 
               {/* Dynamic Route View protected by ErrorBoundary */}
@@ -378,6 +439,9 @@ export default function App() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         studentName={learningState.studentName}
+        studentEdrawId={authStudent.edrawId}
+        studentGmail={authStudent.gmail}
+        studentCollege={authStudent.college}
         onChangeStudentName={(name) =>
           updateLearning((prev) => ({ ...prev, studentName: name }))
         }
@@ -391,6 +455,7 @@ export default function App() {
         onResetProgress={() =>
           setLearningState(saveLearningState(DEFAULT_LEARNING_STATE))
         }
+        onSignOut={handleSignOut}
       />
     </div>
   );

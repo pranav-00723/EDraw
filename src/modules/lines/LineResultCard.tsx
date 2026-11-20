@@ -411,7 +411,7 @@ export const LineParametersCard: React.FC<LineResultCardProps> = ({
             <span className="text-xs font-mono text-[#77758F]">mm</span>
           </div>
           <div className="mt-1 text-[10px] text-[#77758F] dark:text-slate-400 font-mono">
-            Along XY Line
+            Δx Projector
           </div>
         </div>
       </div>

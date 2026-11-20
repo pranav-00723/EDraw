@@ -47,7 +47,7 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
   // Interaction tracking
   const isDraggingRef = useRef<boolean>(false);
   const prevMousePos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const cameraTarget = useRef<THREE.Vector3>(new THREE.Vector3(40, 0, 0));
+  const cameraTarget = useRef<THREE.Vector3>(new THREE.Vector3(40, 20, 20));
 
   const updateVisibilityForPreset = useCallback((preset: 'isometric' | 'front' | 'top') => {
     const spaceGroup = spaceLineGroupRef.current;
@@ -669,13 +669,8 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
   const applyCameraPreset = (preset: 'isometric' | 'front' | 'top', isoDir: 'SE' | 'SW' | 'NE' | 'NW' = 'SE') => {
     if (!cameraRef.current) return;
     setActivePreset(preset);
-    if (preset === 'top' && unfoldAngle !== 0) {
-      setUnfoldAngle(0);
-    }
     const cam = cameraRef.current;
     const target = cameraTarget.current;
-    target.set(40, 0, 0);
-    cam.up.set(0, 1, 0);
 
     switch (preset) {
       case 'isometric': {
@@ -685,13 +680,12 @@ export const LineThreeDView: React.FC<LineThreeDViewProps> = ({
         break;
       }
       case 'front':
-        // Looking directly at VP (along -Z axis): +Y (above HP) is up, X on left, Y on right
-        cam.position.set(40, 0, 280);
+        // Looking directly at VP (along Z axis)
+        cam.position.set(40, 20, 280);
         break;
       case 'top':
-        // Looking directly at HP from above (along -Y axis) with tiny +Z offset (> target.z = 0):
-        // X is on left, Y is on right, +Z (in front of VP) appears BELOW XY, -Z (behind VP) appears ABOVE XY
-        cam.position.set(40, 280, 0.01);
+        // Looking directly at HP from above (along Y axis)
+        cam.position.set(40, 280, 0.1);
         break;
     }
     cam.lookAt(target);

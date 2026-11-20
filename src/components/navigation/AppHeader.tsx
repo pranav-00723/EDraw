@@ -16,6 +16,7 @@ import {
   Ruler,
   FileText,
   BookOpen,
+  LogOut,
 } from 'lucide-react';
 import { PlaneColorPicker } from '../PlaneColorPicker';
 import { AppRoute } from '../../types/modules';
@@ -29,6 +30,8 @@ interface AppHeaderProps {
     route?: AppRoute
   ) => void;
   studentName: string;
+  studentEdrawId?: string;
+  studentCollege?: string;
   hpColor: string;
   vpColor: string;
   onChangeHpColor: (c: string) => void;
@@ -39,6 +42,7 @@ interface AppHeaderProps {
   onOpenScanModal: () => void;
   onOpenMobileSidebar: () => void;
   onOpenSettings: () => void;
+  onSignOut?: () => void;
 }
 
 interface SearchTopicItem {
@@ -54,6 +58,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   onNavigate,
   onSelectSection,
   studentName,
+  studentEdrawId,
+  studentCollege,
   hpColor,
   vpColor,
   onChangeHpColor,
@@ -64,6 +70,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   onOpenScanModal,
   onOpenMobileSidebar,
   onOpenSettings,
+  onSignOut,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -218,12 +225,25 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               )}
             </div>
             <div className="min-w-0">
-              <div className="text-xs font-medium text-[#77758F] dark:text-slate-400 leading-tight">
-                Welcome
+              <div className="flex items-center gap-1.5 text-xs font-medium text-[#77758F] dark:text-slate-400 leading-tight truncate">
+                <span>Welcome</span>
+                {studentEdrawId && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span className="font-mono font-semibold text-[#6B32E4] dark:text-purple-300 tabular-nums">
+                      {studentEdrawId}
+                    </span>
+                  </>
+                )}
               </div>
               <div className="text-base sm:text-lg font-bold text-[#202044] dark:text-slate-100 truncate leading-tight mt-0.5">
                 {studentName}
               </div>
+              {studentCollege && (
+                <div className="text-[11px] text-[#77758F] dark:text-slate-400 truncate leading-tight">
+                  {studentCollege}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -365,12 +385,24 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         <button
           type="button"
           onClick={onOpenSettings}
-          title={`${studentName} · Workspace Settings`}
+          title={`${studentName}${studentEdrawId ? ` (${studentEdrawId})` : ''} · Workspace Settings`}
           aria-label="Profile and workspace settings"
           className="w-9 h-9 rounded-full bg-gradient-to-br from-[#7138E8] to-[#9565F5] text-white text-xs font-bold flex items-center justify-center shadow-xs hover:opacity-90 transition-opacity cursor-pointer shrink-0"
         >
           {initials}
         </button>
+
+        {onSignOut && (
+          <button
+            type="button"
+            onClick={onSignOut}
+            title="Sign out to login screen"
+            aria-label="Sign out"
+            className="w-9 h-9 rounded-xl bg-[#F1EBFF] dark:bg-slate-800 hover:bg-rose-100 dark:hover:bg-rose-950/60 text-[#7138E8] dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+          >
+            <LogOut className="w-[17px] h-[17px]" />
+          </button>
+        )}
       </div>
     </header>
   );

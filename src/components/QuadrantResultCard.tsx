@@ -174,7 +174,7 @@ export const PointParametersCard: React.FC<QuadrantCardProps> = ({
   const { vpPhrase, hpPhrase } = getPositionPhrases(point);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 items-stretch">
+    <div className="flex flex-col gap-3.5">
       {/* Key Details Card */}
       <div className="rounded-2xl bg-white dark:bg-slate-900 border border-[#E8E2F5] dark:border-slate-800 shadow-[0_10px_30px_-12px_rgba(113,56,232,0.08)] p-4">
         <div className="flex items-center justify-between gap-2 pb-3 border-b border-[#F0ECF9] dark:border-slate-800">

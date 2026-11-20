@@ -1,0 +1,126 @@
+{
+  "entities": {
+    "StudentProfile": {
+      "title": "StudentProfile",
+      "description": "Verified EDraw student account profile isolated to the owning authenticated user.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Owner authentication UID matching the document ID."
+        },
+        "edrawId": {
+          "type": "string",
+          "minLength": 9,
+          "maxLength": 9,
+          "pattern": "^EDID-[0-9]{4}$",
+          "description": "Assigned student eDraw ID in EDID-XXXX format."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80,
+          "description": "Full name of the student."
+        },
+        "gmail": {
+          "type": "string",
+          "format": "email",
+          "minLength": 11,
+          "maxLength": 120,
+          "pattern": "^[a-zA-Z0-9._%+\\-]+@(gmail|googlemail)\\.com$",
+          "description": "Registered Google Mail ID (PII, strictly owner-only)."
+        },
+        "college": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120,
+          "description": "Name of the student's college or institution."
+        },
+        "verified": {
+          "type": "boolean",
+          "description": "Whether the student's Gmail address has been verified."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest profile update."
+        }
+      },
+      "required": [
+        "uid",
+        "edrawId",
+        "name",
+        "gmail",
+        "college",
+        "verified",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "LearningProgressRecord": {
+      "title": "LearningProgressRecord",
+      "description": "Per-student EDraw study progress record stored under the student's profile.",
+      "type": "object",
+      "properties": {
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Owner authentication UID matching the parent student document."
+        },
+        "problemsSolved": {
+          "type": "number",
+          "description": "Total engineering graphics problems solved."
+        },
+        "scansCompleted": {
+          "type": "number",
+          "description": "Total scanned questions processed."
+        },
+        "learningSeconds": {
+          "type": "number",
+          "description": "Total active study time in seconds."
+        },
+        "completedModules": {
+          "type": "array",
+          "description": "Bounded list of completed module IDs (max 20)."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of latest progress sync."
+        }
+      },
+      "required": [
+        "ownerUid",
+        "problemsSolved",
+        "scansCompleted",
+        "learningSeconds",
+        "completedModules",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/students/{studentUid}": {
+      "schema": {
+        "$ref": "#/entities/StudentProfile"
+      },
+      "description": "Private per-student profile document containing PII (Gmail) strictly isolated to the owning verified user."
+    },
+    "/students/{studentUid}/progress/{progressId}": {
+      "schema": {
+        "$ref": "#/entities/LearningProgressRecord"
+      },
+      "description": "Student learning progress subcollection gated on parent student document ownership."
+    }
+  }
+}

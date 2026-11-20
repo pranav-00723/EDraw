@@ -325,7 +325,7 @@ export const LinesModule: React.FC<LinesModuleProps> = ({
                     <span>GENERATED PROJECTION</span>
                   </h2>
                   <span className="text-[11px] font-mono text-slate-500">
-                    Elevation ({computedLine.nameA.toLowerCase()}′{computedLine.nameB.toLowerCase()}′) • Plan ({computedLine.nameA.toLowerCase()}{computedLine.nameB.toLowerCase()}) • Thin Projectors (1.2px) • Pure Geometry
+                    Elevation (a′b′) • Plan (ab) • Thin Projectors (1.2px) • Rotating Method
                   </span>
                 </div>
                 <LineTwoDOrthographicView
@@ -346,10 +346,10 @@ export const LinesModule: React.FC<LinesModuleProps> = ({
                     className="text-lg sm:text-xl tracking-wider text-slate-900 dark:text-slate-100 flex items-center gap-2"
                   >
                     <span className="w-2.5 h-2.5 rounded-full bg-blue-600 shadow-xs" />
-                    <span>PURE GEOMETRICAL CONSTRUCTION — STEP-BY-STEP</span>
+                    <span>ROTATING LINE METHOD — 8 CONSTRUCTION STEPS</span>
                   </h2>
                   <span className="text-[11px] font-mono text-slate-500">
-                    Given-Data Ordered • Loci &amp; Arcs / Right Triangles • BIS SP 46:2003
+                    Auxiliary AB₁ &amp; AB₂ • Loci (No Gaps) • Rotating Arcs • BIS SP 46:2003
                   </span>
                 </div>
                 <RotatingLineConstructionEngine

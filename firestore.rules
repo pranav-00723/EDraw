@@ -1,0 +1,188 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Reusable hardened primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(uid) {
+      return isEmailVerified() && request.auth.uid == uid;
+    }
+
+    // Validation Blueprint: StudentProfile (matching firebase-blueprint.json)
+    function isValidStudentProfile(data, studentUid) {
+      return data.keys().hasAll([
+          'uid',
+          'edrawId',
+          'name',
+          'gmail',
+          'college',
+          'verified',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'uid',
+          'edrawId',
+          'name',
+          'gmail',
+          'college',
+          'verified',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.uid is string &&
+        data.uid == request.auth.uid &&
+        data.uid == studentUid &&
+        isValidId(data.uid) &&
+        data.edrawId is string &&
+        data.edrawId.size() == 9 &&
+        data.edrawId.matches('^EDID-[0-9]{4}$') &&
+        data.name is string &&
+        data.name.size() >= 2 &&
+        data.name.size() <= 80 &&
+        data.gmail is string &&
+        data.gmail.size() >= 11 &&
+        data.gmail.size() <= 120 &&
+        data.gmail.matches('^[a-zA-Z0-9._%+\\-]+@(gmail|googlemail)\\.com$') &&
+        data.college is string &&
+        data.college.size() >= 2 &&
+        data.college.size() <= 120 &&
+        data.verified is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: LearningProgressRecord (matching firebase-blueprint.json)
+    function isValidLearningProgress(data, studentUid) {
+      return data.keys().hasAll([
+          'ownerUid',
+          'problemsSolved',
+          'scansCompleted',
+          'learningSeconds',
+          'completedModules',
+          'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'ownerUid',
+          'problemsSolved',
+          'scansCompleted',
+          'learningSeconds',
+          'completedModules',
+          'updatedAt'
+        ]) &&
+        data.ownerUid is string &&
+        data.ownerUid == request.auth.uid &&
+        data.ownerUid == studentUid &&
+        isValidId(data.ownerUid) &&
+        data.problemsSolved is int &&
+        data.problemsSolved >= 0 &&
+        data.problemsSolved <= 100000 &&
+        data.scansCompleted is int &&
+        data.scansCompleted >= 0 &&
+        data.scansCompleted <= 100000 &&
+        data.learningSeconds is int &&
+        data.learningSeconds >= 0 &&
+        data.learningSeconds <= 100000000 &&
+        data.completedModules is list &&
+        data.completedModules.size() <= 20 &&
+        (data.completedModules.size() == 0 || (data.completedModules[0] is string && data.completedModules[0].size() <= 64)) &&
+        data.updatedAt is timestamp;
+    }
+
+    // Collection: /students/{studentUid} (PII strictly isolated to verified owner)
+    match /students/{studentUid} {
+      allow get: if isOwner(studentUid) && isValidId(studentUid);
+      allow list: if false;
+
+      allow create: if isOwner(studentUid) &&
+        isValidId(studentUid) &&
+        isValidStudentProfile(incoming(), studentUid) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isOwner(studentUid) &&
+        isValidId(studentUid) &&
+        isValidStudentProfile(incoming(), studentUid) &&
+        incoming().uid == existing().uid &&
+        incoming().edrawId == existing().edrawId &&
+        incoming().gmail == existing().gmail &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'college', 'updatedAt']) ||
+          (existing().verified == false &&
+            incoming().verified == true &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['verified', 'updatedAt']))
+        );
+
+      allow delete: if isOwner(studentUid) && isValidId(studentUid);
+
+      // Subcollection: /students/{studentUid}/progress/{progressId}
+      match /progress/{progressId} {
+        allow get: if isOwner(studentUid) &&
+          isValidId(studentUid) &&
+          isValidId(progressId) &&
+          exists(/databases/$(database)/documents/students/$(studentUid)) &&
+          get(/databases/$(database)/documents/students/$(studentUid)).data.uid == request.auth.uid;
+
+        allow list: if isOwner(studentUid) &&
+          isValidId(studentUid) &&
+          resource.data.ownerUid == request.auth.uid;
+
+        allow create: if isOwner(studentUid) &&
+          isValidId(studentUid) &&
+          isValidId(progressId) &&
+          isValidLearningProgress(incoming(), studentUid) &&
+          incoming().updatedAt == request.time &&
+          exists(/databases/$(database)/documents/students/$(studentUid)) &&
+          get(/databases/$(database)/documents/students/$(studentUid)).data.uid == request.auth.uid;
+
+        allow update: if isOwner(studentUid) &&
+          isValidId(studentUid) &&
+          isValidId(progressId) &&
+          isValidLearningProgress(incoming(), studentUid) &&
+          incoming().ownerUid == existing().ownerUid &&
+          incoming().updatedAt == request.time &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'problemsSolved',
+            'scansCompleted',
+            'learningSeconds',
+            'completedModules',
+            'updatedAt'
+          ]) &&
+          exists(/databases/$(database)/documents/students/$(studentUid)) &&
+          get(/databases/$(database)/documents/students/$(studentUid)).data.uid == request.auth.uid;
+
+        allow delete: if isOwner(studentUid) &&
+          isValidId(studentUid) &&
+          isValidId(progressId) &&
+          exists(/databases/$(database)/documents/students/$(studentUid)) &&
+          get(/databases/$(database)/documents/students/$(studentUid)).data.uid == request.auth.uid;
+      }
+    }
+  }
+}

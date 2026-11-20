@@ -1,16 +1,14 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState, useRef, useMemo } from 'react';
 import { ComputedPoint } from '../types/projection';
 import {
   Download,
   FileCode,
+  Printer,
   RotateCcw,
   ZoomIn,
   ZoomOut,
+  Maximize2,
+  Grid,
 } from 'lucide-react';
 
 interface TwoDOrthographicViewProps {
@@ -33,90 +31,83 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   // Pan & Zoom state
-  const [zoom, setZoom] = useState<number>(1.0);
-  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [isPanning, setIsPanning] = useState(false);
-  const [startPan, setStartPan] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [showGrid, setShowGrid] = useState(true);
 
-  // View Options (matching LineTwoDOrthographicView)
-  const [showLocus, setShowLocus] = useState(true);
-  const [showDimensions, setShowDimensions] = useState(true);
-  const [pencilMode, setPencilMode] = useState(false);
-  const [studentName, setStudentName] = useState('');
-  const [registerNo, setRegisterNo] = useState('');
-  const sheetDark = isDark && !pencilMode;
+  // Compute bounding box for automatic scale & centering
+  const viewWidth = 800;
+  const viewHeight = 460;
+  const originX = viewWidth / 2;
+  const originY = viewHeight / 2;
 
-  // SVG viewBox settings
-  const baseWidth = 840;
-  const baseHeight = 560;
-  const originX = baseWidth / 2;
-  const originY = 260;
-
-  // Compute automatic scale and horizontal centering so all points fit cleanly
-  const { mmScale, midX } = useMemo(() => {
-    if (points.length === 0) return { mmScale: 2.4, midX: 0 };
+  // Drawing scale: 1 mm = S pixels
+  // Determine scale factor and horizontal center so all points fit comfortably
+  const { scale, midX } = useMemo(() => {
+    if (points.length === 0) return { scale: 2.5, midX: 0 };
 
     let minX = 0;
     let maxX = 0;
-    let maxY = 45;
+    let maxY = 35;
 
     points.forEach((p) => {
       minX = Math.min(minX, p.x);
       maxX = Math.max(maxX, p.x);
       maxY = Math.max(
         maxY,
-        Math.abs(p.frontViewY) + 30,
-        Math.abs(p.topViewY) + 30
+        Math.abs(p.frontViewY) + 35,
+        Math.abs(p.topViewY) + 35
       );
     });
 
-    const center = (minX + maxX) / 2;
-    const spanX = Math.max(maxX - minX + 80, 100);
-    const scaleX = (baseWidth - 220) / spanX;
-    const scaleY = 195 / Math.max(maxY, 55);
-    const s = Math.min(Math.max(Math.min(scaleX, scaleY), 0.8), 2.8);
-    return { mmScale: s, midX: center };
+    const midX = (minX + maxX) / 2;
+    const spanX = Math.max(maxX - minX + 60, 80);
+
+    const scaleX = (viewWidth - 160) / spanX;
+    const scaleY = (viewHeight / 2 - 65) / maxY;
+    const s = Math.min(Math.max(Math.min(scaleX, scaleY), 0.8), 3.2);
+    return { scale: s, midX };
   }, [points]);
 
-  const toSvgX = (xMm: number) => originX + (xMm - midX) * mmScale;
-  // In SVG, positive Y is downwards.
-  // Above XY (+y_ortho) -> originY - y_ortho * mmScale
-  // Below XY (-y_ortho) -> originY + |y_ortho| * mmScale
-  const toSvgY = (yMm: number) => originY - yMm * mmScale;
+  // Coordinate conversion:
+  // mm coordinate (x_mm, y_mm relative to XY line) -> SVG pixel coordinate
+  // SVG Y goes downward, so:
+  // Above XY (+y_mm): originY - y_mm * scale
+  // Below XY (-y_mm): originY + |y_mm| * scale
+  const toSvgX = (xMm: number) => originX + (xMm - midX) * scale + pan.x;
+  const toSvgY = (yMm: number) => originY - yMm * scale + pan.y;
 
-  const selectedPoint =
-    points.find((p) => p.id === selectedPointId) || points[0] || null;
-
+  // Pan handlers
   const handleMouseDown = (e: React.MouseEvent) => {
-    setIsPanning(true);
-    setStartPan({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isPanning) return;
+    if (!isDragging) return;
     setPan({
-      x: e.clientX - startPan.x,
-      y: e.clientY - startPan.y,
+      x: e.clientX - dragStart.x,
+      y: e.clientY - dragStart.y,
     });
   };
 
-  const handleMouseUp = () => {
-    setIsPanning(false);
-  };
+  const handleMouseUp = () => setIsDragging(false);
 
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
     const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-    setZoom((prev) => Math.min(Math.max(prev * zoomFactor, 0.5), 2.8));
+    setZoom((prev) => Math.min(Math.max(prev * zoomFactor, 0.4), 4));
   };
 
-  const handleReset = () => {
-    setZoom(1.0);
+  const resetView = () => {
+    setZoom(1);
     setPan({ x: 0, y: 0 });
   };
 
-  // High-Resolution 2x PNG Export
-  const exportAsPng = () => {
+  // Export Drawing as PNG
+  const exportAsPng = (asDrawingSheet: boolean) => {
     const svgEl = svgRef.current;
     if (!svgEl) return;
 
@@ -125,18 +116,19 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const scaleFactor = 2;
-    canvas.width = baseWidth * scaleFactor;
-    canvas.height = baseHeight * scaleFactor;
+    const scaleFactor = 2; // High resolution 2x
+    canvas.width = viewWidth * scaleFactor;
+    canvas.height = viewHeight * scaleFactor;
 
     const img = new Image();
     const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(svgBlob);
 
     img.onload = () => {
-      ctx.fillStyle = sheetDark ? '#0b1329' : '#ffffff';
+      // Draw background
+      ctx.fillStyle = asDrawingSheet ? '#ffffff' : (isDark ? '#090d16' : '#ffffff');
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      if (pencilMode) {
+      if (asDrawingSheet) {
         ctx.filter = 'grayscale(100%) contrast(125%)';
       }
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
@@ -151,7 +143,7 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
     img.src = url;
   };
 
-  // Export Vector SVG
+  // Export Drawing as SVG
   const exportAsSvg = () => {
     const svgEl = svgRef.current;
     if (!svgEl) return;
@@ -166,663 +158,563 @@ export const TwoDOrthographicView: React.FC<TwoDOrthographicViewProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  const leftmostSvgX =
-    points.length > 0
-      ? Math.min(...points.map((p) => toSvgX(p.x)))
-      : originX;
+  // Print Drawing
+  const handlePrint = () => {
+    window.print();
+  };
+
+  // Visual Theme Variables
+  const colors = {
+    bg: isDark ? '#090d16' : '#ffffff',
+    grid: isDark ? '#1e293b' : '#f1f5f9',
+    gridMinor: isDark ? '#141e30' : '#f8fafc',
+    xyLine: '#0f172a',
+    projector: isDark ? '#475569' : '#94a3b8',
+    dimension: isDark ? '#38bdf8' : '#0284c7',
+    dimensionText: isDark ? '#bae6fd' : '#0369a1',
+    textMain: isDark ? '#f1f5f9' : '#0f172a',
+    textMuted: isDark ? '#94a3b8' : '#64748b',
+    titleBlockBorder: isDark ? '#334155' : '#cbd5e1',
+  };
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="relative rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-xs select-none">
-        {/* Top-Left Floating Legend Pill */}
-        <div className="absolute top-3 left-3 z-10 flex flex-wrap items-center gap-2 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-mono shadow-xs">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-xs" style={{ backgroundColor: vpColor }} />
-            <span className="font-bold text-slate-800 dark:text-slate-200">
-              Front View: {selectedPoint ? selectedPoint.frontViewLabel : 'a′'}
-            </span>
-          </div>
-
-          <span className="text-slate-300 dark:text-slate-700">|</span>
-
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-xs" style={{ backgroundColor: hpColor }} />
-            <span className="font-bold text-slate-800 dark:text-slate-200">
-              Top View: {selectedPoint ? selectedPoint.topViewLabel : 'a'}
-            </span>
-          </div>
-
-          <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">|</span>
-
-          <span className="text-[11px] text-slate-500 font-sans hidden sm:inline">
-            Projectors: 1.0px Solid
+    <div className="flex flex-col w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden print:border-none print:shadow-none">
+      {/* Action Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 print:hidden">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-xs text-slate-800 dark:text-slate-200">
+            2D Orthographic Sheet
+          </span>
+          <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+            (Elevation [a′] on VP &amp; Plan [a] on HP • Scale {scale.toFixed(1)}:1)
           </span>
         </div>
 
-        {/* Top-Right Floating Controls Toolbar */}
-        <div className="absolute top-3 right-3 z-10 flex flex-wrap items-center gap-1.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-1 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs text-xs">
-          {/* Locus Toggle */}
+        {/* Toolbar Buttons */}
+        <div className="flex items-center gap-1.5 text-xs">
+
           <button
-            type="button"
-            onClick={() => setShowLocus(!showLocus)}
-            className={`px-2 py-1 rounded transition flex items-center gap-1 font-mono text-[11px] cursor-pointer ${
-              showLocus
-                ? 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 font-semibold'
-                : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
-            }`}
-            title="Toggle Horizontal Locus Lines"
-          >
-            Locus
-          </button>
-
-          {/* Dimensions Toggle */}
-          <button
-            type="button"
-            onClick={() => setShowDimensions(!showDimensions)}
-            className={`px-2 py-1 rounded transition flex items-center gap-1 font-mono text-[11px] cursor-pointer ${
-              showDimensions
-                ? 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 font-semibold'
-                : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
-            }`}
-            title="Toggle Distance Dimensions"
-          >
-            Dims
-          </button>
-
-          {/* Pencil Sketch Mode Toggle */}
-          <button
-            type="button"
-            onClick={() => setPencilMode(!pencilMode)}
-            className={`px-2 py-1 rounded transition flex items-center gap-1 font-mono text-[11px] cursor-pointer ${
-              pencilMode
-                ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900 font-semibold'
-                : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
-            }`}
-            title="Toggle Monochrome Pencil Drawing Sketch (No Colors)"
-          >
-            Pencil Sketch
-          </button>
-
-          <div className="hidden md:flex items-center gap-1 ml-1">
-            <input
-              type="text"
-              value={studentName}
-              onChange={(e) => setStudentName(e.target.value)}
-              placeholder="Name"
-              className="w-24 px-1.5 py-0.5 text-[10px] font-mono rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
-            />
-            <input
-              type="text"
-              value={registerNo}
-              onChange={(e) => setRegisterNo(e.target.value)}
-              placeholder="Reg. No"
-              className="w-20 px-1.5 py-0.5 text-[10px] font-mono rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
-            />
-          </div>
-
-          <span className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
-
-          {/* Zoom Controls */}
-          <button
-            type="button"
-            onClick={() => setZoom((z) => Math.min(2.8, z * 1.15))}
-            className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-600 dark:text-slate-300 cursor-pointer"
+            onClick={() => setZoom((z) => Math.min(z + 0.2, 4))}
+            className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition"
             title="Zoom In"
           >
             <ZoomIn className="w-3.5 h-3.5" />
           </button>
           <button
-            type="button"
-            onClick={() => setZoom((z) => Math.max(0.5, z / 1.15))}
-            className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-600 dark:text-slate-300 cursor-pointer"
+            onClick={() => setZoom((z) => Math.max(z - 0.2, 0.4))}
+            className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition"
             title="Zoom Out"
           >
             <ZoomOut className="w-3.5 h-3.5" />
           </button>
           <button
-            type="button"
-            onClick={handleReset}
-            className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-600 dark:text-slate-300 cursor-pointer"
+            onClick={resetView}
+            className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition"
             title="Reset Pan & Zoom"
           >
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
 
-          <span className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
+          <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
 
-          {/* Save PNG */}
-          <button
-            type="button"
-            onClick={exportAsPng}
-            className="px-2 py-1 rounded transition flex items-center gap-1 font-mono text-[11px] bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900 border border-emerald-200 dark:border-emerald-800 font-semibold cursor-pointer shadow-xs"
-            title="Save Generated Projection as PNG Image"
+          <select
+            defaultValue=""
+            onChange={(e) => {
+              if (e.target.value === 'sheet') exportAsPng(true);
+              if (e.target.value === 'projections') exportAsPng(false);
+              e.target.value = '';
+            }}
+            className="px-2 py-1 rounded bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 font-medium text-xs transition cursor-pointer"
+            title="Download PNG as Drawing Sheet or Projections"
           >
-            <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-            <span className="font-sans font-medium text-xs">Save PNG</span>
-          </button>
+            <option value="" disabled>
+              Download PNG ▾
+            </option>
+            <option value="sheet">Download as Drawing Sheet (B&amp;W)</option>
+            <option value="projections">Download as Projections (Colored)</option>
+          </select>
 
-          {/* Export SVG */}
           <button
-            type="button"
             onClick={exportAsSvg}
-            className="px-2 py-1 rounded transition flex items-center gap-1 font-mono text-[11px] bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 font-semibold cursor-pointer"
-            title="Download Vector SVG Drawing"
+            className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 font-medium transition"
+            title="Download vector SVG drawing"
           >
             <FileCode className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline font-sans font-medium text-xs">SVG</span>
+            <span>SVG</span>
+          </button>
+
+          <button
+            onClick={handlePrint}
+            className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 font-medium transition"
+            title="Print Drawing Sheet"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>Print</span>
           </button>
         </div>
+      </div>
 
-        {/* SVG Drawing Canvas */}
-        <div
-          className="w-full h-[500px] overflow-hidden cursor-grab active:cursor-grabbing bg-slate-50/60 dark:bg-slate-950/80"
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          onWheel={handleWheel}
+      {/* Interactive SVG Canvas */}
+      <div
+        className="relative w-full h-[460px] cursor-grab active:cursor-grabbing select-none overflow-hidden"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onWheel={handleWheel}
+      >
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${viewWidth} ${viewHeight}`}
+          className="w-full h-full grayscale contrast-125"
+          style={{
+            backgroundColor: '#ffffff',
+            transform: `scale(${zoom})`,
+            transformOrigin: 'center center',
+            transition: isDragging ? 'none' : 'transform 0.15s ease-out',
+          }}
         >
-          <svg
-            ref={svgRef}
-            viewBox={`0 0 ${baseWidth} ${baseHeight}`}
-            className={`w-full h-full select-none ${pencilMode ? 'grayscale contrast-125 bg-white' : ''}`}
-            style={{
-              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-              transformOrigin: 'center center',
-              transition: isPanning ? 'none' : 'transform 0.12s ease-out',
-            }}
-          >
-            <defs>
-              {/* Outward pointing arrow markers for Dimension Lines */}
-              <marker id="pt-dim-arrow-start" viewBox="0 0 10 10" refX="0" refY="5" markerWidth="5" markerHeight="5" orient="auto">
-                <path d="M 10 2 L 0 5 L 10 8 z" fill={sheetDark ? '#94a3b8' : '#64748b'} />
-              </marker>
-              <marker id="pt-dim-arrow-end" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="5" markerHeight="5" orient="auto">
-                <path d="M 0 2 L 10 5 L 0 8 z" fill={sheetDark ? '#94a3b8' : '#64748b'} />
-              </marker>
-            </defs>
+          <defs>
+            {/* Engineering Dimension Arrowheads - Pointing outward towards extension lines */}
+            <marker
+              id="dim-arrow-start"
+              viewBox="0 0 10 10"
+              refX="0"
+              refY="5"
+              markerWidth="5"
+              markerHeight="5"
+              orient="auto"
+            >
+              <path d="M 10 2 L 0 5 L 10 8 z" fill={colors.dimension} />
+            </marker>
+            <marker
+              id="dim-arrow-end"
+              viewBox="0 0 10 10"
+              refX="10"
+              refY="5"
+              markerWidth="5"
+              markerHeight="5"
+              orient="auto"
+            >
+              <path d="M 0 2 L 10 5 L 0 8 z" fill={colors.dimension} />
+            </marker>
+          </defs>
 
-            {/* 1. Optional Horizontal Locus Lines */}
-            {showLocus &&
-              points.map((pt) => {
-                const svgFvY = toSvgY(pt.frontViewY);
-                const svgTvY = toSvgY(pt.topViewY);
-                const lowerName = pt.name.toLowerCase();
-                return (
-                  <g key={`locus-${pt.id}`} className="locus-lines">
-                    {Math.abs(pt.frontViewY) > 0.5 && (
-                      <>
-                        <line
-                          x1={40}
-                          y1={svgFvY}
-                          x2={baseWidth - 40}
-                          y2={svgFvY}
-                          stroke={vpColor}
-                          strokeWidth="0.9"
-                          opacity="0.6"
-                        />
-                        <text
-                          x={baseWidth - 45}
-                          y={svgFvY - 5}
-                          fill={vpColor}
-                          fontSize="10"
-                          fontFamily="'JetBrains Mono', monospace"
-                          fontWeight="600"
-                          textAnchor="end"
-                          opacity="0.9"
-                        >
-                          Locus of {lowerName}′
-                        </text>
-                      </>
-                    )}
-                    {Math.abs(pt.topViewY) > 0.5 && (
-                      <>
-                        <line
-                          x1={40}
-                          y1={svgTvY}
-                          x2={baseWidth - 40}
-                          y2={svgTvY}
-                          stroke={hpColor}
-                          strokeWidth="0.9"
-                          opacity="0.6"
-                        />
-                        <text
-                          x={baseWidth - 45}
-                          y={svgTvY + 12}
-                          fill={hpColor}
-                          fontSize="10"
-                          fontFamily="'JetBrains Mono', monospace"
-                          fontWeight="600"
-                          textAnchor="end"
-                          opacity="0.9"
-                        >
-                          Locus of {lowerName}
-                        </text>
-                      </>
-                    )}
-                  </g>
-                );
-              })}
+          {/* Outer Border / Sheet Frame */}
+          <rect
+            x="15"
+            y="15"
+            width={viewWidth - 30}
+            height={viewHeight - 30}
+            fill="none"
+            stroke={colors.titleBlockBorder}
+            strokeWidth="1.5"
+          />
 
-            {/* 2. Ground Reference Line (XY Line) */}
-            <g className="xy-ground-line">
-              <line
-                x1={30}
-                y1={originY}
-                x2={baseWidth - 30}
-                y2={originY}
-                stroke={sheetDark ? '#e2e8f0' : '#0f172a'}
-                strokeWidth="1.5"
-              />
-              {/* X and Y Terminal Labels */}
-              <text
-                x={38}
-                y={originY - 8}
-                fill={sheetDark ? '#ffffff' : '#0f172a'}
-                fontSize="16"
-                fontWeight="bold"
-                fontFamily="'Space Grotesk', sans-serif"
-              >
-                X
-              </text>
-              <text
-                x={baseWidth - 50}
-                y={originY - 8}
-                fill={sheetDark ? '#ffffff' : '#0f172a'}
-                fontSize="16"
-                fontWeight="bold"
-                fontFamily="'Space Grotesk', sans-serif"
-              >
-                Y
-              </text>
+          {/* PERSISTENT PROJECTION PLANE BOUNDARIES & EXPLICIT LABELS */}
+          {/* Upper Zone: Front View (VP) Plane Boundary Outline */}
+          <rect
+            x="24"
+            y="24"
+            width={viewWidth - 48}
+            height={Math.max(10, originY + pan.y - 28)}
+            fill={isDark ? 'rgba(220, 38, 38, 0.03)' : 'rgba(220, 38, 38, 0.02)'}
+            stroke={vpColor}
+            strokeWidth="1.2"
+            strokeDasharray="6,4"
+            opacity="0.5"
+            rx="4"
+          />
+          <g transform="translate(32, 40)">
+            <rect x="0" y="-12" width="105" height="18" rx="3" fill={isDark ? '#1e1b2e' : '#fee2e2'} stroke={vpColor} strokeWidth="0.8" opacity="0.9" />
+            <text
+              x="6"
+              y="1"
+              fill={vpColor}
+              fontSize="10"
+              fontFamily="monospace"
+              fontWeight="bold"
+            >
+              Front View (VP)
+            </text>
+          </g>
 
-              {/* Clean Plane Labels */}
-              <text
-                x={70}
-                y={originY - 14}
-                fill={vpColor}
-                fontSize="10"
-                fontFamily="'JetBrains Mono', monospace"
-                fontWeight="600"
-                opacity="0.8"
-              >
-                Front View (VP)
-              </text>
-              <text
-                x={70}
-                y={originY + 22}
-                fill={hpColor}
-                fontSize="10"
-                fontFamily="'JetBrains Mono', monospace"
-                fontWeight="600"
-                opacity="0.8"
-              >
-                Top View (HP)
-              </text>
+          {/* Lower Zone: Top View (HP) Plane Boundary Outline */}
+          <rect
+            x="24"
+            y={originY + pan.y + 4}
+            width={viewWidth - 48}
+            height={Math.max(10, viewHeight - (originY + pan.y) - 28)}
+            fill={isDark ? 'rgba(37, 99, 235, 0.03)' : 'rgba(37, 99, 235, 0.02)'}
+            stroke={hpColor}
+            strokeWidth="1.2"
+            strokeDasharray="6,4"
+            opacity="0.5"
+            rx="4"
+          />
+          <g transform={`translate(32, ${originY + pan.y + 22})`}>
+            <rect x="0" y="-12" width="105" height="18" rx="3" fill={isDark ? '#172554' : '#dbeafe'} stroke={hpColor} strokeWidth="0.8" opacity="0.9" />
+            <text
+              x="6"
+              y="1"
+              fill={hpColor}
+              fontSize="10"
+              fontFamily="monospace"
+              fontWeight="bold"
+            >
+              Top View (HP)
+            </text>
+          </g>
 
-              {/* Standard Textbook VP / HP notations next to leftmost projector */}
-              <text
-                x={Math.max(175, leftmostSvgX - 62)}
-                y={originY - 8}
-                fill={sheetDark ? '#e2e8f0' : '#0f172a'}
-                fontSize="13"
-                fontFamily="'JetBrains Mono', monospace"
-                fontWeight="bold"
-              >
-                VP
-              </text>
-              <text
-                x={Math.max(175, leftmostSvgX - 62)}
-                y={originY + 18}
-                fill={sheetDark ? '#e2e8f0' : '#0f172a'}
-                fontSize="13"
-                fontFamily="'JetBrains Mono', monospace"
-                fontWeight="bold"
-              >
-                HP
-              </text>
-            </g>
+          {/* REFERENCE GROUND LINE (X - Y) */}
+          {/* Thin but distinctively visible reference line */}
+          <g>
+            <line
+              x1="30"
+              y1={originY + pan.y}
+              x2={viewWidth - 30}
+              y2={originY + pan.y}
+              stroke={colors.xyLine}
+              strokeWidth="1.2"
+            />
+            {/* End Point Markers and Labels 'X' and 'Y' */}
+            <circle
+              cx="30"
+              cy={originY + pan.y}
+              r="2"
+              fill={colors.xyLine}
+            />
+            <circle
+              cx={viewWidth - 30}
+              cy={originY + pan.y}
+              r="2"
+              fill={colors.xyLine}
+            />
 
-            {/* 3. Points, Continuous Solid Projectors & Dimension Annotations */}
-            {points.map((pt) => {
-              const isSelected = pt.id === selectedPoint?.id;
-              const svgX = toSvgX(pt.x);
-              const svgFvY = toSvgY(pt.frontViewY);
-              const svgTvY = toSvgY(pt.topViewY);
+            <text
+              x="22"
+              y={originY + pan.y + 5}
+              fill={colors.xyLine}
+              fontSize="18"
+              fontFamily="monospace"
+              fontWeight="bold"
+              textAnchor="end"
+            >
+              X
+            </text>
+            <text
+              x={viewWidth - 20}
+              y={originY + pan.y + 5}
+              fill={colors.xyLine}
+              fontSize="18"
+              fontFamily="monospace"
+              fontWeight="bold"
+              textAnchor="start"
+            >
+              Y
+            </text>
+          </g>
 
-              const viewsCoincide = Math.abs(svgFvY - svgTvY) < 1.5;
-              const isSameSide =
-                (pt.frontViewY > 0 && pt.topViewY > 0) ||
-                (pt.frontViewY < 0 && pt.topViewY < 0);
+          {/* POINTS, PROJECTORS & DIMENSION LINES */}
+          {points.map((pt, idx) => {
+            const isSelected = pt.id === selectedPointId;
+            const svgX = toSvgX(pt.x);
+            const svgFvY = toSvgY(pt.frontViewY);
+            const svgTvY = toSvgY(pt.topViewY);
+            const svgGroundY = originY + pan.y;
 
-              let dimFvX = svgX - 18;
-              let dimTvX = svgX - 18;
-              if (isSameSide && !viewsCoincide) {
-                if (pt.distHp <= pt.distVp) {
-                  dimFvX = svgX - 18;
-                  dimTvX = svgX - 38;
-                } else {
-                  dimTvX = svgX - 18;
-                  dimFvX = svgX - 38;
-                }
+            // Check if Front View and Top View coincide
+            const viewsCoincide = Math.abs(svgFvY - svgTvY) < 1.5;
+
+            // Dimensions placed immediately adjacent to the points (clean, compact engineering offset)
+            const isSameSide = (pt.frontViewY > 0 && pt.topViewY > 0) || (pt.frontViewY < 0 && pt.topViewY < 0);
+            let dimFvX = svgX + 9;
+            let dimTvX = svgX + 9;
+
+            if (isSameSide && !viewsCoincide) {
+              if (pt.distHp <= pt.distVp) {
+                dimFvX = svgX + 8;
+                dimTvX = svgX + 18;
+              } else {
+                dimTvX = svgX + 8;
+                dimFvX = svgX + 18;
               }
+            }
 
-              return (
-                <g
-                  key={pt.id}
-                  className="cursor-pointer"
-                  onClick={() => onSelectPoint && onSelectPoint(pt.id)}
-                >
-                  {/* Continuous Thin Solid Projector Line */}
+            return (
+              <g
+                key={pt.id}
+                className="cursor-pointer"
+                onClick={() => onSelectPoint && onSelectPoint(pt.id)}
+              >
+                {/* 1. The aa' Projector Line: Continuous thin solid line connecting a' and a */}
+                <line
+                  x1={svgX}
+                  y1={Math.min(svgFvY, svgTvY, svgGroundY)}
+                  x2={svgX}
+                  y2={Math.max(svgFvY, svgTvY, svgGroundY)}
+                  stroke={isSelected ? pt.color : (isDark ? '#94a3b8' : '#64748b')}
+                  strokeWidth="1.0"
+                />
+
+                {/* Ground Line Intersection marker */}
+                <circle
+                  cx={svgX}
+                  cy={svgGroundY}
+                  r="1.5"
+                  fill={colors.xyLine}
+                />
+
+                {/* 2. FRONT VIEW POINT (a' or A') — Unified point color pt.color, crisp reduced radius */}
+                <g>
+                  {/* Subtle target crosshair */}
+                  <line
+                    x1={svgX - 3.5}
+                    y1={svgFvY}
+                    x2={svgX + 3.5}
+                    y2={svgFvY}
+                    stroke={pt.color}
+                    strokeWidth="0.8"
+                  />
                   <line
                     x1={svgX}
-                    y1={Math.min(svgFvY, svgTvY, originY)}
+                    y1={svgFvY - 3.5}
                     x2={svgX}
-                    y2={Math.max(svgFvY, svgTvY, originY)}
-                    stroke={sheetDark ? '#94a3b8' : '#64748b'}
-                    strokeWidth="1.0"
+                    y2={svgFvY + 3.5}
+                    stroke={pt.color}
+                    strokeWidth="0.8"
                   />
-
-                  {/* Ground Line Intersection Marker */}
+                  {/* Main Point Marker Dot (Crisp, reduced size, identical color across views) */}
                   <circle
                     cx={svgX}
-                    cy={originY}
-                    r="2"
-                    fill={sheetDark ? '#e2e8f0' : '#0f172a'}
+                    cy={svgFvY}
+                    r={isSelected ? '2.8' : '2.0'}
+                    fill={pt.color}
+                    stroke="#ffffff"
+                    strokeWidth="1.0"
                   />
+                  {/* Label: a' (or bracketed (a') if hidden) */}
+                  <text
+                    x={svgX - 7}
+                    y={svgFvY + (pt.frontViewY >= 0 ? -5 : 13)}
+                    fill={vpColor}
+                    fontSize="12"
+                    fontFamily="monospace"
+                    fontWeight="bold"
+                    textAnchor="end"
+                  >
+                    {viewsCoincide
+                      ? `${pt.frontViewLabel} (${pt.topViewLabel})`
+                      : pt.frontViewLabel}
+                  </text>
+                </g>
 
-                  {/* Dimension Annotations */}
-                  {showDimensions && pt.distHp > 0 && (
-                    <g>
-                      <line
-                        x1={svgX - 2}
-                        y1={svgFvY}
-                        x2={dimFvX - 5}
-                        y2={svgFvY}
-                        stroke={sheetDark ? '#94a3b8' : '#64748b'}
-                        strokeWidth="0.75"
-                        opacity="0.65"
-                      />
-                      <line
-                        x1={svgX - 2}
-                        y1={originY}
-                        x2={dimFvX - 5}
-                        y2={originY}
-                        stroke={sheetDark ? '#94a3b8' : '#64748b'}
-                        strokeWidth="0.75"
-                        opacity="0.65"
-                      />
-                      <line
-                        x1={dimFvX}
-                        y1={originY}
-                        x2={dimFvX}
-                        y2={svgFvY}
-                        stroke={sheetDark ? '#94a3b8' : '#64748b'}
-                        strokeWidth="1.0"
-                        markerStart="url(#pt-dim-arrow-start)"
-                        markerEnd="url(#pt-dim-arrow-end)"
-                      />
-                      <text
-                        x={dimFvX - 4}
-                        y={(originY + svgFvY) / 2 + 3.5}
-                        fill={sheetDark ? '#cbd5e1' : '#334155'}
-                        fontSize="9.5"
-                        fontFamily="'JetBrains Mono', monospace"
-                        fontWeight="bold"
-                        textAnchor="end"
-                      >
-                        {pt.distHp}
-                      </text>
-                    </g>
-                  )}
-
-                  {showDimensions && pt.distVp > 0 && !viewsCoincide && (
-                    <g>
-                      <line
-                        x1={svgX - 2}
-                        y1={svgTvY}
-                        x2={dimTvX - 5}
-                        y2={svgTvY}
-                        stroke={sheetDark ? '#94a3b8' : '#64748b'}
-                        strokeWidth="0.75"
-                        opacity="0.65"
-                      />
-                      <line
-                        x1={svgX - 2}
-                        y1={originY}
-                        x2={dimTvX - 5}
-                        y2={originY}
-                        stroke={sheetDark ? '#94a3b8' : '#64748b'}
-                        strokeWidth="0.75"
-                        opacity="0.65"
-                      />
-                      <line
-                        x1={dimTvX}
-                        y1={originY}
-                        x2={dimTvX}
-                        y2={svgTvY}
-                        stroke={sheetDark ? '#94a3b8' : '#64748b'}
-                        strokeWidth="1.0"
-                        markerStart="url(#pt-dim-arrow-start)"
-                        markerEnd="url(#pt-dim-arrow-end)"
-                      />
-                      <text
-                        x={dimTvX - 4}
-                        y={(originY + svgTvY) / 2 + 3.5}
-                        fill={sheetDark ? '#cbd5e1' : '#334155'}
-                        fontSize="9.5"
-                        fontFamily="'JetBrains Mono', monospace"
-                        fontWeight="bold"
-                        textAnchor="end"
-                      >
-                        {pt.distVp}
-                      </text>
-                    </g>
-                  )}
-
-                  {/* Front View Point (a′) */}
+                {/* 3. TOP VIEW POINT (a or A) if not coinciding — Unified point color pt.color, crisp reduced radius */}
+                {!viewsCoincide && (
                   <g>
-                    {isSelected && (
-                      <circle
-                        cx={svgX}
-                        cy={svgFvY}
-                        r="5.5"
-                        fill="none"
-                        stroke={vpColor}
-                        strokeWidth="1.1"
-                        opacity="0.45"
-                      />
-                    )}
+                    <line
+                      x1={svgX - 3.5}
+                      y1={svgTvY}
+                      x2={svgX + 3.5}
+                      y2={svgTvY}
+                      stroke={pt.color}
+                      strokeWidth="0.8"
+                    />
+                    <line
+                      x1={svgX}
+                      y1={svgTvY - 3.5}
+                      x2={svgX}
+                      y2={svgTvY + 3.5}
+                      stroke={pt.color}
+                      strokeWidth="0.8"
+                    />
+                    {/* Main Point Marker Dot (Identical unified color pt.color) */}
                     <circle
                       cx={svgX}
-                      cy={svgFvY}
-                      r={isSelected ? '3.0' : '2.4'}
-                      fill={vpColor}
+                      cy={svgTvY}
+                      r={isSelected ? '2.8' : '2.0'}
+                      fill={pt.color}
                       stroke="#ffffff"
-                      strokeWidth="0.9"
+                      strokeWidth="1.0"
                     />
+                    {/* Label: a (or bracketed (a) if hidden) */}
                     <text
-                      x={svgX + 8}
-                      y={svgFvY + (pt.frontViewY >= 0 ? -4 : 13)}
-                      fill={vpColor}
-                      fontSize="12.5"
+                      x={svgX - 7}
+                      y={svgTvY + (pt.topViewY >= 0 ? -5 : 13)}
+                      fill={hpColor}
+                      fontSize="12"
+                      fontFamily="monospace"
                       fontWeight="bold"
-                      fontFamily="'Space Grotesk', sans-serif"
+                      textAnchor="end"
                     >
-                      {viewsCoincide
-                        ? `${pt.frontViewLabel} (${pt.topViewLabel})`
-                        : pt.frontViewLabel}
+                      {pt.topViewLabel}
                     </text>
                   </g>
+                )}
 
-                  {/* Top View Point (a) */}
-                  {!viewsCoincide && (
-                    <g>
-                      {isSelected && (
-                        <circle
-                          cx={svgX}
-                          cy={svgTvY}
-                          r="5.5"
-                          fill="none"
-                          stroke={hpColor}
-                          strokeWidth="1.1"
-                          opacity="0.45"
-                        />
-                      )}
-                      <circle
-                        cx={svgX}
-                        cy={svgTvY}
-                        r={isSelected ? '3.0' : '2.4'}
-                        fill={hpColor}
-                        stroke="#ffffff"
-                        strokeWidth="0.9"
-                      />
-                      <text
-                        x={svgX + 8}
-                        y={svgTvY + (pt.topViewY >= 0 ? -4 : 14)}
-                        fill={hpColor}
-                        fontSize="12.5"
-                        fontWeight="bold"
-                        fontFamily="'Space Grotesk', sans-serif"
-                      >
-                        {pt.topViewLabel}
-                      </text>
-                    </g>
-                  )}
-                </g>
-              );
-            })}
+                {/* 4. DIMENSION ANNOTATIONS - Placed immediately next to the points */}
+                {/* Distance for Front View (Height relative to HP) */}
+                {pt.distHp > 0 && (
+                  <g>
+                    {/* Extension lines */}
+                    <line
+                      x1={svgX + 2}
+                      y1={svgFvY}
+                      x2={dimFvX + 4}
+                      y2={svgFvY}
+                      stroke={colors.projector}
+                      strokeWidth="0.75"
+                    />
+                    <line
+                      x1={svgX + 2}
+                      y1={svgGroundY}
+                      x2={dimFvX + 4}
+                      y2={svgGroundY}
+                      stroke={colors.projector}
+                      strokeWidth="0.75"
+                    />
+                    {/* Dimension Line with Double Arrows */}
+                    <line
+                      x1={dimFvX}
+                      y1={svgGroundY}
+                      x2={dimFvX}
+                      y2={svgFvY}
+                      stroke={colors.dimension}
+                      strokeWidth="1.1"
+                      markerStart="url(#dim-arrow-start)"
+                      markerEnd="url(#dim-arrow-end)"
+                    />
+                    {/* Measurement Text */}
+                    <text
+                      x={dimFvX + 3}
+                      y={(svgGroundY + svgFvY) / 2 + 3.5}
+                      fill={colors.dimensionText}
+                      fontSize="9"
+                      fontFamily="monospace"
+                      fontWeight="bold"
+                      textAnchor="start"
+                      stroke={isDark ? '#090d16' : '#ffffff'}
+                      strokeWidth="2.5"
+                      paintOrder="stroke"
+                    >
+                      {pt.distHp}
+                    </text>
+                  </g>
+                )}
 
-            {/* Drawing Sheet Title Block (Lower Right — Matches Straight Lines) */}
-            <g transform={`translate(${baseWidth - 260}, ${baseHeight - 72})`}>
-              <rect
-                x="0"
-                y="0"
-                width="250"
-                height="64"
-                fill={sheetDark ? '#0f172a' : '#ffffff'}
-                stroke={sheetDark ? '#94a3b8' : '#0f172a'}
-                strokeWidth="1.2"
-              />
-              {/* EDraw Watermark */}
-              <text
-                x="242"
-                y="58"
-                fill={sheetDark ? '#334155' : '#e2e8f0'}
-                fontSize="16"
-                fontFamily="sans-serif"
-                fontWeight="900"
-                textAnchor="end"
-              >
-                EDraw
-              </text>
-              <line
-                x1="0"
-                y1="18"
-                x2="250"
-                y2="18"
-                stroke={sheetDark ? '#334155' : '#0f172a'}
-                strokeWidth="0.8"
-              />
-              <line
-                x1="0"
-                y1="34"
-                x2="250"
-                y2="34"
-                stroke={sheetDark ? '#334155' : '#0f172a'}
-                strokeWidth="0.8"
-              />
-              <line
-                x1="130"
-                y1="34"
-                x2="130"
-                y2="64"
-                stroke={sheetDark ? '#334155' : '#0f172a'}
-                strokeWidth="0.8"
-              />
-              <text
-                x="8"
-                y="13"
-                fill={sheetDark ? '#f1f5f9' : '#0f172a'}
-                fontSize="9"
-                fontFamily="sans-serif"
-                fontWeight="bold"
-              >
-                PROJECTION OF POINTS (1ST ANGLE)
-              </text>
-              <text
-                x="8"
-                y="29"
-                fill={sheetDark ? '#f1f5f9' : '#0f172a'}
-                fontSize="8"
-                fontFamily="monospace"
-              >
-                Scale: 1:1 • All Dimensions in mm
-              </text>
-              <text
-                x="8"
-                y="47"
-                fill={sheetDark ? '#f1f5f9' : '#0f172a'}
-                fontSize="8"
-                fontFamily="monospace"
-                fontWeight="bold"
-              >
-                NAME: {studentName || '________________'}
-              </text>
-              <text
-                x="136"
-                y="47"
-                fill={sheetDark ? '#f1f5f9' : '#0f172a'}
-                fontSize="8"
-                fontFamily="monospace"
-                fontWeight="bold"
-              >
-                REG: {registerNo || '__________'}
-              </text>
-              <text
-                x="8"
-                y="59"
-                fill={sheetDark ? '#94a3b8' : '#475569'}
-                fontSize="7"
-                fontFamily="monospace"
-              >
-                POINT {selectedPoint ? selectedPoint.name : 'A'} • BIS SP 46
-              </text>
-            </g>
-          </svg>
-        </div>
+                {/* Distance for Top View (Depth relative to VP) */}
+                {pt.distVp > 0 && !viewsCoincide && (
+                  <g>
+                    {/* Extension lines */}
+                    <line
+                      x1={svgX + 2}
+                      y1={svgTvY}
+                      x2={dimTvX + 4}
+                      y2={svgTvY}
+                      stroke={colors.projector}
+                      strokeWidth="0.75"
+                    />
+                    <line
+                      x1={svgX + 2}
+                      y1={svgGroundY}
+                      x2={dimTvX + 4}
+                      y2={svgGroundY}
+                      stroke={colors.projector}
+                      strokeWidth="0.75"
+                    />
+                    {/* Dimension Line */}
+                    <line
+                      x1={dimTvX}
+                      y1={svgGroundY}
+                      x2={dimTvX}
+                      y2={svgTvY}
+                      stroke={colors.dimension}
+                      strokeWidth="1.1"
+                      markerStart="url(#dim-arrow-start)"
+                      markerEnd="url(#dim-arrow-end)"
+                    />
+                    {/* Measurement Text */}
+                    <text
+                      x={dimTvX + 3}
+                      y={(svgGroundY + svgTvY) / 2 + 3.5}
+                      fill={colors.dimensionText}
+                      fontSize="9"
+                      fontFamily="monospace"
+                      fontWeight="bold"
+                      textAnchor="start"
+                      stroke={isDark ? '#090d16' : '#ffffff'}
+                      strokeWidth="2.5"
+                      paintOrder="stroke"
+                    >
+                      {pt.distVp}
+                    </text>
+                  </g>
+                )}
+              </g>
+            );
+          })}
 
-        {/* Bottom Legend & Status Bar (Matches Straight Lines) */}
-        <div className="border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
-          {selectedPoint ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-xs" style={{ backgroundColor: vpColor }} />
-                <span className="text-slate-600 dark:text-slate-400">
-                  Front View ({selectedPoint.frontViewLabel}): {selectedPoint.frontViewDesc}
-                </span>
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-xs" style={{ backgroundColor: hpColor }} />
-                <span className="text-slate-600 dark:text-slate-400">
-                  Top View ({selectedPoint.topViewLabel}): {selectedPoint.topViewDesc}
-                </span>
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-xs bg-purple-500" />
-                <span className="text-purple-600 dark:text-purple-400">
-                  {selectedPoint.quadrantTitle}
-                </span>
-              </span>
-            </div>
-          ) : (
-            <span className="text-slate-500">No point active</span>
-          )}
+          {/* Standard Engineering Drawing Title Block & Scale (Bottom-Right) */}
+          <g transform={`translate(${viewWidth - 265}, ${viewHeight - 78})`}>
+            <rect
+              width="250"
+              height="63"
+              fill={isDark ? '#0f172a' : '#f8fafc'}
+              stroke={colors.titleBlockBorder}
+              strokeWidth="1.2"
+            />
+            <line
+              x1="0"
+              y1="20"
+              x2="250"
+              y2="20"
+              stroke={colors.titleBlockBorder}
+              strokeWidth="0.8"
+            />
+            <text
+              x="8"
+              y="14"
+              fill={colors.textMain}
+              fontSize="9.5"
+              fontFamily="sans-serif"
+              fontWeight="bold"
+            >
+              EDraw — PROJECTION OF POINTS
+            </text>
+            <text
+              x="8"
+              y="33"
+              fill={colors.textMain}
+              fontSize="8.5"
+              fontFamily="monospace"
+              fontWeight="bold"
+            >
+              Scale: 1:1 • All Dimensions Are In mm
+            </text>
+            <text
+              x="8"
+              y="46"
+              fill={vpColor}
+              fontSize="8.5"
+              fontFamily="monospace"
+              fontWeight="bold"
+            >
+              ELEVATION: Front View a′ (on VP)
+            </text>
+            <text
+              x="8"
+              y="57"
+              fill={hpColor}
+              fontSize="8.5"
+              fontFamily="monospace"
+              fontWeight="bold"
+            >
+              PLAN: Top View a (on HP)
+            </text>
+          </g>
+        </svg>
 
-          <div className="text-[11px] text-slate-400">
-            Scale: 1 mm = {mmScale.toFixed(1)} px • Drag to Pan • Scroll to Zoom
-          </div>
-        </div>
+        {/* Lower right title block is retained, lower left overlay removed per user request */}
       </div>
     </div>
   );

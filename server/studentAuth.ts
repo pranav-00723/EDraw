@@ -80,6 +80,15 @@ export function isSmtpConfigured(): boolean {
   return Boolean((process.env.SMTP_USER || '').trim() && (process.env.SMTP_PASS || '').trim());
 }
 
+export function isAppsScriptWebhookConfigured(): boolean {
+  const url = (process.env.APPS_SCRIPT_WEBHOOK_URL || '').trim();
+  return /^https:\/\/.+/i.test(url);
+}
+
+export function isAutoMailerConfigured(): boolean {
+  return isSmtpConfigured() || isAppsScriptWebhookConfigured();
+}
+
 function sanitizeHeaderValue(raw: string): string {
   return raw.replace(/[\r\n]+/g, ' ').trim();
 }
@@ -742,6 +751,17 @@ export class StudentAuthService {
     const token = authHeader.slice('Bearer '.length).trim();
     if (token) {
       this.revokedTokens.add(token);
+    }
+  }
+
+  resetDatabase(): void {
+    this.revokedTokens.clear();
+    try {
+      if (fs.existsSync(this.storePath)) {
+        fs.unlinkSync(this.storePath);
+      }
+    } catch (err) {
+      console.warn('Could not delete legacy students.json during reset:', err);
     }
   }
 

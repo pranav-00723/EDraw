@@ -17,7 +17,7 @@ import {
 import {
   StudentAuthService,
   getAdminSenderEmail,
-  isSmtpConfigured,
+  isAutoMailerConfigured,
 } from './server/studentAuth.ts';
 import { RegistrationService } from './server/registrationService.ts';
 
@@ -806,8 +806,35 @@ app.get('/api/auth/sender-status', (_req, res) => {
   return res.json({
     success: true,
     adminSenderEmail: getAdminSenderEmail(),
-    smtpConfigured: isSmtpConfigured(),
+    smtpConfigured: isAutoMailerConfigured(),
   });
+});
+
+app.post('/api/admin/reset-database', async (req, res) => {
+  try {
+    const senderCheck = await studentAuth.verifyGoogleSenderBearer(req.headers.authorization);
+    if (!senderCheck.ok) {
+      return res.status(senderCheck.status).json({
+        success: false,
+        error: senderCheck.error,
+        connectedEmail: senderCheck.email,
+      });
+    }
+
+    await registrationService.resetDatabase();
+    studentAuth.resetDatabase();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Student registration database reset to empty (next ID: EDID-1000).',
+    });
+  } catch (err) {
+    console.error('Error in /api/admin/reset-database:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Unable to reset the registration database right now.',
+    });
+  }
 });
 
 app.get('/api/auth/dispatch-queue', async (req, res) => {

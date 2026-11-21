@@ -56,6 +56,7 @@ import {
   reloadFirebaseUserAndGetToken,
   signInGmailSender,
   signInStudentWithFirebase,
+  signInStudentWithGoogle,
   signOutGmailSender,
 } from '../../firebase';
 import { syncVerifiedStudentToFirestore } from '../../utils/firestoreStudentSync';
@@ -64,6 +65,7 @@ import {
   type PendingGmailConfirmation,
 } from './GmailConfirmModal';
 import { GmailDispatcherPanel } from './GmailDispatcherPanel';
+import { SimpleEmailRegistrationForm } from './SimpleEmailRegistrationForm';
 
 type AuthScreen =
   | 'login'
@@ -92,6 +94,31 @@ interface StudentAuthPortalProps {
 }
 
 const RESEND_COOLDOWN_SECONDS = 45;
+const FIREBASE_CONSOLE_PROVIDERS_URL =
+  'https://console.firebase.google.com/project/gen-lang-client-0761382280/authentication/providers';
+
+function GoogleGIcon() {
+  return (
+    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="#4285F4"
+        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+      />
+    </svg>
+  );
+}
 
 function mapFirebaseAuthError(err: any, fallback: string): string {
   const code = typeof err?.code === 'string' ? err.code : '';
@@ -115,7 +142,13 @@ function mapFirebaseAuthError(err: any, fallback: string): string {
     case 'auth/user-disabled':
       return 'This account has been disabled. Contact your administrator.';
     case 'auth/operation-not-allowed':
-      return 'Email/Password sign-in is not enabled in Firebase Authentication yet. Enable Email/Password in the Firebase Console.';
+      return 'Email/Password sign-in is not enabled in Firebase Authentication yet. Enable Email/Password in the Firebase Console, or continue instantly with Google below.';
+    case 'auth/popup-blocked':
+      return 'The Google sign-in popup was blocked by your browser. Allow popups for this site and try again.';
+    case 'auth/popup-closed-by-user':
+      return 'Google sign-in was cancelled before completion.';
+    case 'auth/unauthorized-domain':
+      return 'This preview domain is not yet allowlisted in Firebase Authentication Authorized Domains.';
     case 'auth/network-request-failed':
       return 'Network error communicating with authentication services. Please check your connection and retry.';
     default:
@@ -148,10 +181,13 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
   const [loginPassword, setLoginPassword] = useState('');
   const [loginErrors, setLoginErrors] = useState<{ identifier?: string; password?: string }>({});
   const [loginServerError, setLoginServerError] = useState<string | null>(null);
+  const [loginProviderSetupNeeded, setLoginProviderSetupNeeded] = useState(false);
+  const [loginNetworkHelpNeeded, setLoginNetworkHelpNeeded] = useState(false);
   const [loginNotice, setLoginNotice] = useState<string | null>(null);
   const [unverifiedGmail, setUnverifiedGmail] = useState<string | null>(null);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isGoogleAuthLoading, setIsGoogleAuthLoading] = useState(false);
 
   // Firebase Registration form state
   const [regForm, setRegForm] = useState<FirebaseRegistrationInput>({
@@ -164,6 +200,8 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
   });
   const [regFieldErrors, setRegFieldErrors] = useState<FieldErrors<FirebaseRegistrationInput>>({});
   const [regServerError, setRegServerError] = useState<string | null>(null);
+  const [regProviderSetupNeeded, setRegProviderSetupNeeded] = useState(false);
+  const [regNetworkHelpNeeded, setRegNetworkHelpNeeded] = useState(false);
   const [regDuplicateEmail, setRegDuplicateEmail] = useState<string | null>(null);
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [showRegConfirmPassword, setShowRegConfirmPassword] = useState(false);
@@ -216,6 +254,8 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
   const [dispatchNotice, setDispatchNotice] = useState<string | null>(null);
   const [pendingGmailSend, setPendingGmailSend] = useState<PendingGmailConfirmation | null>(null);
   const [isSendingGmail, setIsSendingGmail] = useState<boolean>(false);
+  const [isConfirmingReset, setIsConfirmingReset] = useState<boolean>(false);
+  const [isResettingDatabase, setIsResettingDatabase] = useState<boolean>(false);
 
   // Cooldown timer for Firebase verification resend
   useEffect(() => {
@@ -607,6 +647,45 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
     }
   };
 
+  const handleConfirmResetDatabase = async () => {
+    const token = getGmailAccessToken();
+    if (!token) {
+      setIsConfirmingReset(false);
+      setDispatchError('Your Gmail sender session expired. Please sign in with Google again.');
+      return;
+    }
+
+    setIsResettingDatabase(true);
+    setDispatchError(null);
+    setDispatchNotice(null);
+    try {
+      const res = await fetch('/api/admin/reset-database', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setDispatchError(data.error || 'Unable to reset the student registration database.');
+        return;
+      }
+
+      setDispatchQueue([]);
+      setVerifiedStudent(null);
+      setPendingEmail('');
+      setVerificationCodeInput('');
+      setCheckEmailError(null);
+      setCheckEmailNotice(null);
+      setDispatchNotice(
+        data.message || 'Server student registration database reset to empty (next ID: EDID-1000).'
+      );
+      setIsConfirmingReset(false);
+    } catch {
+      setDispatchError('Network error while resetting the student registration database.');
+    } finally {
+      setIsResettingDatabase(false);
+    }
+  };
+
   const verifyTokenOnServer = useCallback(
     async (token: string) => {
       setIsVerifyingToken(true);
@@ -657,6 +736,8 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginServerError(null);
+    setLoginProviderSetupNeeded(false);
+    setLoginNetworkHelpNeeded(false);
     setLoginNotice(null);
     setUnverifiedGmail(null);
 
@@ -763,6 +844,13 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
       );
       setScreen('check_email');
     } catch (err: any) {
+      const code = typeof err?.code === 'string' ? err.code : '';
+      if (code === 'auth/operation-not-allowed') {
+        setLoginProviderSetupNeeded(true);
+      } else if (code === 'auth/network-request-failed') {
+        console.error('Firebase Login network error:', code, err?.message);
+        setLoginNetworkHelpNeeded(true);
+      }
       setLoginServerError(
         mapFirebaseAuthError(err, 'Unable to sign in right now. Please try again.')
       );
@@ -771,9 +859,154 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
     }
   };
 
+  const handleGoogleStudentAuth = async (source: 'login' | 'register') => {
+    if (source === 'login') {
+      setLoginServerError(null);
+      setLoginProviderSetupNeeded(false);
+      setLoginNetworkHelpNeeded(false);
+      setLoginNotice(null);
+      setUnverifiedGmail(null);
+    } else {
+      setRegServerError(null);
+      setRegProviderSetupNeeded(false);
+      setRegNetworkHelpNeeded(false);
+      setRegDuplicateEmail(null);
+    }
+
+    setIsGoogleAuthLoading(true);
+    try {
+      const user = await signInStudentWithGoogle();
+      const idToken = await user.getIdToken(true);
+      setActiveIdToken(idToken);
+
+      const meRes = await fetch('/api/registration/me', {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      const meData = await meRes.json();
+
+      if (meRes.ok && meData.success && meData.student?.verified && meData.student?.edrawId) {
+        const student = meData.student as StudentProfileSummary;
+        const fsResult = await syncVerifiedStudentToFirestore(student);
+        setFirestoreSynced(fsResult.synced);
+        if (source === 'login') {
+          onLoginSuccess(student, idToken);
+          return;
+        }
+        setVerifiedStudent(student);
+        setPendingEmail(student.gmail);
+        setPendingStudentName(student.name);
+        setPendingCollege(student.college);
+        setPendingStudentDetails(student.studentDetails || '');
+        markSuccessUrlFlag();
+        setScreen('success');
+        return;
+      }
+
+      const fallbackName = regForm.name.trim() || user.displayName || undefined;
+      const fallbackCollege = regForm.college.trim() || undefined;
+      const fallbackDetails = regForm.studentDetails.trim() || undefined;
+
+      if (user.emailVerified) {
+        setScreen('verifying');
+        setVerifyingMessage('Allocating your unique eDraw ID on the server...');
+        await finalizeVerifiedStudentAllocation(
+          idToken,
+          {
+            name: fallbackName,
+            college: fallbackCollege,
+            studentDetails: fallbackDetails,
+          },
+          false
+        );
+        return;
+      }
+
+      const normalizedEmail = normalizeEmail(user.email || '');
+      const pendingRes = await fetch('/api/registration/pending', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          name: fallbackName || normalizedEmail.split('@')[0] || 'EDraw Student',
+          college: fallbackCollege || 'Engineering College',
+          studentDetails: fallbackDetails || '',
+        }),
+      });
+      const pendingData = await pendingRes.json();
+      if (!pendingRes.ok || !pendingData.success) {
+        const msg = pendingData.error || 'Could not initialize your registration.';
+        if (source === 'login') setLoginServerError(msg);
+        else setRegServerError(msg);
+        return;
+      }
+
+      const mode: 'smtp' | 'gmail_pending' =
+        pendingData.deliveryMode === 'smtp' ? 'smtp' : 'gmail_pending';
+      const resolvedName = fallbackName || normalizedEmail.split('@')[0] || 'EDraw Student';
+      const resolvedCollege = fallbackCollege || 'Engineering College';
+
+      setPendingEmail(normalizedEmail);
+      setPendingStudentName(resolvedName);
+      setPendingCollege(resolvedCollege);
+      setPendingStudentDetails(fallbackDetails || '');
+      setPendingDeliveryMode(mode);
+      setVerificationCodeInput('');
+      setCheckEmailError(null);
+
+      if (mode === 'smtp') {
+        setResendCooldown(RESEND_COOLDOWN_SECONDS);
+        setCheckEmailNotice(
+          `We sent a 6-digit verification code to ${normalizedEmail}. Enter the code below (valid for 1 hour).`
+        );
+      } else if (
+        hasGmailToken &&
+        gmailSenderEmail &&
+        gmailSenderEmail.toLowerCase() === adminSenderEmail.toLowerCase()
+      ) {
+        setCheckEmailNotice(
+          `Confirm sending the 6-digit verification code from ${gmailSenderEmail} to ${normalizedEmail}, then type the code below.`
+        );
+        setPendingGmailSend({
+          senderEmail: gmailSenderEmail,
+          recipientEmail: normalizedEmail,
+          studentName: resolvedName,
+          college: resolvedCollege,
+          kind: 'verification_code',
+        });
+      } else {
+        setCheckEmailNotice(
+          `Enter the 6-digit verification code sent to ${normalizedEmail} to activate your eDraw ID.`
+        );
+      }
+      setScreen('check_email');
+    } catch (err: any) {
+      const code = typeof err?.code === 'string' ? err.code : '';
+      if (code === 'auth/network-request-failed') {
+        console.error('Firebase Google auth network error:', code, err?.message);
+      }
+      const msg = mapFirebaseAuthError(
+        err,
+        'Unable to sign in with Google right now. Please try again.'
+      );
+      if (source === 'login') {
+        if (code === 'auth/network-request-failed') setLoginNetworkHelpNeeded(true);
+        setLoginServerError(msg);
+      } else {
+        if (code === 'auth/network-request-failed') setRegNetworkHelpNeeded(true);
+        setRegServerError(msg);
+      }
+    } finally {
+      setIsGoogleAuthLoading(false);
+    }
+  };
+
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setRegServerError(null);
+    setRegProviderSetupNeeded(false);
+    setRegNetworkHelpNeeded(false);
     setRegDuplicateEmail(null);
 
     const normalizedEmail = normalizeEmail(regForm.email);
@@ -864,6 +1097,11 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
       const code = typeof err?.code === 'string' ? err.code : '';
       if (code === 'auth/email-already-in-use') {
         setRegDuplicateEmail(normalizedEmail);
+      } else if (code === 'auth/operation-not-allowed') {
+        setRegProviderSetupNeeded(true);
+      } else if (code === 'auth/network-request-failed') {
+        console.error('Firebase Register network error:', code, err?.message);
+        setRegNetworkHelpNeeded(true);
       }
       setRegServerError(
         mapFirebaseAuthError(err, 'Unable to create your registration right now. Please try again.')
@@ -1286,6 +1524,52 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
                     <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
                     <div className="space-y-2 flex-1">
                       <p className="font-medium leading-relaxed">{loginServerError}</p>
+                      {loginProviderSetupNeeded && (
+                        <div className="space-y-1.5 pt-1 border-t border-rose-200/80 dark:border-rose-800/60">
+                          <p className="text-[11px] leading-relaxed">
+                            In Firebase Console, open <strong>Authentication → Sign-in method</strong>, click{' '}
+                            <strong>Email/Password</strong>, toggle <strong>Enable</strong>, and save.
+                          </p>
+                          <div className="flex flex-wrap items-center gap-3">
+                            <a
+                              href={FIREBASE_CONSOLE_PROVIDERS_URL}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 font-semibold text-[#612AD6] dark:text-purple-300 underline underline-offset-2 hover:opacity-80"
+                            >
+                              <span>Open Firebase Sign-in Providers</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                            <button
+                              type="button"
+                              disabled={isGoogleAuthLoading}
+                              onClick={() => void handleGoogleStudentAuth('login')}
+                              className="font-semibold text-[#612AD6] dark:text-purple-300 underline underline-offset-2 hover:opacity-80 cursor-pointer"
+                            >
+                              Use Google Sign-In instead
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {loginNetworkHelpNeeded && (
+                        <div className="space-y-1.5 pt-1 border-t border-rose-200/80 dark:border-rose-800/60">
+                          <p className="text-[11px] leading-relaxed">
+                            This commonly happens inside an embedded preview iframe or when content
+                            blockers block <span className="font-mono">googleapis.com</span> /{' '}
+                            <span className="font-mono">firebaseapp.com</span>. Try opening EDraw in a
+                            dedicated browser tab:
+                          </p>
+                          <a
+                            href={typeof window !== 'undefined' ? window.location.href : '/'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 font-semibold text-[#612AD6] dark:text-purple-300 underline underline-offset-2 hover:opacity-80"
+                          >
+                            <span>Open EDraw in New Tab</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </div>
+                      )}
                       {unverifiedGmail && (
                         <button
                           type="button"
@@ -1387,7 +1671,7 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
 
                   <button
                     type="submit"
-                    disabled={isLoggingIn}
+                    disabled={isLoggingIn || isGoogleAuthLoading}
                     className="w-full h-11 px-5 rounded-xl bg-[#6B32E4] hover:bg-[#5923CC] disabled:opacity-60 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap shadow-xs"
                   >
                     {isLoggingIn && <Loader2 className="w-4 h-4 animate-spin" />}
@@ -1395,6 +1679,30 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
                     {!isLoggingIn && <ArrowRight className="w-4 h-4" />}
                   </button>
                 </form>
+
+                <div className="relative my-5 flex items-center">
+                  <div className="flex-1 border-t border-[#EEEAF8] dark:border-slate-800" />
+                  <span className="px-3 text-[11px] font-medium text-[#77758F] dark:text-slate-400">
+                    or
+                  </span>
+                  <div className="flex-1 border-t border-[#EEEAF8] dark:border-slate-800" />
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isGoogleAuthLoading || isLoggingIn}
+                  onClick={() => void handleGoogleStudentAuth('login')}
+                  className="w-full h-11 px-5 rounded-xl border border-[#DFD7F4] dark:border-slate-700 bg-white dark:bg-slate-950 hover:bg-[#F8F7FC] dark:hover:bg-slate-800 disabled:opacity-60 text-sm font-semibold text-[#202044] dark:text-slate-100 transition-colors flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap"
+                >
+                  {isGoogleAuthLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-[#6B32E4]" />
+                  ) : (
+                    <GoogleGIcon />
+                  )}
+                  <span>
+                    {isGoogleAuthLoading ? 'Signing in with Google...' : 'Continue with Google'}
+                  </span>
+                </button>
 
                 <div className="mt-6 pt-5 border-t border-[#EEEAF8] dark:border-slate-800 text-center">
                   <p className="text-xs text-[#6E6C84] dark:text-slate-400 mb-2">
@@ -1450,6 +1758,53 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
                     <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
                     <div className="space-y-2 flex-1">
                       <p className="font-medium leading-relaxed">{regServerError}</p>
+                      {regProviderSetupNeeded && (
+                        <div className="space-y-1.5 pt-1 border-t border-rose-200/80 dark:border-rose-800/60">
+                          <p className="text-[11px] leading-relaxed">
+                            To use Email/Password registration, open{' '}
+                            <strong>Authentication → Sign-in method</strong> in Firebase Console, enable{' '}
+                            <strong>Email/Password</strong>, and save.
+                          </p>
+                          <div className="flex flex-wrap items-center gap-3">
+                            <a
+                              href={FIREBASE_CONSOLE_PROVIDERS_URL}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 font-semibold text-[#612AD6] dark:text-purple-300 underline underline-offset-2 hover:opacity-80"
+                            >
+                              <span>Open Firebase Sign-in Providers</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                            <button
+                              type="button"
+                              disabled={isGoogleAuthLoading}
+                              onClick={() => void handleGoogleStudentAuth('register')}
+                              className="font-semibold text-[#612AD6] dark:text-purple-300 underline underline-offset-2 hover:opacity-80 cursor-pointer"
+                            >
+                              Continue with Google now
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {regNetworkHelpNeeded && (
+                        <div className="space-y-1.5 pt-1 border-t border-rose-200/80 dark:border-rose-800/60">
+                          <p className="text-[11px] leading-relaxed">
+                            This commonly happens inside an embedded preview iframe or when content
+                            blockers block <span className="font-mono">googleapis.com</span> /{' '}
+                            <span className="font-mono">firebaseapp.com</span>. Try opening EDraw in a
+                            dedicated browser tab:
+                          </p>
+                          <a
+                            href={typeof window !== 'undefined' ? window.location.href : '/'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 font-semibold text-[#612AD6] dark:text-purple-300 underline underline-offset-2 hover:opacity-80"
+                          >
+                            <span>Open EDraw in New Tab</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </div>
+                      )}
                       {regDuplicateEmail && (
                         <button
                           type="button"
@@ -1712,7 +2067,7 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
 
                   <button
                     type="submit"
-                    disabled={isRegistering}
+                    disabled={isRegistering || isGoogleAuthLoading}
                     className="w-full h-11 px-5 mt-2 rounded-xl bg-[#6B32E4] hover:bg-[#5923CC] disabled:opacity-60 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap shadow-xs"
                   >
                     {isRegistering && <Loader2 className="w-4 h-4 animate-spin" />}
@@ -1724,6 +2079,32 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
                     {!isRegistering && <ArrowRight className="w-4 h-4" />}
                   </button>
                 </form>
+
+                <div className="relative my-5 flex items-center">
+                  <div className="flex-1 border-t border-[#EEEAF8] dark:border-slate-800" />
+                  <span className="px-3 text-[11px] font-medium text-[#77758F] dark:text-slate-400">
+                    or register with Google
+                  </span>
+                  <div className="flex-1 border-t border-[#EEEAF8] dark:border-slate-800" />
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isGoogleAuthLoading || isRegistering}
+                  onClick={() => void handleGoogleStudentAuth('register')}
+                  className="w-full h-11 px-5 rounded-xl border border-[#DFD7F4] dark:border-slate-700 bg-white dark:bg-slate-950 hover:bg-[#F8F7FC] dark:hover:bg-slate-800 disabled:opacity-60 text-sm font-semibold text-[#202044] dark:text-slate-100 transition-colors flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap"
+                >
+                  {isGoogleAuthLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-[#6B32E4]" />
+                  ) : (
+                    <GoogleGIcon />
+                  )}
+                  <span>
+                    {isGoogleAuthLoading
+                      ? 'Completing Google Registration...'
+                      : 'Continue with Google (Instant eDraw ID)'}
+                  </span>
+                </button>
               </div>
             )}
 
@@ -2089,6 +2470,29 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
                   <span>Enter EDraw Dashboard</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
+
+                {!smtpConfigured &&
+                  hasGmailToken &&
+                  gmailSenderEmail &&
+                  gmailSenderEmail.toLowerCase() === adminSenderEmail.toLowerCase() && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPendingGmailSend({
+                          senderEmail: gmailSenderEmail,
+                          recipientEmail: verifiedStudent.gmail,
+                          studentName: verifiedStudent.name,
+                          college: verifiedStudent.college,
+                          edrawId: verifiedStudent.edrawId,
+                          kind: 'verified_edraw_id',
+                        })
+                      }
+                      className="w-full h-10 px-4 rounded-xl border border-[#DFD7F4] dark:border-slate-700 bg-[#F8F7FC] dark:bg-slate-800/70 hover:bg-[#EFE8FF] dark:hover:bg-slate-800 text-xs font-semibold text-[#5923CC] dark:text-purple-300 flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Send {verifiedStudent.edrawId} via {gmailSenderEmail}</span>
+                    </button>
+                  )}
               </div>
             )}
 
@@ -2327,6 +2731,12 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
               </div>
             )}
 
+            {(screen === 'login' || screen === 'register') && (
+              <div className="mt-4">
+                <SimpleEmailRegistrationForm />
+              </div>
+            )}
+
             {/* Official Sender Gmail Dispatcher Accordion */}
             <div className="mt-4">
               <button
@@ -2355,6 +2765,7 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
                     hasToken={hasGmailToken}
                     isSigningIn={isGmailSigningIn}
                     isLoadingQueue={isLoadingQueue}
+                    isResettingDatabase={isResettingDatabase}
                     smtpConfigured={smtpConfigured}
                     adminSenderEmail={adminSenderEmail}
                     queue={dispatchQueue}
@@ -2363,6 +2774,7 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
                     onSignInGoogle={() => void handleConnectGmailSender()}
                     onSignOutGoogle={() => void handleDisconnectGmailSender()}
                     onRefreshQueue={() => void loadDispatchQueue()}
+                    onRequestResetDatabase={() => setIsConfirmingReset(true)}
                     onRequestSend={(item, kind) =>
                       setPendingGmailSend({
                         senderEmail: gmailSenderEmail || adminSenderEmail,
@@ -2394,6 +2806,59 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
           if (!isSendingGmail) setPendingGmailSend(null);
         }}
       />
+
+      {isConfirmingReset && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reset-db-dialog-title"
+          className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4"
+        >
+          <div className="w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 border border-[#E8E2F5] dark:border-slate-800 p-6 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 flex items-center justify-center shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3
+                  id="reset-db-dialog-title"
+                  className="text-base font-bold text-[#202044] dark:text-slate-100"
+                >
+                  Reset Student Registration Database?
+                </h3>
+                <p className="text-xs text-[#6E6C84] dark:text-slate-400 leading-relaxed">
+                  This clears all student records and resets the next allocated identifier back to{' '}
+                  <span className="font-mono font-semibold text-[#202044] dark:text-slate-200">
+                    EDID-1000
+                  </span>
+                  . Any test users created inside Firebase Auth or Firestore must also be cleared
+                  from the Firebase Console if you want to reuse the same test email.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isResettingDatabase}
+                onClick={() => setIsConfirmingReset(false)}
+                className="h-10 px-4 rounded-xl border border-[#E2DBF2] dark:border-slate-700 text-xs font-semibold text-[#4A4863] dark:text-slate-200 hover:bg-[#F8F7FC] dark:hover:bg-slate-800 cursor-pointer disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isResettingDatabase}
+                onClick={() => void handleConfirmResetDatabase()}
+                className="h-10 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold inline-flex items-center gap-2 cursor-pointer disabled:opacity-60"
+              >
+                {isResettingDatabase && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>{isResettingDatabase ? 'Resetting...' : 'Reset Database'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

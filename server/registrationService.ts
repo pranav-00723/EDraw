@@ -25,6 +25,7 @@ import {
   buildMimeRawEmail,
   buildVerificationCodeEmailContent,
   buildVerifiedIdEmailContent,
+  getAdminSenderEmail,
   getSmtpTransporter,
 } from './studentAuth.ts';
 
@@ -46,6 +47,13 @@ export type OtpEmailSender = (params: {
   studentName: string;
   college: string;
   code: string;
+}) => Promise<boolean>;
+
+export type VerifiedIdEmailSender = (params: {
+  to: string;
+  studentName: string;
+  college: string;
+  edrawId: string;
 }) => Promise<boolean>;
 
 export interface ServerRegistrationRecord {
@@ -128,22 +136,85 @@ function verifyCodeHash(uid: string, email: string, code: string, storedHash: st
   return crypto.timingSafeEqual(actualBuf, expectedBuf);
 }
 
+async function postToAppsScriptWebhook(payload: Record<string, unknown>): Promise<boolean> {
+  const webhookUrl = (process.env.APPS_SCRIPT_WEBHOOK_URL || '').trim();
+  if (!/^https:\/\/.+/i.test(webhookUrl)) return false;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    return res.ok;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const defaultSmtpOtpSender: OtpEmailSender = async (params) => {
-  const smtp = getSmtpTransporter();
-  if (!smtp) return false;
   const content = buildVerificationCodeEmailContent({
     studentName: params.studentName,
     college: params.college,
     code: params.code,
   });
-  await smtp.transporter.sendMail({
-    from: smtp.from,
-    to: params.to,
+  const smtp = getSmtpTransporter();
+  if (smtp) {
+    await smtp.transporter.sendMail({
+      from: smtp.from,
+      to: params.to,
+      subject: content.subject,
+      text: content.text,
+      html: content.html,
+    });
+    return true;
+  }
+
+  return postToAppsScriptWebhook({
+    kind: 'verification_code',
+    from: getAdminSenderEmail(),
+    email: params.to,
+    studentName: params.studentName,
+    college: params.college,
+    code: params.code,
     subject: content.subject,
     text: content.text,
     html: content.html,
   });
-  return true;
+};
+
+const defaultSmtpVerifiedIdSender: VerifiedIdEmailSender = async (params) => {
+  const content = buildVerifiedIdEmailContent({
+    studentName: params.studentName,
+    college: params.college,
+    edrawId: params.edrawId,
+  });
+  const smtp = getSmtpTransporter();
+  if (smtp) {
+    await smtp.transporter.sendMail({
+      from: smtp.from,
+      to: params.to,
+      subject: content.subject,
+      text: content.text,
+      html: content.html,
+    });
+    return true;
+  }
+
+  return postToAppsScriptWebhook({
+    kind: 'verified_edraw_id',
+    from: getAdminSenderEmail(),
+    email: params.to,
+    studentName: params.studentName,
+    college: params.college,
+    edrawId: params.edrawId,
+    subject: content.subject,
+    text: content.text,
+    html: content.html,
+  });
 };
 
 export function toRegistrationProfileSummary(
@@ -169,6 +240,7 @@ export class RegistrationService {
   private readonly verifyToken: TokenVerifier;
   private readonly codeGenerator: () => string;
   private readonly otpEmailSender: OtpEmailSender;
+  private readonly verifiedIdEmailSender: VerifiedIdEmailSender;
   private readonly nowProvider: () => number;
   private lockChain: Promise<unknown> = Promise.resolve();
 
@@ -178,6 +250,7 @@ export class RegistrationService {
     verifyToken?: TokenVerifier;
     codeGenerator?: () => string;
     otpEmailSender?: OtpEmailSender;
+    verifiedIdEmailSender?: VerifiedIdEmailSender;
     nowProvider?: () => number;
   }) {
     this.storePath =
@@ -187,6 +260,7 @@ export class RegistrationService {
     this.verifyToken = options?.verifyToken || defaultFirebaseTokenVerifier;
     this.codeGenerator = options?.codeGenerator || generateSixDigitCode;
     this.otpEmailSender = options?.otpEmailSender || defaultSmtpOtpSender;
+    this.verifiedIdEmailSender = options?.verifiedIdEmailSender || defaultSmtpVerifiedIdSender;
     this.nowProvider = options?.nowProvider || (() => Date.now());
   }
 
@@ -628,13 +702,13 @@ export class RegistrationService {
 
     const { uid, email } = authResult.caller;
 
-    return this.withLock(() => {
+    const lockResult = await this.withLock(() => {
       const db = this.readDb();
       const existing = db.records[uid];
 
       if (existing && existing.edrawId && existing.verified) {
         return {
-          success: true,
+          success: true as const,
           alreadyAllocated: true,
           record: existing,
           student: toRegistrationProfileSummary(existing),
@@ -643,7 +717,7 @@ export class RegistrationService {
 
       if (!existing || !existing.verificationCodeHash) {
         return {
-          success: false,
+          success: false as const,
           status: 404,
           error: 'No active verification code was found. Please request a fresh verification code.',
         };
@@ -652,7 +726,7 @@ export class RegistrationService {
       const nowMs = this.nowProvider();
       if (existing.verificationCodeExpiresAt && existing.verificationCodeExpiresAt < nowMs) {
         return {
-          success: false,
+          success: false as const,
           status: 410,
           error: 'This verification code has expired (valid for 1 hour). Please request a new code.',
         };
@@ -664,7 +738,7 @@ export class RegistrationService {
         existing.verificationCodeExpiresAt = null;
         this.writeDb(db);
         return {
-          success: false,
+          success: false as const,
           status: 429,
           error: 'Too many incorrect code attempts. Please request a fresh verification code.',
         };
@@ -683,7 +757,7 @@ export class RegistrationService {
 
         const remaining = MAX_CODE_ATTEMPTS - nextAttempts;
         return {
-          success: false,
+          success: false as const,
           status: remaining <= 0 ? 429 : 400,
           error:
             remaining <= 0
@@ -699,7 +773,7 @@ export class RegistrationService {
       );
       if (duplicateByEmail) {
         return {
-          success: false,
+          success: false as const,
           status: 409,
           error:
             'This email address already has an active eDraw ID. Please sign in with your existing account.',
@@ -744,7 +818,7 @@ export class RegistrationService {
         this.writeDb(db);
       } catch {
         return {
-          success: false,
+          success: false as const,
           status: 500,
           error:
             'Could not persist your allocated eDraw ID due to a temporary storage error. Please retry.',
@@ -752,12 +826,41 @@ export class RegistrationService {
       }
 
       return {
-        success: true,
+        success: true as const,
         alreadyAllocated: false,
         record: completed,
         student: toRegistrationProfileSummary(completed),
       };
     });
+
+    if (!lockResult.success || lockResult.alreadyAllocated || !lockResult.record.edrawId) {
+      return lockResult;
+    }
+
+    try {
+      const sentIdEmail = await this.verifiedIdEmailSender({
+        to: lockResult.record.email,
+        studentName: lockResult.record.name,
+        college: lockResult.record.college,
+        edrawId: lockResult.record.edrawId,
+      });
+      if (sentIdEmail) {
+        const sentAt = new Date(this.nowProvider()).toISOString();
+        await this.withLock(() => {
+          const latest = this.readDb();
+          const rec = latest.records[uid];
+          if (rec) {
+            rec.edrawIdEmailSentAt = sentAt;
+            this.writeDb(latest);
+            lockResult.record = rec;
+          }
+        });
+      }
+    } catch (err) {
+      console.warn('Automatic verified eDraw ID email failed:', err);
+    }
+
+    return lockResult;
   }
 
   async sendCodeViaGmailApi(params: {
@@ -995,14 +1098,14 @@ export class RegistrationService {
       };
     }
 
-    return this.withLock(() => {
+    const lockResult = await this.withLock(() => {
       const db = this.readDb();
       const existing = db.records[uid];
 
       // Strict idempotency: never overwrite or re-allocate an existing student's EDID-XXXX
       if (existing && existing.edrawId) {
         return {
-          success: true,
+          success: true as const,
           alreadyAllocated: true,
           record: existing,
           student: toRegistrationProfileSummary(existing),
@@ -1015,7 +1118,7 @@ export class RegistrationService {
       );
       if (duplicateByEmail) {
         return {
-          success: false,
+          success: false as const,
           status: 409,
           error:
             'This email address already has an active eDraw ID. Please sign in with your existing account.',
@@ -1064,18 +1167,60 @@ export class RegistrationService {
         this.writeDb(db);
       } catch {
         return {
-          success: false,
+          success: false as const,
           status: 500,
           error: 'Could not persist your allocated eDraw ID due to a temporary storage error. Please retry.',
         };
       }
 
       return {
-        success: true,
+        success: true as const,
         alreadyAllocated: false,
         record: completed,
         student: toRegistrationProfileSummary(completed),
       };
+    });
+
+    if (!lockResult.success || lockResult.alreadyAllocated || !lockResult.record.edrawId) {
+      return lockResult;
+    }
+
+    try {
+      const sentIdEmail = await this.verifiedIdEmailSender({
+        to: lockResult.record.email,
+        studentName: lockResult.record.name,
+        college: lockResult.record.college,
+        edrawId: lockResult.record.edrawId,
+      });
+      if (sentIdEmail) {
+        const sentAt = new Date(this.nowProvider()).toISOString();
+        await this.withLock(() => {
+          const latest = this.readDb();
+          const rec = latest.records[uid];
+          if (rec) {
+            rec.edrawIdEmailSentAt = sentAt;
+            this.writeDb(latest);
+            lockResult.record = rec;
+          }
+        });
+      }
+    } catch (err) {
+      console.warn('Automatic verified eDraw ID email failed:', err);
+    }
+
+    return lockResult;
+  }
+
+  async resetDatabase(): Promise<void> {
+    await this.withLock(() => {
+      this.writeDb({ nextCounter: INITIAL_EDID_COUNTER, records: {} });
+      try {
+        if (fs.existsSync(this.legacyStudentsPath)) {
+          fs.unlinkSync(this.legacyStudentsPath);
+        }
+      } catch (err) {
+        console.warn('Could not remove legacy students store during reset:', err);
+      }
     });
   }
 

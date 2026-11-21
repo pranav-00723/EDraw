@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Send,
   AlertCircle,
+  Trash2,
 } from 'lucide-react';
 import type { DispatchQueueItem, GmailDispatchKind } from '../../utils/studentAuthValidation';
 import { OFFICIAL_SENDER_GMAIL } from '../../firebase';
@@ -21,6 +22,7 @@ interface GmailDispatcherPanelProps {
   hasToken: boolean;
   isSigningIn: boolean;
   isLoadingQueue: boolean;
+  isResettingDatabase?: boolean;
   smtpConfigured: boolean;
   adminSenderEmail: string;
   queue: DispatchQueueItem[];
@@ -30,6 +32,7 @@ interface GmailDispatcherPanelProps {
   onSignOutGoogle: () => void;
   onRefreshQueue: () => void;
   onRequestSend: (item: DispatchQueueItem, kind: GmailDispatchKind) => void;
+  onRequestResetDatabase?: () => void;
 }
 
 export const GoogleSignInButton: React.FC<{
@@ -78,6 +81,7 @@ export const GmailDispatcherPanel: React.FC<GmailDispatcherPanelProps> = ({
   hasToken,
   isSigningIn,
   isLoadingQueue,
+  isResettingDatabase = false,
   smtpConfigured,
   adminSenderEmail,
   queue,
@@ -87,6 +91,7 @@ export const GmailDispatcherPanel: React.FC<GmailDispatcherPanelProps> = ({
   onSignOutGoogle,
   onRefreshQueue,
   onRequestSend,
+  onRequestResetDatabase,
 }) => {
   const targetEmail = adminSenderEmail || OFFICIAL_SENDER_GMAIL;
   const isAuthorizedSender =
@@ -105,15 +110,17 @@ export const GmailDispatcherPanel: React.FC<GmailDispatcherPanelProps> = ({
             </div>
             <div className="text-[11px] text-[#6E6C84] dark:text-slate-400">
               {hasToken && isAuthorizedSender
-                ? 'Connected via Gmail — ready to send verification codes & ED IDs'
+                ? smtpConfigured
+                  ? 'Connected via Gmail & automatic background mail is active'
+                  : 'Connected via Gmail — session stays active during student registration'
                 : smtpConfigured
-                ? 'Automatic SMTP mail delivery is active on the server'
-                : `Sign in with ${targetEmail} to send real verification code emails`}
+                ? 'Automatic server mail delivery is active for every registration'
+                : `Sign in with ${targetEmail} to send codes, or configure server SMTP_USER / SMTP_PASS for silent auto-send`}
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {!hasToken ? (
             <GoogleSignInButton
               onClick={onSignInGoogle}
@@ -125,17 +132,30 @@ export const GmailDispatcherPanel: React.FC<GmailDispatcherPanelProps> = ({
               <button
                 type="button"
                 onClick={onRefreshQueue}
-                disabled={isLoadingQueue}
-                className="h-9 px-3 rounded-xl bg-white dark:bg-slate-900 border border-[#E2DBF2] dark:border-slate-700 text-xs font-semibold text-[#202044] dark:text-slate-200 hover:bg-[#F3EEFF] dark:hover:bg-slate-800 inline-flex items-center gap-1.5 cursor-pointer"
+                disabled={isLoadingQueue || isResettingDatabase}
+                className="h-9 px-3 rounded-xl bg-white dark:bg-slate-900 border border-[#E2DBF2] dark:border-slate-700 text-xs font-semibold text-[#202044] dark:text-slate-200 hover:bg-[#F3EEFF] dark:hover:bg-slate-800 inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
                 title="Refresh student queue"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isLoadingQueue ? 'animate-spin' : ''}`} />
                 <span>Refresh</span>
               </button>
+              {isAuthorizedSender && onRequestResetDatabase && (
+                <button
+                  type="button"
+                  onClick={onRequestResetDatabase}
+                  disabled={isResettingDatabase || isLoadingQueue}
+                  className="h-9 px-3 rounded-xl border border-rose-200 dark:border-rose-800/80 bg-white dark:bg-slate-900 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+                  title="Reset server student registration database to empty"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{isResettingDatabase ? 'Resetting...' : 'Reset DB'}</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onSignOutGoogle}
-                className="h-9 px-3 rounded-xl border border-[#E2DBF2] dark:border-slate-700 text-xs font-semibold text-[#6E6C84] dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 inline-flex items-center gap-1.5 cursor-pointer"
+                disabled={isResettingDatabase}
+                className="h-9 px-3 rounded-xl border border-[#E2DBF2] dark:border-slate-700 text-xs font-semibold text-[#6E6C84] dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 <span>Disconnect</span>

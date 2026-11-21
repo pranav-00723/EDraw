@@ -406,3 +406,64 @@ test('dispatches 6-digit verification code via Gmail API with expected MIME cont
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('auto-sends verified EDID-XXXX email once on verification and resetDatabase clears all records back to EDID-1000', async () => {
+  const { dir, storePath, legacyPath } = makeTempPaths();
+  fs.writeFileSync(legacyPath, JSON.stringify({ students: [{ edrawId: 'EDID-1000' }] }), 'utf8');
+
+  const verifiedEmailsSent: Array<{ to: string; edrawId: string }> = [];
+  const service = new RegistrationService({
+    storePath,
+    legacyStudentsPath: legacyPath,
+    verifyToken: makeVerifier({
+      tok1: { uid: 'uid-1', email: 'fresh@college.edu', emailVerified: false },
+      tok2: { uid: 'uid-2', email: 'afterreset@college.edu', emailVerified: false },
+    }),
+    codeGenerator: () => '246810',
+    otpEmailSender: async () => true,
+    verifiedIdEmailSender: async ({ to, edrawId }) => {
+      verifiedEmailsSent.push({ to, edrawId });
+      return true;
+    },
+  });
+
+  await service.upsertPendingRegistration({
+    authHeader: 'Bearer tok1',
+    name: 'First Student',
+    college: 'MIT Chennai',
+  });
+
+  const firstVerify = await service.verifyEmailCode({
+    authHeader: 'Bearer tok1',
+    code: '246810',
+  });
+  assert.equal(firstVerify.success, true);
+  if (!firstVerify.success) return;
+  assert.equal(firstVerify.student.edrawId, 'EDID-1001');
+  assert.equal(verifiedEmailsSent.length, 1);
+  assert.deepEqual(verifiedEmailsSent[0], { to: 'fresh@college.edu', edrawId: 'EDID-1001' });
+
+  // Duplicate verify callback must NOT send a duplicate EDID email
+  await service.verifyEmailCode({ authHeader: 'Bearer tok1', code: '246810' });
+  assert.equal(verifiedEmailsSent.length, 1);
+
+  // Reset database empties queue, deletes legacy file, and restarts at EDID-1000
+  await service.resetDatabase();
+  assert.equal(service.getDispatchQueueItems().length, 0);
+  assert.equal(fs.existsSync(legacyPath), false);
+
+  await service.upsertPendingRegistration({
+    authHeader: 'Bearer tok2',
+    name: 'Second Student',
+    college: 'MIT Chennai',
+  });
+  const secondVerify = await service.verifyEmailCode({
+    authHeader: 'Bearer tok2',
+    code: '246810',
+  });
+  assert.equal(secondVerify.success, true);
+  if (!secondVerify.success) return;
+  assert.equal(secondVerify.student.edrawId, 'EDID-1000');
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});

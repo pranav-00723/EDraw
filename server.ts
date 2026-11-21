@@ -20,6 +20,7 @@ import {
   isAutoMailerConfigured,
 } from './server/studentAuth.ts';
 import { RegistrationService } from './server/registrationService.ts';
+import { FirebaseAuthProxyService } from './server/firebaseAuthProxy.ts';
 
 dotenv.config();
 
@@ -664,6 +665,7 @@ CRITICAL RULES TO PREVENT MISINTERPRETATION:
 
 const studentAuth = new StudentAuthService();
 const registrationService = new RegistrationService();
+const firebaseAuthProxy = new FirebaseAuthProxyService();
 
 function resolveSafeBaseUrl(req: express.Request): string {
   const configured = (process.env.APP_URL || '').trim();
@@ -800,6 +802,54 @@ app.get('/api/auth/me', (req, res) => {
 app.post('/api/auth/logout', (req, res) => {
   studentAuth.logoutToken(req.headers.authorization);
   return res.json({ success: true });
+});
+
+app.post('/api/auth/firebase/signup', async (req, res) => {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const result = await firebaseAuthProxy.signUpWithEmailPassword({
+    email: body.email,
+    password: body.password,
+    displayName: body.displayName,
+  });
+  if (!result.success) {
+    return res.status(result.status).json(result);
+  }
+  return res.status(200).json(result);
+});
+
+app.post('/api/auth/firebase/signin', async (req, res) => {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const result = await firebaseAuthProxy.signInWithEmailPassword({
+    email: body.email,
+    password: body.password,
+  });
+  if (!result.success) {
+    return res.status(result.status).json(result);
+  }
+  return res.status(200).json(result);
+});
+
+app.post('/api/auth/firebase/google-idp', async (req, res) => {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const result = await firebaseAuthProxy.signInWithGoogleAccessToken({
+    accessToken: body.accessToken,
+    requestUri: resolveSafeBaseUrl(req),
+  });
+  if (!result.success) {
+    return res.status(result.status).json(result);
+  }
+  return res.status(200).json(result);
+});
+
+app.post('/api/auth/firebase/refresh', async (req, res) => {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const result = await firebaseAuthProxy.refreshIdToken({
+    refreshToken: body.refreshToken,
+  });
+  if (!result.success) {
+    return res.status(result.status).json(result);
+  }
+  return res.status(200).json(result);
 });
 
 app.get('/api/auth/sender-status', (_req, res) => {

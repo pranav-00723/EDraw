@@ -73,11 +73,74 @@ export const initGmailAuth = (
   });
 };
 
+export interface AuthSessionResult {
+  uid: string;
+  email: string;
+  displayName: string;
+  emailVerified: boolean;
+  idToken: string;
+  refreshToken?: string;
+  viaServerProxy?: boolean;
+}
+
+async function postFirebaseProxy(
+  endpoint: string,
+  payload: Record<string, unknown>
+): Promise<AuthSessionResult> {
+  let res: Response;
+  try {
+    res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw {
+      code: 'auth/network-request-failed',
+      message: 'Network error communicating with authentication services. Please check your connection and retry.',
+    };
+  }
+
+  let data: Partial<AuthSessionResult> & {
+    success?: boolean;
+    code?: string;
+    error?: string;
+  };
+  try {
+    data = await res.json();
+  } catch {
+    throw {
+      code: 'auth/network-request-failed',
+      message: 'Unexpected response from authentication proxy.',
+    };
+  }
+
+  if (!res.ok || !data.success || !data.idToken || !data.uid) {
+    throw {
+      code: data.code || 'auth/network-request-failed',
+      message: data.error || 'Authentication failed.',
+    };
+  }
+
+  return {
+    uid: data.uid,
+    email: data.email || '',
+    displayName: data.displayName || '',
+    emailVerified: data.emailVerified === true,
+    idToken: data.idToken,
+    refreshToken: data.refreshToken,
+    viaServerProxy: true,
+  };
+}
+
 let gisScriptPromise: Promise<void> | null = null;
 
 function loadGoogleIdentityServices(): Promise<void> {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
-    return Promise.reject(new Error('Google Identity Services requires a browser environment.'));
+    return Promise.reject({
+      code: 'auth/network-request-failed',
+      message: 'Google Identity Services requires a browser environment.',
+    });
   }
   const win = window as Window & { google?: { accounts?: { oauth2?: unknown } } };
   if (win.google?.accounts?.oauth2) {
@@ -95,7 +158,10 @@ function loadGoogleIdentityServices(): Promise<void> {
         'error',
         () => {
           gisScriptPromise = null;
-          reject(new Error('Could not load Google Identity Services.'));
+          reject({
+            code: 'auth/google-script-blocked',
+            message: 'Could not reach accounts.google.com to load Google Sign-In.',
+          });
         },
         { once: true }
       );
@@ -108,7 +174,10 @@ function loadGoogleIdentityServices(): Promise<void> {
     script.defer = true;
     const timeout = window.setTimeout(() => {
       gisScriptPromise = null;
-      reject(new Error('Timed out loading Google Identity Services.'));
+      reject({
+        code: 'auth/google-script-blocked',
+        message: 'Timed out loading Google Identity Services from accounts.google.com.',
+      });
     }, 10000);
     script.onload = () => {
       window.clearTimeout(timeout);
@@ -117,7 +186,10 @@ function loadGoogleIdentityServices(): Promise<void> {
     script.onerror = () => {
       window.clearTimeout(timeout);
       gisScriptPromise = null;
-      reject(new Error('Could not load Google Identity Services.'));
+      reject({
+        code: 'auth/google-script-blocked',
+        message: 'Could not reach accounts.google.com to load Google Sign-In.',
+      });
     };
     document.head.appendChild(script);
   });
@@ -129,7 +201,7 @@ async function signInWithGoogleViaGis(
   scopes: string[],
   loginHint?: string,
   targetAuth: Auth = auth
-): Promise<{ user: User; accessToken: string }> {
+): Promise<{ session: AuthSessionResult; accessToken: string }> {
   const clientId = (configWithOptionalDb.oAuthClientId || '').trim();
   if (!clientId) {
     throw { code: 'auth/network-request-failed', message: 'Missing OAuth client ID.' };
@@ -155,7 +227,7 @@ async function signInWithGoogleViaGis(
 
   const oauth2 = win.google?.accounts?.oauth2;
   if (!oauth2) {
-    throw { code: 'auth/network-request-failed', message: 'Google OAuth2 client unavailable.' };
+    throw { code: 'auth/google-script-blocked', message: 'Google OAuth2 client unavailable.' };
   }
 
   const accessToken = await new Promise<string>((resolve, reject) => {
@@ -169,7 +241,7 @@ async function signInWithGoogleViaGis(
             reject({ code: 'auth/popup-closed-by-user' });
           } else {
             reject({
-              code: 'auth/network-request-failed',
+              code: 'auth/google-oauth-failed',
               message: resp?.error_description || resp?.error || 'OAuth token failure',
             });
           }
@@ -184,8 +256,8 @@ async function signInWithGoogleViaGis(
           reject({ code: 'auth/popup-blocked' });
         } else {
           reject({
-            code: 'auth/network-request-failed',
-            message: err?.message || err?.type || 'Popup OAuth failed',
+            code: 'auth/google-oauth-failed',
+            message: err?.message || err?.type || 'Google OAuth popup failed.',
           });
         }
       },
@@ -193,13 +265,35 @@ async function signInWithGoogleViaGis(
     client.requestAccessToken({ prompt: 'select_account' });
   });
 
-  const cred = GoogleAuthProvider.credential(null, accessToken);
-  const userCred = await signInWithCredential(targetAuth, cred);
-  return { user: userCred.user, accessToken };
+  try {
+    const cred = GoogleAuthProvider.credential(null, accessToken);
+    const userCred = await signInWithCredential(targetAuth, cred);
+    const idToken = await userCred.user.getIdToken(true);
+    return {
+      accessToken,
+      session: {
+        uid: userCred.user.uid,
+        email: userCred.user.email || '',
+        displayName: userCred.user.displayName || '',
+        emailVerified: userCred.user.emailVerified,
+        idToken,
+        refreshToken: userCred.user.refreshToken,
+        viaServerProxy: false,
+      },
+    };
+  } catch (err: any) {
+    if (err?.code !== 'auth/network-request-failed') {
+      throw err;
+    }
+    const proxySession = await postFirebaseProxy('/api/auth/firebase/google-idp', {
+      accessToken,
+    });
+    return { accessToken, session: proxySession };
+  }
 }
 
 export const signInGmailSender = async (): Promise<{
-  user: User;
+  email: string;
   accessToken: string;
 }> => {
   try {
@@ -211,7 +305,7 @@ export const signInGmailSender = async (): Promise<{
         throw new Error('Could not obtain a Gmail sending access token from Google sign-in.');
       }
       cachedGmailAccessToken = credential.accessToken;
-      return { user: result.user, accessToken: cachedGmailAccessToken };
+      return { email: result.user.email || '', accessToken: cachedGmailAccessToken };
     } catch (err: any) {
       if (err?.code === 'auth/network-request-failed' && configWithOptionalDb.oAuthClientId) {
         const fallback = await signInWithGoogleViaGis(
@@ -220,7 +314,7 @@ export const signInGmailSender = async (): Promise<{
           gmailAuth
         );
         cachedGmailAccessToken = fallback.accessToken;
-        return fallback;
+        return { email: fallback.session.email, accessToken: fallback.accessToken };
       }
       throw err;
     }
@@ -233,19 +327,41 @@ export const getGmailAccessToken = (): string | null => cachedGmailAccessToken;
 
 export const signOutGmailSender = async (): Promise<void> => {
   cachedGmailAccessToken = null;
-  await gmailAuth.signOut();
+  await gmailAuth.signOut().catch(() => undefined);
 };
 
 export async function registerStudentWithFirebase(params: {
   email: string;
   password: string;
   displayName: string;
-}): Promise<User> {
-  const credential = await createUserWithEmailAndPassword(auth, params.email, params.password);
-  if (params.displayName.trim()) {
-    await updateProfile(credential.user, { displayName: params.displayName.trim() });
+}): Promise<AuthSessionResult> {
+  try {
+    const credential = await createUserWithEmailAndPassword(auth, params.email, params.password);
+    if (params.displayName.trim()) {
+      await updateProfile(credential.user, { displayName: params.displayName.trim() }).catch(
+        () => undefined
+      );
+    }
+    const idToken = await credential.user.getIdToken(true);
+    return {
+      uid: credential.user.uid,
+      email: credential.user.email || params.email,
+      displayName: credential.user.displayName || params.displayName.trim(),
+      emailVerified: credential.user.emailVerified,
+      idToken,
+      refreshToken: credential.user.refreshToken,
+      viaServerProxy: false,
+    };
+  } catch (err: any) {
+    if (err?.code === 'auth/network-request-failed') {
+      return postFirebaseProxy('/api/auth/firebase/signup', {
+        email: params.email,
+        password: params.password,
+        displayName: params.displayName.trim(),
+      });
+    }
+    throw err;
   }
-  return credential.user;
 }
 
 export async function sendFirebaseVerificationEmail(
@@ -290,10 +406,26 @@ export async function applyFirebaseVerificationCode(oobCode: string): Promise<vo
 export async function signInStudentWithFirebase(
   email: string,
   password: string
-): Promise<User> {
-  const credential = await signInWithEmailAndPassword(auth, email, password);
-  await credential.user.reload().catch(() => undefined);
-  return credential.user;
+): Promise<AuthSessionResult> {
+  try {
+    const credential = await signInWithEmailAndPassword(auth, email, password);
+    await credential.user.reload().catch(() => undefined);
+    const idToken = await credential.user.getIdToken(true);
+    return {
+      uid: credential.user.uid,
+      email: credential.user.email || email,
+      displayName: credential.user.displayName || '',
+      emailVerified: credential.user.emailVerified,
+      idToken,
+      refreshToken: credential.user.refreshToken,
+      viaServerProxy: false,
+    };
+  } catch (err: any) {
+    if (err?.code === 'auth/network-request-failed') {
+      return postFirebaseProxy('/api/auth/firebase/signin', { email, password });
+    }
+    throw err;
+  }
 }
 
 const studentGoogleProvider = new GoogleAuthProvider();
@@ -301,31 +433,70 @@ studentGoogleProvider.setCustomParameters({
   prompt: 'select_account',
 });
 
-export async function signInStudentWithGoogle(): Promise<User> {
+export async function signInStudentWithGoogle(): Promise<AuthSessionResult> {
   try {
     const result = await signInWithPopup(auth, studentGoogleProvider);
-    return result.user;
+    const idToken = await result.user.getIdToken(true);
+    return {
+      uid: result.user.uid,
+      email: result.user.email || '',
+      displayName: result.user.displayName || '',
+      emailVerified: result.user.emailVerified,
+      idToken,
+      refreshToken: result.user.refreshToken,
+      viaServerProxy: false,
+    };
   } catch (err: any) {
     if (err?.code === 'auth/network-request-failed' && configWithOptionalDb.oAuthClientId) {
-      const fallback = await signInWithGoogleViaGis(['openid', 'email', 'profile']);
-      return fallback.user;
+      const fallback = await signInWithGoogleViaGis(['openid', 'email', 'profile'], undefined, auth);
+      return fallback.session;
     }
     throw err;
   }
 }
 
 export async function reloadFirebaseUserAndGetToken(
-  forceRefresh = true
-): Promise<{ user: User; idToken: string } | null> {
+  forceRefresh = true,
+  fallbackRefreshToken?: string | null
+): Promise<AuthSessionResult | null> {
   const current = auth.currentUser;
-  if (!current) return null;
-  await current.reload();
-  const idToken = await current.getIdToken(forceRefresh);
-  return { user: current, idToken };
+  if (current) {
+    try {
+      await current.reload();
+      const idToken = await current.getIdToken(forceRefresh);
+      return {
+        uid: current.uid,
+        email: current.email || '',
+        displayName: current.displayName || '',
+        emailVerified: current.emailVerified,
+        idToken,
+        refreshToken: current.refreshToken,
+        viaServerProxy: false,
+      };
+    } catch (err: any) {
+      if (err?.code === 'auth/network-request-failed') {
+        const refreshTok = fallbackRefreshToken || current.refreshToken;
+        if (refreshTok) {
+          return postFirebaseProxy('/api/auth/firebase/refresh', {
+            refreshToken: refreshTok,
+          }).catch(() => null);
+        }
+      }
+      return null;
+    }
+  }
+
+  if (fallbackRefreshToken) {
+    return postFirebaseProxy('/api/auth/firebase/refresh', {
+      refreshToken: fallbackRefreshToken,
+    }).catch(() => null);
+  }
+
+  return null;
 }
 
 export async function signOutStudentFirebase(): Promise<void> {
-  await auth.signOut();
+  await auth.signOut().catch(() => undefined);
 }
 
 export enum OperationType {

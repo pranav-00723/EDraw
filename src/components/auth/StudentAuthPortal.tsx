@@ -149,6 +149,12 @@ function mapFirebaseAuthError(err: any, fallback: string): string {
       return 'Google sign-in was cancelled before completion.';
     case 'auth/unauthorized-domain':
       return 'This preview domain is not yet allowlisted in Firebase Authentication Authorized Domains.';
+    case 'auth/google-script-blocked':
+      return 'Could not reach accounts.google.com to open Google Sign-In. Allow accounts.google.com or register with Email & Password below.';
+    case 'auth/google-oauth-failed':
+      return err?.message
+        ? `Google Sign-In could not complete (${err.message}). Try again or use Email & Password.`
+        : 'Google Sign-In could not complete on this browser. Try again or use Email & Password.';
     case 'auth/network-request-failed':
       return 'Network error communicating with authentication services. Please check your connection and retry.';
     default:
@@ -227,6 +233,7 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
   const [verifyFailedMessage, setVerifyFailedMessage] = useState<string | null>(null);
   const [canRetryAllocation, setCanRetryAllocation] = useState<boolean>(false);
   const [activeIdToken, setActiveIdToken] = useState<string | null>(null);
+  const [activeRefreshToken, setActiveRefreshToken] = useState<string | null>(null);
   const [firestoreSynced, setFirestoreSynced] = useState<boolean>(false);
   const [firestoreSyncWarning, setFirestoreSyncWarning] = useState<string | null>(null);
 
@@ -430,11 +437,12 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
           if (cancelled) return;
           onConsumedFirebaseVerify?.();
 
-          const reloaded = await reloadFirebaseUserAndGetToken(true);
+          const reloaded = await reloadFirebaseUserAndGetToken(true, activeRefreshToken);
           if (cancelled) return;
-          if (reloaded && reloaded.user.emailVerified) {
+          if (reloaded && reloaded.emailVerified) {
+            if (reloaded.refreshToken) setActiveRefreshToken(reloaded.refreshToken);
             await finalizeVerifiedStudentAllocation(reloaded.idToken, {
-              name: reloaded.user.displayName || undefined,
+              name: reloaded.displayName || undefined,
             });
             return;
           }
@@ -560,8 +568,8 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
     setDispatchError(null);
     setDispatchNotice(null);
     try {
-      const { user, accessToken } = await signInGmailSender();
-      setGmailSenderEmail(user.email || null);
+      const { email, accessToken } = await signInGmailSender();
+      setGmailSenderEmail(email || null);
       setHasGmailToken(Boolean(accessToken));
       setIsDispatcherOpen(true);
       await loadDispatchQueue(accessToken);
@@ -784,10 +792,12 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
         return;
       }
 
-      // Firebase Email + Password Sign-In path
+      // Firebase Email + Password Sign-In path (automatically falls back to same-origin proxy if browser blocks googleapis.com)
       const normalizedEmail = normalizeEmail(rawIdentifier);
-      const user = await signInStudentWithFirebase(normalizedEmail, loginPassword);
-      const idToken = await user.getIdToken(true);
+      const session = await signInStudentWithFirebase(normalizedEmail, loginPassword);
+      const idToken = session.idToken;
+      setActiveIdToken(idToken);
+      setActiveRefreshToken(session.refreshToken || null);
 
       const meRes = await fetch('/api/registration/me', {
         headers: { Authorization: `Bearer ${idToken}` },
@@ -801,13 +811,13 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
         return;
       }
 
-      if (user.emailVerified) {
+      if (session.emailVerified) {
         setScreen('verifying');
         setVerifyingMessage('Loading your verified eDraw ID...');
         await finalizeVerifiedStudentAllocation(
           idToken,
           {
-            name: meData.student?.name || user.displayName || undefined,
+            name: meData.student?.name || session.displayName || undefined,
             college: meData.student?.college || undefined,
             studentDetails: meData.student?.studentDetails || undefined,
           },
@@ -825,16 +835,15 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
             Authorization: `Bearer ${idToken}`,
           },
           body: JSON.stringify({
-            name: user.displayName || normalizedEmail.split('@')[0],
+            name: session.displayName || normalizedEmail.split('@')[0],
             college: 'Engineering College',
             studentDetails: '',
           }),
         });
       }
 
-      setActiveIdToken(idToken);
       setPendingEmail(normalizedEmail);
-      setPendingStudentName(meData.student?.name || user.displayName || '');
+      setPendingStudentName(meData.student?.name || session.displayName || '');
       setPendingCollege(meData.student?.college || '');
       setPendingStudentDetails(meData.student?.studentDetails || '');
       setVerificationCodeInput('');
@@ -875,9 +884,10 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
 
     setIsGoogleAuthLoading(true);
     try {
-      const user = await signInStudentWithGoogle();
-      const idToken = await user.getIdToken(true);
+      const session = await signInStudentWithGoogle();
+      const idToken = session.idToken;
       setActiveIdToken(idToken);
+      setActiveRefreshToken(session.refreshToken || null);
 
       const meRes = await fetch('/api/registration/me', {
         headers: { Authorization: `Bearer ${idToken}` },
@@ -902,11 +912,11 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
         return;
       }
 
-      const fallbackName = regForm.name.trim() || user.displayName || undefined;
+      const fallbackName = regForm.name.trim() || session.displayName || undefined;
       const fallbackCollege = regForm.college.trim() || undefined;
       const fallbackDetails = regForm.studentDetails.trim() || undefined;
 
-      if (user.emailVerified) {
+      if (session.emailVerified) {
         setScreen('verifying');
         setVerifyingMessage('Allocating your unique eDraw ID on the server...');
         await finalizeVerifiedStudentAllocation(
@@ -921,7 +931,7 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
         return;
       }
 
-      const normalizedEmail = normalizeEmail(user.email || '');
+      const normalizedEmail = normalizeEmail(session.email || '');
       const pendingRes = await fetch('/api/registration/pending', {
         method: 'POST',
         headers: {
@@ -1022,14 +1032,15 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
 
     setIsRegistering(true);
     try {
-      const user = await registerStudentWithFirebase({
+      const session = await registerStudentWithFirebase({
         email: normalizedEmail,
         password: cleanedForm.password,
         displayName: cleanedForm.name.trim(),
       });
 
-      const idToken = await user.getIdToken(true);
+      const idToken = session.idToken;
       setActiveIdToken(idToken);
+      setActiveRefreshToken(session.refreshToken || null);
 
       // Persist pending registration on server with NO EDraw ID yet & generate 6-digit verification code
       const pendingRes = await fetch('/api/registration/pending', {
@@ -1123,7 +1134,12 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
 
     setIsVerifyingCode(true);
     try {
-      const reloaded = await reloadFirebaseUserAndGetToken(true);
+      const reloaded = await reloadFirebaseUserAndGetToken(true, activeRefreshToken).catch(
+        () => null
+      );
+      if (reloaded?.refreshToken) {
+        setActiveRefreshToken(reloaded.refreshToken);
+      }
       const tokenToUse = reloaded?.idToken || activeIdToken;
       if (!tokenToUse) {
         setLoginNotice('Your session expired. Sign in with your registered email and password to enter your code.');
@@ -1201,7 +1217,12 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
 
     setIsResendingCode(true);
     try {
-      const reloaded = await reloadFirebaseUserAndGetToken(true);
+      const reloaded = await reloadFirebaseUserAndGetToken(true, activeRefreshToken).catch(
+        () => null
+      );
+      if (reloaded?.refreshToken) {
+        setActiveRefreshToken(reloaded.refreshToken);
+      }
       const tokenToUse = reloaded?.idToken || activeIdToken;
       if (!tokenToUse) {
         setLoginNotice('Sign in with your email and password so we can resend your verification code.');
@@ -1241,8 +1262,10 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
   const handleRetryAllocation = async () => {
     setScreen('verifying');
     setVerifyingMessage('Retrying eDraw ID allocation...');
-    const reloaded = await reloadFirebaseUserAndGetToken(true);
-    if (!reloaded || !reloaded.user.emailVerified) {
+    const reloaded = await reloadFirebaseUserAndGetToken(true, activeRefreshToken).catch(
+      () => null
+    );
+    if (!reloaded || !reloaded.emailVerified) {
       setVerifyFailedMessage(
         'Your session could not be confirmed as email-verified. Please sign in again after verifying your link.'
       );
@@ -1250,8 +1273,11 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
       setScreen('verify_failed');
       return;
     }
+    if (reloaded.refreshToken) {
+      setActiveRefreshToken(reloaded.refreshToken);
+    }
     await finalizeVerifiedStudentAllocation(reloaded.idToken, {
-      name: pendingStudentName || reloaded.user.displayName || undefined,
+      name: pendingStudentName || reloaded.displayName || undefined,
       college: pendingCollege || undefined,
       studentDetails: pendingStudentDetails || undefined,
     });
@@ -1554,20 +1580,22 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
                       {loginNetworkHelpNeeded && (
                         <div className="space-y-1.5 pt-1 border-t border-rose-200/80 dark:border-rose-800/60">
                           <p className="text-[11px] leading-relaxed">
-                            This commonly happens inside an embedded preview iframe or when content
-                            blockers block <span className="font-mono">googleapis.com</span> /{' '}
-                            <span className="font-mono">firebaseapp.com</span>. Try opening EDraw in a
-                            dedicated browser tab:
+                            Your browser could not reach authentication services (check internet
+                            connectivity or pause content blockers/VPNs blocking{' '}
+                            <span className="font-mono">googleapis.com</span> /{' '}
+                            <span className="font-mono">accounts.google.com</span>).
                           </p>
-                          <a
-                            href={typeof window !== 'undefined' ? window.location.href : '/'}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 font-semibold text-[#612AD6] dark:text-purple-300 underline underline-offset-2 hover:opacity-80"
-                          >
-                            <span>Open EDraw in New Tab</span>
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
+                          {typeof window !== 'undefined' && window.self !== window.top && (
+                            <a
+                              href={window.location.href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 font-semibold text-[#612AD6] dark:text-purple-300 underline underline-offset-2 hover:opacity-80"
+                            >
+                              <span>Open EDraw in New Tab</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
                         </div>
                       )}
                       {unverifiedGmail && (
@@ -1789,20 +1817,22 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
                       {regNetworkHelpNeeded && (
                         <div className="space-y-1.5 pt-1 border-t border-rose-200/80 dark:border-rose-800/60">
                           <p className="text-[11px] leading-relaxed">
-                            This commonly happens inside an embedded preview iframe or when content
-                            blockers block <span className="font-mono">googleapis.com</span> /{' '}
-                            <span className="font-mono">firebaseapp.com</span>. Try opening EDraw in a
-                            dedicated browser tab:
+                            Your browser could not reach authentication services (check internet
+                            connectivity or pause content blockers/VPNs blocking{' '}
+                            <span className="font-mono">googleapis.com</span> /{' '}
+                            <span className="font-mono">accounts.google.com</span>).
                           </p>
-                          <a
-                            href={typeof window !== 'undefined' ? window.location.href : '/'}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 font-semibold text-[#612AD6] dark:text-purple-300 underline underline-offset-2 hover:opacity-80"
-                          >
-                            <span>Open EDraw in New Tab</span>
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
+                          {typeof window !== 'undefined' && window.self !== window.top && (
+                            <a
+                              href={window.location.href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 font-semibold text-[#612AD6] dark:text-purple-300 underline underline-offset-2 hover:opacity-80"
+                            >
+                              <span>Open EDraw in New Tab</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
                         </div>
                       )}
                       {regDuplicateEmail && (

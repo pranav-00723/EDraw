@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { X, User, Palette, Sun, Moon, RotateCcw, Check, LogOut } from 'lucide-react';
+import { X, User, Palette, Sun, Moon, RotateCcw, Check, LogOut, Copy } from 'lucide-react';
 import { HP_COLOR_PRESETS, VP_COLOR_PRESETS } from '../PlaneColorPicker';
 
 interface SettingsModalProps {
@@ -14,6 +14,7 @@ interface SettingsModalProps {
   studentEdrawId?: string;
   studentGmail?: string;
   studentCollege?: string;
+  studentDetails?: string;
   onChangeStudentName: (name: string) => void;
   hpColor: string;
   vpColor: string;
@@ -33,6 +34,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   studentEdrawId,
   studentGmail,
   studentCollege,
+  studentDetails,
   onChangeStudentName,
   hpColor,
   vpColor,
@@ -46,6 +48,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const [draftName, setDraftName] = useState(studentName);
   const [savedNotice, setSavedNotice] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
 
   useEffect(() => {
     setDraftName(studentName);
@@ -87,16 +90,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* Student Profile */}
           <div className="space-y-3">
             {studentEdrawId && (
-              <div className="p-3.5 rounded-2xl bg-[#F8F7FC] dark:bg-slate-950 border border-[#ECE8F8] dark:border-slate-800 space-y-1 text-xs">
+              <div className="p-3.5 rounded-2xl bg-[#F8F7FC] dark:bg-slate-950 border border-[#ECE8F8] dark:border-slate-800 space-y-1.5 text-xs">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[#77758A] dark:text-slate-400">Verified eDraw ID</span>
-                  <span className="font-mono font-bold text-[#6035B5] dark:text-purple-300 tabular-nums">
-                    {studentEdrawId}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-[#6035B5] dark:text-purple-300 tabular-nums">
+                      {studentEdrawId}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (navigator.clipboard) {
+                          void navigator.clipboard.writeText(studentEdrawId);
+                        }
+                        setCopiedId(true);
+                        setTimeout(() => setCopiedId(false), 1500);
+                      }}
+                      className="p-1 rounded-md hover:bg-[#EFE8FF] dark:hover:bg-slate-800 text-[#6035B5] dark:text-purple-300 cursor-pointer"
+                      aria-label="Copy eDraw ID"
+                      title="Copy eDraw ID"
+                    >
+                      {copiedId ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                 </div>
                 {studentGmail && (
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[#77758A] dark:text-slate-400">Google Mail ID</span>
+                    <span className="text-[#77758A] dark:text-slate-400">Registered Email</span>
                     <span className="font-medium text-[#202033] dark:text-slate-200 truncate">
                       {studentGmail}
                     </span>
@@ -107,6 +127,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <span className="text-[#77758A] dark:text-slate-400">College</span>
                     <span className="font-medium text-[#202033] dark:text-slate-200 truncate">
                       {studentCollege}
+                    </span>
+                  </div>
+                )}
+                {studentDetails && (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[#77758A] dark:text-slate-400">Student Details</span>
+                    <span className="font-medium text-[#202033] dark:text-slate-200 truncate">
+                      {studentDetails}
                     </span>
                   </div>
                 )}

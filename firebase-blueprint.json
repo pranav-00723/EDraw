@@ -17,7 +17,7 @@
           "minLength": 9,
           "maxLength": 9,
           "pattern": "^EDID-[0-9]{4}$",
-          "description": "Assigned student eDraw ID in EDID-XXXX format."
+          "description": "Server-allocated student eDraw ID in EDID-XXXX format."
         },
         "name": {
           "type": "string",
@@ -25,13 +25,13 @@
           "maxLength": 80,
           "description": "Full name of the student."
         },
-        "gmail": {
+        "email": {
           "type": "string",
           "format": "email",
-          "minLength": 11,
+          "minLength": 5,
           "maxLength": 120,
-          "pattern": "^[a-zA-Z0-9._%+\\-]+@(gmail|googlemail)\\.com$",
-          "description": "Registered Google Mail ID (PII, strictly owner-only)."
+          "pattern": "^[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}$",
+          "description": "Normalized registered email address (PII, strictly owner-only)."
         },
         "college": {
           "type": "string",
@@ -39,9 +39,25 @@
           "maxLength": 120,
           "description": "Name of the student's college or institution."
         },
+        "studentDetails": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 120,
+          "description": "Student department, roll number, or academic year details."
+        },
+        "registrationStatus": {
+          "type": "string",
+          "enum": ["verified"],
+          "description": "Finalized registration status after email verification and server ID allocation."
+        },
         "verified": {
           "type": "boolean",
-          "description": "Whether the student's Gmail address has been verified."
+          "description": "Whether the student's email address has been verified."
+        },
+        "emailVerifiedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when email verification completed."
         },
         "createdAt": {
           "type": "string",
@@ -58,9 +74,12 @@
         "uid",
         "edrawId",
         "name",
-        "gmail",
+        "email",
         "college",
+        "studentDetails",
+        "registrationStatus",
         "verified",
+        "emailVerifiedAt",
         "createdAt",
         "updatedAt"
       ]
@@ -114,7 +133,7 @@
       "schema": {
         "$ref": "#/entities/StudentProfile"
       },
-      "description": "Private per-student profile document containing PII (Gmail) strictly isolated to the owning verified user."
+      "description": "Private per-student verified profile document containing PII strictly isolated to the owning verified user."
     },
     "/students/{studentUid}/progress/{progressId}": {
       "schema": {

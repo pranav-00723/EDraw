@@ -15,7 +15,7 @@ import { QuestionToGraphicsGenerator } from './components/questionGenerator/Ques
 import { ScanQuestionModal } from './components/ScanQuestionModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { StudentAuthPortal } from './components/auth/StudentAuthPortal';
-import { testConnection } from './firebase';
+import { signOutStudentFirebase, testConnection } from './firebase';
 import type { StudentProfileSummary } from './utils/studentAuthValidation';
 import {
   LearningState,
@@ -62,6 +62,23 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('verifyToken');
     return token && /^[a-f0-9]{64}$/i.test(token.trim()) ? token.trim() : null;
+  });
+  const [initialFirebaseVerify, setInitialFirebaseVerify] = useState<{
+    mode: string | null;
+    oobCode: string | null;
+    verifyFlow: string | null;
+    registrationSuccess: string | null;
+  } | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get('mode');
+    const oobCode = params.get('oobCode');
+    const verifyFlow = params.get('verifyFlow');
+    const registrationSuccess = params.get('registrationSuccess');
+    if (mode === 'verifyEmail' || oobCode || verifyFlow === 'firebase' || registrationSuccess === '1') {
+      return { mode, oobCode, verifyFlow, registrationSuccess };
+    }
+    return null;
   });
 
   // Verify Firestore connectivity on startup
@@ -257,6 +274,24 @@ export default function App() {
     }
   }, []);
 
+  const handleConsumedFirebaseVerify = useCallback(() => {
+    setInitialFirebaseVerify(null);
+    if (typeof window !== 'undefined') {
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('mode');
+        url.searchParams.delete('oobCode');
+        url.searchParams.delete('apiKey');
+        url.searchParams.delete('continueUrl');
+        url.searchParams.delete('lang');
+        url.searchParams.delete('verifyFlow');
+        window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+      } catch {
+        // Ignore in sandboxed iframe environments
+      }
+    }
+  }, []);
+
   const handleLoginSuccess = useCallback(
     (student: StudentProfileSummary, token: string) => {
       setAuthStudent(student);
@@ -265,6 +300,17 @@ export default function App() {
         ...prev,
         studentName: student.name,
       }));
+      if (typeof window !== 'undefined') {
+        try {
+          const url = new URL(window.location.href);
+          if (url.searchParams.has('registrationSuccess')) {
+            url.searchParams.delete('registrationSuccess');
+            window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+          }
+        } catch {
+          // Ignore in sandboxed iframe environments
+        }
+      }
       navigateTo('/dashboard');
     },
     [navigateTo, updateLearning]
@@ -283,6 +329,18 @@ export default function App() {
         // Clear local session regardless of network state
       }
     }
+    try {
+      await signOutStudentFirebase();
+    } catch {
+      // Clear local session regardless
+    }
+    if (typeof window !== 'undefined') {
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('registrationSuccess');
+        window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+      } catch {}
+    }
     setAuthStudent(null);
     setSessionToken(null);
     setIsSettingsOpen(false);
@@ -298,6 +356,8 @@ export default function App() {
         onLoginSuccess={handleLoginSuccess}
         initialVerifyToken={initialVerifyToken}
         onConsumedVerifyToken={handleConsumedVerifyToken}
+        initialFirebaseVerify={initialFirebaseVerify}
+        onConsumedFirebaseVerify={handleConsumedFirebaseVerify}
       />
     );
   }
@@ -442,6 +502,7 @@ export default function App() {
         studentEdrawId={authStudent.edrawId}
         studentGmail={authStudent.gmail}
         studentCollege={authStudent.college}
+        studentDetails={authStudent.studentDetails}
         onChangeStudentName={(name) =>
           updateLearning((prev) => ({ ...prev, studentName: name }))
         }

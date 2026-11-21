@@ -38,9 +38,12 @@ service cloud.firestore {
           'uid',
           'edrawId',
           'name',
-          'gmail',
+          'email',
           'college',
+          'studentDetails',
+          'registrationStatus',
           'verified',
+          'emailVerifiedAt',
           'createdAt',
           'updatedAt'
         ]) &&
@@ -48,9 +51,12 @@ service cloud.firestore {
           'uid',
           'edrawId',
           'name',
-          'gmail',
+          'email',
           'college',
+          'studentDetails',
+          'registrationStatus',
           'verified',
+          'emailVerifiedAt',
           'createdAt',
           'updatedAt'
         ]) &&
@@ -64,14 +70,20 @@ service cloud.firestore {
         data.name is string &&
         data.name.size() >= 2 &&
         data.name.size() <= 80 &&
-        data.gmail is string &&
-        data.gmail.size() >= 11 &&
-        data.gmail.size() <= 120 &&
-        data.gmail.matches('^[a-zA-Z0-9._%+\\-]+@(gmail|googlemail)\\.com$') &&
+        data.email is string &&
+        data.email.size() >= 5 &&
+        data.email.size() <= 120 &&
+        data.email.matches('^[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}$') &&
         data.college is string &&
         data.college.size() >= 2 &&
         data.college.size() <= 120 &&
+        data.studentDetails is string &&
+        data.studentDetails.size() <= 120 &&
+        data.registrationStatus is string &&
+        data.registrationStatus == 'verified' &&
         data.verified is bool &&
+        data.verified == true &&
+        data.emailVerifiedAt is timestamp &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
     }
@@ -121,6 +133,7 @@ service cloud.firestore {
       allow create: if isOwner(studentUid) &&
         isValidId(studentUid) &&
         isValidStudentProfile(incoming(), studentUid) &&
+        incoming().emailVerifiedAt == request.time &&
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time;
 
@@ -129,15 +142,18 @@ service cloud.firestore {
         isValidStudentProfile(incoming(), studentUid) &&
         incoming().uid == existing().uid &&
         incoming().edrawId == existing().edrawId &&
-        incoming().gmail == existing().gmail &&
+        incoming().email == existing().email &&
+        incoming().verified == existing().verified &&
+        incoming().registrationStatus == existing().registrationStatus &&
+        incoming().emailVerifiedAt == existing().emailVerifiedAt &&
         incoming().createdAt == existing().createdAt &&
         incoming().updatedAt == request.time &&
-        (
-          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'college', 'updatedAt']) ||
-          (existing().verified == false &&
-            incoming().verified == true &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['verified', 'updatedAt']))
-        );
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'name',
+          'college',
+          'studentDetails',
+          'updatedAt'
+        ]);
 
       allow delete: if isOwner(studentUid) && isValidId(studentUid);
 

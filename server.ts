@@ -14,7 +14,12 @@ import {
   solveNormalizedModel,
   normalizeMasterOcrText,
 } from './src/utils/straightLineMasterSolver.ts';
-import { StudentAuthService } from './server/studentAuth.ts';
+import {
+  StudentAuthService,
+  getAdminSenderEmail,
+  isSmtpConfigured,
+} from './server/studentAuth.ts';
+import { RegistrationService } from './server/registrationService.ts';
 
 dotenv.config();
 
@@ -658,6 +663,7 @@ CRITICAL RULES TO PREVENT MISINTERPRETATION:
 });
 
 const studentAuth = new StudentAuthService();
+const registrationService = new RegistrationService();
 
 function resolveSafeBaseUrl(req: express.Request): string {
   const configured = (process.env.APP_URL || '').trim();
@@ -794,6 +800,255 @@ app.get('/api/auth/me', (req, res) => {
 app.post('/api/auth/logout', (req, res) => {
   studentAuth.logoutToken(req.headers.authorization);
   return res.json({ success: true });
+});
+
+app.get('/api/auth/sender-status', (_req, res) => {
+  return res.json({
+    success: true,
+    adminSenderEmail: getAdminSenderEmail(),
+    smtpConfigured: isSmtpConfigured(),
+  });
+});
+
+app.get('/api/auth/dispatch-queue', async (req, res) => {
+  try {
+    const senderCheck = await studentAuth.verifyGoogleSenderBearer(req.headers.authorization);
+    if (!senderCheck.ok) {
+      return res.status(senderCheck.status).json({
+        success: false,
+        error: senderCheck.error,
+        connectedEmail: senderCheck.email,
+      });
+    }
+
+    const regItems = registrationService.getDispatchQueueItems();
+    const legacyItems = studentAuth.getDispatchQueue();
+    const byEmail = new Map<string, typeof regItems[number]>();
+    for (const item of legacyItems) {
+      byEmail.set(item.gmail.toLowerCase(), item);
+    }
+    for (const item of regItems) {
+      byEmail.set(item.gmail.toLowerCase(), item);
+    }
+    const merged = Array.from(byEmail.values()).sort((a, b) =>
+      b.createdAt.localeCompare(a.createdAt)
+    );
+
+    return res.json({
+      success: true,
+      senderEmail: senderCheck.email,
+      students: merged,
+    });
+  } catch (err) {
+    console.error('Error in /api/auth/dispatch-queue:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Unable to load the Gmail verification dispatch queue right now.',
+    });
+  }
+});
+
+app.post('/api/auth/send-gmail', async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const gmail = typeof body.gmail === 'string' ? body.gmail : '';
+    const kind =
+      body.kind === 'verified_edraw_id'
+        ? 'verified_edraw_id'
+        : body.kind === 'verification_code'
+        ? 'verification_code'
+        : 'verification_link';
+
+    if (kind === 'verification_code' || registrationService.hasRecordByEmail(gmail)) {
+      const regResult =
+        kind === 'verified_edraw_id'
+          ? await registrationService.sendVerifiedIdViaGmailApi({
+              gmailAuthHeader: req.headers.authorization,
+              targetEmail: gmail,
+              verifySender: (header) => studentAuth.verifyGoogleSenderBearer(header),
+            })
+          : await registrationService.sendCodeViaGmailApi({
+              gmailAuthHeader: req.headers.authorization,
+              targetEmail: gmail,
+              verifySender: (header) => studentAuth.verifyGoogleSenderBearer(header),
+            });
+
+      if (!regResult.success) {
+        return res.status(regResult.status).json({
+          success: false,
+          error: regResult.error,
+        });
+      }
+
+      return res.json(regResult);
+    }
+
+    const result = await studentAuth.sendEmailViaGmailApi({
+      authHeader: req.headers.authorization,
+      gmail,
+      kind: kind === 'verified_edraw_id' ? 'verified_edraw_id' : 'verification_link',
+      baseUrl: resolveSafeBaseUrl(req),
+    });
+
+    if (!result.success) {
+      return res.status(result.status).json({
+        success: false,
+        error: result.error,
+      });
+    }
+
+    return res.json(result);
+  } catch (err) {
+    console.error('Error in /api/auth/send-gmail:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Unable to send email through Gmail right now.',
+    });
+  }
+});
+
+app.post('/api/registration/pending', async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const result = await registrationService.upsertPendingRegistration({
+      authHeader: req.headers.authorization,
+      name: body.name,
+      college: body.college,
+      studentDetails: body.studentDetails,
+    });
+
+    if (!result.success) {
+      return res.status(result.status).json({
+        success: false,
+        error: result.error,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      deliveryMode: result.deliveryMode,
+      student: result.student,
+    });
+  } catch (err) {
+    console.error('Error in /api/registration/pending:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Unable to save pending registration right now.',
+    });
+  }
+});
+
+app.post('/api/registration/resend-code', async (req, res) => {
+  try {
+    const result = await registrationService.resendVerificationCode({
+      authHeader: req.headers.authorization,
+    });
+
+    if (!result.success) {
+      return res.status(result.status).json({
+        success: false,
+        error: result.error,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      deliveryMode: result.deliveryMode,
+      email: result.email,
+      student: result.student,
+    });
+  } catch (err) {
+    console.error('Error in /api/registration/resend-code:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Unable to resend verification code right now.',
+    });
+  }
+});
+
+app.post('/api/registration/verify-code', async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const result = await registrationService.verifyEmailCode({
+      authHeader: req.headers.authorization,
+      code: body.code,
+      name: body.name,
+      college: body.college,
+      studentDetails: body.studentDetails,
+    });
+
+    if (!result.success) {
+      return res.status(result.status).json({
+        success: false,
+        error: result.error,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      alreadyAllocated: result.alreadyAllocated,
+      student: result.student,
+    });
+  } catch (err) {
+    console.error('Error in /api/registration/verify-code:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Unable to verify your code right now. Please retry.',
+    });
+  }
+});
+
+app.post('/api/registration/complete', async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const result = await registrationService.completeVerifiedRegistration({
+      authHeader: req.headers.authorization,
+      name: body.name,
+      college: body.college,
+      studentDetails: body.studentDetails,
+    });
+
+    if (!result.success) {
+      return res.status(result.status).json({
+        success: false,
+        error: result.error,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      alreadyAllocated: result.alreadyAllocated,
+      student: result.student,
+    });
+  } catch (err) {
+    console.error('Error in /api/registration/complete:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Unable to allocate eDraw ID right now. Please retry.',
+    });
+  }
+});
+
+app.get('/api/registration/me', async (req, res) => {
+  try {
+    const result = await registrationService.getRegistrationByToken(req.headers.authorization);
+    if (!result.success) {
+      return res.status(result.status).json({
+        success: false,
+        error: result.error,
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      student: result.student,
+    });
+  } catch (err) {
+    console.error('Error in /api/registration/me:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Unable to fetch registration status right now.',
+    });
+  }
 });
 
 // Configure Vite middleware in development or static serving in production

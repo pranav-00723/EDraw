@@ -23,20 +23,29 @@ test('firestore.rules enforces email_verified owner isolation and forbids blanke
   assert.match(rulesText, /match \/students\/\{studentUid\}[\s\S]*?allow list:\s*if false;/);
 });
 
-test('firestore.rules enforces EDID-XXXX and Gmail regexes synchronized with firebase-blueprint.json', () => {
+test('firestore.rules enforces EDID-XXXX and email regexes synchronized with firebase-blueprint.json', () => {
   const edidPattern = blueprint.entities.StudentProfile.properties.edrawId.pattern;
-  const gmailPattern = blueprint.entities.StudentProfile.properties.gmail.pattern;
-  const rulesEscapedGmailPattern = gmailPattern.replace(/\\/g, '\\\\');
+  const emailPattern = blueprint.entities.StudentProfile.properties.email.pattern;
+  const rulesEscapedEmailPattern = emailPattern.replace(/\\/g, '\\\\');
   assert.equal(edidPattern, '^EDID-[0-9]{4}$');
   assert.ok(rulesText.includes(edidPattern));
-  assert.ok(rulesText.includes(rulesEscapedGmailPattern));
+  assert.ok(rulesText.includes(rulesEscapedEmailPattern));
 });
 
-test('firestore.rules enforces Master Gate, immutability, request.time, and affectedKeys.hasOnly', () => {
-  assert.match(rulesText, /incoming\(\)\.createdAt == request\.time/);
-  assert.match(rulesText, /incoming\(\)\.updatedAt == request\.time/);
+test('firestore.rules forbids students from modifying edrawId, verified, registrationStatus, or emailVerifiedAt', () => {
   assert.match(rulesText, /incoming\(\)\.edrawId == existing\(\)\.edrawId/);
-  assert.match(rulesText, /incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasOnly/);
+  assert.match(rulesText, /incoming\(\)\.verified == existing\(\)\.verified/);
+  assert.match(rulesText, /incoming\(\)\.registrationStatus == existing\(\)\.registrationStatus/);
+  assert.match(rulesText, /incoming\(\)\.emailVerifiedAt == existing\(\)\.emailVerifiedAt/);
+  assert.match(rulesText, /incoming\(\)\.createdAt == existing\(\)\.createdAt/);
+  assert.match(rulesText, /incoming\(\)\.updatedAt == request\.time/);
+  assert.match(
+    rulesText,
+    /incoming\(\)\.diff\(existing\(\)\)\.affectedKeys\(\)\.hasOnly\(\[\s*'name',\s*'college',\s*'studentDetails',\s*'updatedAt'\s*\]\)/
+  );
+});
+
+test('firestore.rules enforces Master Gate on progress subcollection', () => {
   assert.match(rulesText, /exists\(\/databases\/\$\(database\)\/documents\/students\/\$\(studentUid\)\)/);
   assert.match(rulesText, /resource\.data\.ownerUid == request\.auth\.uid/);
 });

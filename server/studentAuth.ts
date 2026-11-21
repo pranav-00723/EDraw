@@ -12,6 +12,8 @@ import {
   normalizeEdrawId,
   normalizeGmail,
   validateRegistrationInput,
+  type DispatchQueueItem,
+  type GmailDispatchKind,
   type StudentProfileSummary,
   type VerificationEmailMessage,
 } from '../src/utils/studentAuthValidation.ts';
@@ -27,6 +29,8 @@ export interface StoredStudentRecord {
   verificationExpiresAt: number | null;
   createdAt: string;
   verifiedAt: string | null;
+  verificationEmailSentAt?: string | null;
+  edrawIdEmailSentAt?: string | null;
 }
 
 interface StudentDatabaseFile {
@@ -61,10 +65,24 @@ export interface VerificationResponsePayload {
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24; // 24 hours
 const VERIFICATION_TTL_MS = 1000 * 60 * 60 * 24; // 24 hours
+const DEFAULT_ADMIN_SENDER_EMAIL = 'edrawmit@gmail.com';
 const SESSION_SECRET =
   process.env.SESSION_SECRET && process.env.SESSION_SECRET.trim().length >= 16
     ? process.env.SESSION_SECRET.trim()
     : crypto.randomBytes(32).toString('hex');
+
+export function getAdminSenderEmail(): string {
+  const configured = (process.env.ADMIN_SENDER_EMAIL || '').trim().toLowerCase();
+  return configured || DEFAULT_ADMIN_SENDER_EMAIL;
+}
+
+export function isSmtpConfigured(): boolean {
+  return Boolean((process.env.SMTP_USER || '').trim() && (process.env.SMTP_PASS || '').trim());
+}
+
+function sanitizeHeaderValue(raw: string): string {
+  return raw.replace(/[\r\n]+/g, ' ').trim();
+}
 
 function escapeHtml(raw: string): string {
   return raw
@@ -73,6 +91,146 @@ function escapeHtml(raw: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+export function buildVerificationCodeEmailContent(params: {
+  studentName: string;
+  college: string;
+  code: string;
+}): { subject: string; text: string; html: string } {
+  const subject = 'Verify your email address';
+  const safeName = escapeHtml(params.studentName || 'Student');
+  const safeCode = escapeHtml(params.code);
+  const text = [
+    'Your verification code',
+    '',
+    `Hello ${params.studentName || 'Student'},`,
+    '',
+    'To verify that this email address belongs to you, please use this code:',
+    '',
+    params.code,
+    '',
+    'This code will expire one hour after this email was sent. If you did not make this request, you can ignore this email.',
+  ].join('\n');
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; max-width: 560px; margin: 0 auto; color: #1f2937; padding: 32px 24px;">
+      <h2 style="font-size: 22px; font-weight: 700; color: #111827; margin: 0 0 14px;">Your verification code</h2>
+      <p style="font-size: 14px; color: #374151; margin: 0 0 18px; line-height: 1.55;">
+        Hello <strong>${safeName}</strong>, to verify that this email address belongs to you, please use this code:
+      </p>
+      <div style="margin: 0 0 18px; padding: 20px 24px; background-color: #f3f4f6; border-radius: 6px; text-align: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; font-size: 28px; font-weight: 700; letter-spacing: 3px; color: #111827;">
+        ${safeCode}
+      </div>
+      <p style="font-size: 13px; color: #4b5563; margin: 0; line-height: 1.5;">
+        This code will expire one hour after this email was sent. If you did not make this request, you can ignore this email.
+      </p>
+    </div>
+  `.trim();
+
+  return { subject, text, html };
+}
+
+export function buildVerificationEmailContent(params: {
+  studentName: string;
+  college: string;
+  verificationUrl: string;
+}): { subject: string; text: string; html: string } {
+  const subject = 'Verify your Google Mail ID to receive your EDraw Student ID';
+  const text = [
+    `Hello ${params.studentName},`,
+    '',
+    `Thank you for registering for EDraw Engineering Graphics (${params.college}).`,
+    'Click the link below to verify your Google Mail ID and receive your official eDraw ID (EDID-XXXX):',
+    params.verificationUrl,
+    '',
+    'This verification link expires in 24 hours.',
+  ].join('\n');
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; color: #202044; padding: 24px;">
+      <h2 style="color: #5722C9; margin-bottom: 12px;">Verify your EDraw Student Registration</h2>
+      <p>Hello <strong>${escapeHtml(params.studentName)}</strong>,</p>
+      <p>We received your registration from <strong>${escapeHtml(params.college)}</strong>. Click the button below to verify your Gmail address and receive your official <strong>EDID-XXXX</strong> account ID:</p>
+      <p style="margin: 24px 0;">
+        <a href="${escapeHtml(params.verificationUrl)}" style="background: #612AD6; color: #ffffff; text-decoration: none; padding: 12px 22px; border-radius: 10px; font-weight: 600; display: inline-block;">
+          Verify Gmail &amp; Receive EDraw ID
+        </a>
+      </p>
+      <p style="font-size: 13px; color: #64748b;">Or copy this link into your browser:<br />${escapeHtml(params.verificationUrl)}</p>
+      <p style="font-size: 12px; color: #94a3b8;">This link expires in 24 hours.</p>
+    </div>
+  `.trim();
+
+  return { subject, text, html };
+}
+
+export function buildVerifiedIdEmailContent(params: {
+  studentName: string;
+  college: string;
+  edrawId: string;
+}): { subject: string; text: string; html: string } {
+  const subject = `Your EDraw ID is Verified: ${params.edrawId}`;
+  const text = [
+    `Hello ${params.studentName},`,
+    '',
+    'Your Gmail address has been verified successfully!',
+    `Your official EDraw ID is: ${params.edrawId}`,
+    `College: ${params.college}`,
+    '',
+    'Use this eDraw ID along with your password on the EDraw login page to open your dashboard.',
+  ].join('\n');
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; color: #202044; padding: 24px;">
+      <h2 style="color: #059669; margin-bottom: 12px;">Gmail Verified — Your EDraw ID is Ready</h2>
+      <p>Hello <strong>${escapeHtml(params.studentName)}</strong> (${escapeHtml(params.college)}),</p>
+      <p>Your student account is now active. Use the eDraw ID below with your password to log in:</p>
+      <div style="margin: 20px 0; padding: 16px 20px; border-radius: 12px; background: #F5F2FF; border: 1px solid #DDD3FA; font-family: monospace; font-size: 22px; font-weight: 700; color: #5722C9; text-align: center; letter-spacing: 2px;">
+        ${escapeHtml(params.edrawId)}
+      </div>
+      <p style="font-size: 13px; color: #64748b;">Keep this eDraw ID saved in your Gmail inbox for future logins.</p>
+    </div>
+  `.trim();
+
+  return { subject, text, html };
+}
+
+export function buildMimeRawEmail(params: {
+  from: string;
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+}): string {
+  const boundary = `edraw_boundary_${crypto.randomBytes(8).toString('hex')}`;
+  const safeFrom = sanitizeHeaderValue(params.from);
+  const safeTo = sanitizeHeaderValue(params.to);
+  const safeSubject = sanitizeHeaderValue(params.subject);
+
+  const mimeLines = [
+    `From: EDraw Verification <${safeFrom}>`,
+    `To: ${safeTo}`,
+    `Subject: ${safeSubject}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    Buffer.from(params.text, 'utf8').toString('base64'),
+    '',
+    `--${boundary}`,
+    'Content-Type: text/html; charset="UTF-8"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    Buffer.from(params.html, 'utf8').toString('base64'),
+    '',
+    `--${boundary}--`,
+  ].join('\r\n');
+
+  return Buffer.from(mimeLines, 'utf8').toString('base64url');
 }
 
 export function hashPassword(password: string): string {
@@ -167,7 +325,7 @@ export function toPublicProfile(record: StoredStudentRecord): StudentProfileSumm
   };
 }
 
-function getSmtpTransporter() {
+export function getSmtpTransporter() {
   const user = (process.env.SMTP_USER || '').trim();
   const pass = (process.env.SMTP_PASS || '').trim();
   if (!user || !pass) return null;
@@ -228,7 +386,12 @@ export class StudentAuthService {
     verificationToken: string;
   }): Promise<{ deliveryMode: EmailDeliveryMode; previewEmail?: VerificationEmailMessage }> {
     const sentAt = new Date().toISOString();
-    const subject = 'Verify your Google Mail ID to receive your EDraw Student ID';
+    const senderEmail = getAdminSenderEmail();
+    const content = buildVerificationEmailContent({
+      studentName: params.studentName,
+      college: params.college,
+      verificationUrl: params.verificationUrl,
+    });
     const smtp = getSmtpTransporter();
 
     if (smtp) {
@@ -236,30 +399,9 @@ export class StudentAuthService {
         await smtp.transporter.sendMail({
           from: smtp.from,
           to: params.gmail,
-          subject,
-          text: [
-            `Hello ${params.studentName},`,
-            '',
-            `Thank you for registering for EDraw Engineering Graphics (${params.college}).`,
-            'Click the link below to verify your Google Mail ID and receive your official eDraw ID (EDID-XXXX):',
-            params.verificationUrl,
-            '',
-            'This verification link expires in 24 hours.',
-          ].join('\n'),
-          html: `
-            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; color: #202044; padding: 24px;">
-              <h2 style="color: #5722C9; margin-bottom: 12px;">Verify your EDraw Student Registration</h2>
-              <p>Hello <strong>${escapeHtml(params.studentName)}</strong>,</p>
-              <p>We received your registration from <strong>${escapeHtml(params.college)}</strong>. Click the button below to verify your Gmail address and activate your <strong>EDID-XXXX</strong> account:</p>
-              <p style="margin: 24px 0;">
-                <a href="${escapeHtml(params.verificationUrl)}" style="background: #612AD6; color: #ffffff; text-decoration: none; padding: 12px 22px; border-radius: 10px; font-weight: 600; display: inline-block;">
-                  Verify Gmail &amp; Activate EDraw ID
-                </a>
-              </p>
-              <p style="font-size: 13px; color: #64748b;">Or copy this link into your browser:<br />${escapeHtml(params.verificationUrl)}</p>
-              <p style="font-size: 12px; color: #94a3b8;">This link expires in 24 hours.</p>
-            </div>
-          `,
+          subject: content.subject,
+          text: content.text,
+          html: content.html,
         });
         return { deliveryMode: 'smtp' };
       } catch (err) {
@@ -273,8 +415,8 @@ export class StudentAuthService {
         id: `msg-verify-${Date.now()}`,
         kind: 'verification_link',
         to: params.gmail,
-        from: 'EDraw Verification <noreply@edraw.edu>',
-        subject,
+        from: `EDraw Verification <${senderEmail}>`,
+        subject: content.subject,
         sentAt,
         studentName: params.studentName,
         college: params.college,
@@ -291,7 +433,12 @@ export class StudentAuthService {
     edrawId: string;
   }): Promise<{ deliveryMode: EmailDeliveryMode; confirmationEmail?: VerificationEmailMessage }> {
     const sentAt = new Date().toISOString();
-    const subject = `Your EDraw ID is Verified: ${params.edrawId}`;
+    const senderEmail = getAdminSenderEmail();
+    const content = buildVerifiedIdEmailContent({
+      studentName: params.studentName,
+      college: params.college,
+      edrawId: params.edrawId,
+    });
     const smtp = getSmtpTransporter();
 
     if (smtp) {
@@ -299,27 +446,9 @@ export class StudentAuthService {
         await smtp.transporter.sendMail({
           from: smtp.from,
           to: params.gmail,
-          subject,
-          text: [
-            `Hello ${params.studentName},`,
-            '',
-            'Your Gmail address has been verified successfully!',
-            `Your official EDraw ID is: ${params.edrawId}`,
-            `College: ${params.college}`,
-            '',
-            'Use this eDraw ID along with your password on the EDraw login page to open your dashboard.',
-          ].join('\n'),
-          html: `
-            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; color: #202044; padding: 24px;">
-              <h2 style="color: #059669; margin-bottom: 12px;">Gmail Verified — Your EDraw ID is Ready</h2>
-              <p>Hello <strong>${escapeHtml(params.studentName)}</strong> (${escapeHtml(params.college)}),</p>
-              <p>Your student account is now active. Use the eDraw ID below with your password to log in:</p>
-              <div style="margin: 20px 0; padding: 16px 20px; border-radius: 12px; background: #F5F2FF; border: 1px solid #DDD3FA; font-family: monospace; font-size: 22px; font-weight: 700; color: #5722C9; text-align: center; letter-spacing: 2px;">
-                ${escapeHtml(params.edrawId)}
-              </div>
-              <p style="font-size: 13px; color: #64748b;">Keep this eDraw ID saved in your Gmail inbox for future logins.</p>
-            </div>
-          `,
+          subject: content.subject,
+          text: content.text,
+          html: content.html,
         });
         return { deliveryMode: 'smtp' };
       } catch (err) {
@@ -333,8 +462,8 @@ export class StudentAuthService {
         id: `msg-verified-${Date.now()}`,
         kind: 'verified_edraw_id',
         to: params.gmail,
-        from: 'EDraw Verification <noreply@edraw.edu>',
-        subject,
+        from: `EDraw Verification <${senderEmail}>`,
+        subject: content.subject,
         sentAt,
         studentName: params.studentName,
         college: params.college,
@@ -614,5 +743,206 @@ export class StudentAuthService {
     if (token) {
       this.revokedTokens.add(token);
     }
+  }
+
+  async verifyGoogleSenderBearer(authHeader: string | undefined): Promise<
+    | { ok: true; email: string; accessToken: string }
+    | { ok: false; status: number; error: string; email?: string }
+  > {
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return {
+        ok: false,
+        status: 401,
+        error: 'Google authorization token is required.',
+      };
+    }
+
+    const accessToken = authHeader.slice('Bearer '.length).trim();
+    if (!accessToken) {
+      return {
+        ok: false,
+        status: 401,
+        error: 'Google authorization token is missing.',
+      };
+    }
+
+    let profileEmail = '';
+    try {
+      const profileRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (!profileRes.ok) {
+        return {
+          ok: false,
+          status: 401,
+          error: 'Google Gmail authorization has expired or lacks permission. Please sign in with Google again.',
+        };
+      }
+
+      const profileJson = (await profileRes.json()) as { emailAddress?: string };
+      profileEmail = typeof profileJson.emailAddress === 'string'
+        ? profileJson.emailAddress.trim().toLowerCase()
+        : '';
+    } catch {
+      return {
+        ok: false,
+        status: 502,
+        error: 'Could not verify your Gmail account with Google.',
+      };
+    }
+
+    const expectedSender = getAdminSenderEmail();
+    if (!profileEmail || profileEmail !== expectedSender) {
+      return {
+        ok: false,
+        status: 403,
+        email: profileEmail || undefined,
+        error: `Connected as ${profileEmail || 'unknown account'}, but only the official EDraw sender (${expectedSender}) is authorized to dispatch student verification emails.`,
+      };
+    }
+
+    return { ok: true, email: profileEmail, accessToken };
+  }
+
+  getDispatchQueue(): DispatchQueueItem[] {
+    const db = this.readDb();
+    return [...db.students]
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((s) => ({
+        edrawId: s.edrawId,
+        name: s.name,
+        gmail: s.gmail,
+        college: s.college,
+        verified: s.verified,
+        createdAt: s.createdAt,
+        verifiedAt: s.verifiedAt,
+        verificationEmailSentAt: s.verificationEmailSentAt ?? null,
+        edrawIdEmailSentAt: s.edrawIdEmailSentAt ?? null,
+      }));
+  }
+
+  async sendEmailViaGmailApi(params: {
+    authHeader: string | undefined;
+    gmail: string;
+    kind: GmailDispatchKind;
+    baseUrl: string;
+  }): Promise<
+    | {
+        success: true;
+        sentFrom: string;
+        sentTo: string;
+        edrawId: string;
+        kind: GmailDispatchKind;
+        messageId: string;
+        sentAt: string;
+      }
+    | { success: false; status: number; error: string }
+  > {
+    const senderCheck = await this.verifyGoogleSenderBearer(params.authHeader);
+    if (!senderCheck.ok) {
+      return { success: false, status: senderCheck.status, error: senderCheck.error };
+    }
+
+    const normalizedGmail = normalizeGmail(params.gmail || '');
+    if (!normalizedGmail) {
+      return { success: false, status: 400, error: 'Student Gmail address is required.' };
+    }
+
+    if (params.kind !== 'verification_link' && params.kind !== 'verified_edraw_id') {
+      return { success: false, status: 400, error: 'Invalid email dispatch kind.' };
+    }
+
+    const db = this.readDb();
+    const record = db.students.find((s) => s.gmail === normalizedGmail);
+    if (!record) {
+      return { success: false, status: 404, error: 'Student registration not found.' };
+    }
+
+    let emailContent: { subject: string; text: string; html: string };
+
+    if (params.kind === 'verification_link') {
+      if (record.verified) {
+        return {
+          success: false,
+          status: 409,
+          error: `${record.gmail} is already verified. Send their official eDraw ID email instead.`,
+        };
+      }
+
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      record.verificationTokenHash = hashToken(rawToken);
+      record.verificationExpiresAt = Date.now() + VERIFICATION_TTL_MS;
+      this.writeDb(db);
+
+      const safeBase = params.baseUrl.replace(/\/+$/, '');
+      const verificationUrl = `${safeBase}/?verifyToken=${rawToken}`;
+      emailContent = buildVerificationEmailContent({
+        studentName: record.name,
+        college: record.college,
+        verificationUrl,
+      });
+    } else {
+      if (!record.verified) {
+        return {
+          success: false,
+          status: 409,
+          error: `${record.gmail} has not verified their email link yet. Send the verification link first.`,
+        };
+      }
+
+      emailContent = buildVerifiedIdEmailContent({
+        studentName: record.name,
+        college: record.college,
+        edrawId: record.edrawId,
+      });
+    }
+
+    const rawMime = buildMimeRawEmail({
+      from: senderCheck.email,
+      to: record.gmail,
+      subject: emailContent.subject,
+      text: emailContent.text,
+      html: emailContent.html,
+    });
+
+    const gmailRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${senderCheck.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ raw: rawMime }),
+    });
+
+    if (!gmailRes.ok) {
+      const errBody = await gmailRes.text();
+      console.error('Gmail API send failed:', gmailRes.status, errBody);
+      return {
+        success: false,
+        status: gmailRes.status === 401 || gmailRes.status === 403 ? gmailRes.status : 502,
+        error: 'Gmail API could not send the email. Please verify your Gmail send permission and try again.',
+      };
+    }
+
+    const sentPayload = (await gmailRes.json()) as { id?: string };
+    const sentAt = new Date().toISOString();
+
+    if (params.kind === 'verification_link') {
+      record.verificationEmailSentAt = sentAt;
+    } else {
+      record.edrawIdEmailSentAt = sentAt;
+    }
+    this.writeDb(db);
+
+    return {
+      success: true,
+      sentFrom: senderCheck.email,
+      sentTo: record.gmail,
+      edrawId: record.edrawId,
+      kind: params.kind,
+      messageId: sentPayload.id || `gmail-${Date.now()}`,
+      sentAt,
+    };
   }
 }

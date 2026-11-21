@@ -135,3 +135,61 @@ test('blocks login for unverified student until Gmail verification completes', a
 
   fs.rmSync(path.dirname(storePath), { recursive: true, force: true });
 });
+
+test('builds sanitized RFC 2822 MIME payload and exposes sanitized dispatch queue without hashes', async () => {
+  const {
+    buildMimeRawEmail,
+    buildVerificationEmailContent,
+    getAdminSenderEmail,
+  } = await import('./studentAuth');
+
+  assert.equal(getAdminSenderEmail(), 'edrawmit@gmail.com');
+
+  const content = buildVerificationEmailContent({
+    studentName: 'Meera <script>alert(1)</script>',
+    college: 'MIT Anna University',
+    verificationUrl: 'https://example.com/?verifyToken=abc123',
+  });
+  assert.equal(content.html.includes('<script>'), false);
+  assert.equal(content.html.includes('&lt;script&gt;'), true);
+
+  const raw = buildMimeRawEmail({
+    from: 'edrawmit@gmail.com\r\nBcc: evil@example.com',
+    to: 'student@gmail.com',
+    subject: 'Verify Account\r\nX-Injected: bad',
+    text: content.text,
+    html: content.html,
+  });
+  const decoded = Buffer.from(raw, 'base64url').toString('utf8');
+  assert.equal(decoded.includes('\r\nBcc:'), false);
+  assert.equal(decoded.includes('\r\nX-Injected:'), false);
+  assert.equal(decoded.includes('To: student@gmail.com'), true);
+
+  const storePath = makeTempStorePath();
+  const service = new StudentAuthService(storePath);
+  await service.registerStudent(
+    {
+      name: 'Rohan Das',
+      gmail: 'rohan.das@gmail.com',
+      college: 'NIT Trichy',
+      password: 'Password123',
+      confirmPassword: 'Password123',
+    },
+    'http://localhost:3000'
+  );
+
+  const queue = service.getDispatchQueue();
+  assert.equal(queue.length, 1);
+  assert.equal(queue[0].gmail, 'rohan.das@gmail.com');
+  assert.equal(queue[0].verified, false);
+  assert.equal('passwordHash' in queue[0], false);
+  assert.equal('verificationTokenHash' in queue[0], false);
+
+  const authCheck = await service.verifyGoogleSenderBearer(undefined);
+  assert.equal(authCheck.ok, false);
+  if (!authCheck.ok) {
+    assert.equal(authCheck.status, 401);
+  }
+
+  fs.rmSync(path.dirname(storePath), { recursive: true, force: true });
+});

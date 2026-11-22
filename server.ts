@@ -14,13 +14,22 @@ import {
   solveNormalizedModel,
   normalizeMasterOcrText,
 } from './src/utils/straightLineMasterSolver.ts';
-import {
-  StudentAuthService,
-  getAdminSenderEmail,
-  isAutoMailerConfigured,
-} from './server/studentAuth.ts';
+import { StudentAuthService } from './server/studentAuth.ts';
 import { RegistrationService } from './server/registrationService.ts';
 import { FirebaseAuthProxyService } from './server/firebaseAuthProxy.ts';
+import {
+  getPipelineCapabilities,
+  runEngineeringDrawingPipeline,
+} from './server/pipeline/orchestrator.ts';
+import { runStage1Ocr, type OcrEnginePreference } from './server/pipeline/ocrService.ts';
+import {
+  buildInitialProblemJson,
+  resolvePipelineFilePath,
+} from './server/pipeline/initialJsonBuilder.ts';
+import { runStage3PythonSolver } from './server/pipeline/pythonSolverBridge.ts';
+import { updateAndValidateProblemJson } from './server/pipeline/jsonUpdaterValidator.ts';
+import { runStage5SvgRenderer } from './server/pipeline/svgRenderer.ts';
+import { validateCanonicalProblem } from './src/pipeline/schema.ts';
 
 dotenv.config();
 
@@ -690,16 +699,15 @@ function resolveSafeBaseUrl(req: express.Request): string {
 app.post('/api/auth/register', async (req, res) => {
   try {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
-    const result = await studentAuth.registerStudent(
-      {
-        name: typeof body.name === 'string' ? body.name : '',
-        gmail: typeof body.gmail === 'string' ? body.gmail : '',
-        college: typeof body.college === 'string' ? body.college : '',
-        password: typeof body.password === 'string' ? body.password : '',
-        confirmPassword: typeof body.confirmPassword === 'string' ? body.confirmPassword : '',
-      },
-      resolveSafeBaseUrl(req)
-    );
+    const result = await studentAuth.registerStudent({
+      name: typeof body.name === 'string' ? body.name : '',
+      email: typeof body.email === 'string' ? body.email : undefined,
+      gmail: typeof body.gmail === 'string' ? body.gmail : undefined,
+      college: typeof body.college === 'string' ? body.college : '',
+      studentDetails: typeof body.studentDetails === 'string' ? body.studentDetails : '',
+      password: typeof body.password === 'string' ? body.password : '',
+      confirmPassword: typeof body.confirmPassword === 'string' ? body.confirmPassword : '',
+    });
 
     if (!result.success) {
       return res.status(result.status).json({
@@ -719,57 +727,13 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-app.post('/api/auth/resend-verification', async (req, res) => {
-  try {
-    const body = req.body && typeof req.body === 'object' ? req.body : {};
-    const gmail = typeof body.gmail === 'string' ? body.gmail : '';
-    const result = await studentAuth.resendVerification(gmail, resolveSafeBaseUrl(req));
-
-    if (!result.success) {
-      return res.status(result.status).json({
-        success: false,
-        error: result.error,
-      });
-    }
-
-    return res.json(result);
-  } catch (err) {
-    console.error('Error in /api/auth/resend-verification:', err);
-    return res.status(500).json({
-      success: false,
-      error: 'Unable to resend verification link right now.',
-    });
-  }
-});
-
-app.post('/api/auth/verify-email', async (req, res) => {
-  try {
-    const body = req.body && typeof req.body === 'object' ? req.body : {};
-    const token = typeof body.token === 'string' ? body.token : '';
-    const result = await studentAuth.verifyEmailToken(token);
-
-    if (!result.success) {
-      return res.status(result.status).json({
-        success: false,
-        error: result.error,
-      });
-    }
-
-    return res.json(result);
-  } catch (err) {
-    console.error('Error in /api/auth/verify-email:', err);
-    return res.status(500).json({
-      success: false,
-      error: 'Unable to verify Gmail link right now.',
-    });
-  }
-});
-
 app.post('/api/auth/login', (req, res) => {
   try {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
     const result = studentAuth.loginStudent({
-      edrawId: typeof body.edrawId === 'string' ? body.edrawId : '',
+      identifier: typeof body.identifier === 'string' ? body.identifier : undefined,
+      edrawId: typeof body.edrawId === 'string' ? body.edrawId : undefined,
+      email: typeof body.email === 'string' ? body.email : undefined,
       password: typeof body.password === 'string' ? body.password : '',
     });
 
@@ -777,7 +741,6 @@ app.post('/api/auth/login', (req, res) => {
       return res.status(result.status).json({
         success: false,
         error: result.error,
-        unverifiedGmail: result.unverifiedGmail,
       });
     }
 
@@ -852,14 +815,6 @@ app.post('/api/auth/firebase/refresh', async (req, res) => {
   return res.status(200).json(result);
 });
 
-app.get('/api/auth/sender-status', (_req, res) => {
-  return res.json({
-    success: true,
-    adminSenderEmail: getAdminSenderEmail(),
-    smtpConfigured: isAutoMailerConfigured(),
-  });
-});
-
 app.post('/api/admin/reset-database', async (req, res) => {
   try {
     const senderCheck = await studentAuth.verifyGoogleSenderBearer(req.headers.authorization);
@@ -883,194 +838,6 @@ app.post('/api/admin/reset-database', async (req, res) => {
     return res.status(500).json({
       success: false,
       error: 'Unable to reset the registration database right now.',
-    });
-  }
-});
-
-app.get('/api/auth/dispatch-queue', async (req, res) => {
-  try {
-    const senderCheck = await studentAuth.verifyGoogleSenderBearer(req.headers.authorization);
-    if (!senderCheck.ok) {
-      return res.status(senderCheck.status).json({
-        success: false,
-        error: senderCheck.error,
-        connectedEmail: senderCheck.email,
-      });
-    }
-
-    const regItems = registrationService.getDispatchQueueItems();
-    const legacyItems = studentAuth.getDispatchQueue();
-    const byEmail = new Map<string, typeof regItems[number]>();
-    for (const item of legacyItems) {
-      byEmail.set(item.gmail.toLowerCase(), item);
-    }
-    for (const item of regItems) {
-      byEmail.set(item.gmail.toLowerCase(), item);
-    }
-    const merged = Array.from(byEmail.values()).sort((a, b) =>
-      b.createdAt.localeCompare(a.createdAt)
-    );
-
-    return res.json({
-      success: true,
-      senderEmail: senderCheck.email,
-      students: merged,
-    });
-  } catch (err) {
-    console.error('Error in /api/auth/dispatch-queue:', err);
-    return res.status(500).json({
-      success: false,
-      error: 'Unable to load the Gmail verification dispatch queue right now.',
-    });
-  }
-});
-
-app.post('/api/auth/send-gmail', async (req, res) => {
-  try {
-    const body = req.body && typeof req.body === 'object' ? req.body : {};
-    const gmail = typeof body.gmail === 'string' ? body.gmail : '';
-    const kind =
-      body.kind === 'verified_edraw_id'
-        ? 'verified_edraw_id'
-        : body.kind === 'verification_code'
-        ? 'verification_code'
-        : 'verification_link';
-
-    if (kind === 'verification_code' || registrationService.hasRecordByEmail(gmail)) {
-      const regResult =
-        kind === 'verified_edraw_id'
-          ? await registrationService.sendVerifiedIdViaGmailApi({
-              gmailAuthHeader: req.headers.authorization,
-              targetEmail: gmail,
-              verifySender: (header) => studentAuth.verifyGoogleSenderBearer(header),
-            })
-          : await registrationService.sendCodeViaGmailApi({
-              gmailAuthHeader: req.headers.authorization,
-              targetEmail: gmail,
-              verifySender: (header) => studentAuth.verifyGoogleSenderBearer(header),
-            });
-
-      if (!regResult.success) {
-        return res.status(regResult.status).json({
-          success: false,
-          error: regResult.error,
-        });
-      }
-
-      return res.json(regResult);
-    }
-
-    const result = await studentAuth.sendEmailViaGmailApi({
-      authHeader: req.headers.authorization,
-      gmail,
-      kind: kind === 'verified_edraw_id' ? 'verified_edraw_id' : 'verification_link',
-      baseUrl: resolveSafeBaseUrl(req),
-    });
-
-    if (!result.success) {
-      return res.status(result.status).json({
-        success: false,
-        error: result.error,
-      });
-    }
-
-    return res.json(result);
-  } catch (err) {
-    console.error('Error in /api/auth/send-gmail:', err);
-    return res.status(500).json({
-      success: false,
-      error: 'Unable to send email through Gmail right now.',
-    });
-  }
-});
-
-app.post('/api/registration/pending', async (req, res) => {
-  try {
-    const body = req.body && typeof req.body === 'object' ? req.body : {};
-    const result = await registrationService.upsertPendingRegistration({
-      authHeader: req.headers.authorization,
-      name: body.name,
-      college: body.college,
-      studentDetails: body.studentDetails,
-    });
-
-    if (!result.success) {
-      return res.status(result.status).json({
-        success: false,
-        error: result.error,
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      deliveryMode: result.deliveryMode,
-      student: result.student,
-    });
-  } catch (err) {
-    console.error('Error in /api/registration/pending:', err);
-    return res.status(500).json({
-      success: false,
-      error: 'Unable to save pending registration right now.',
-    });
-  }
-});
-
-app.post('/api/registration/resend-code', async (req, res) => {
-  try {
-    const result = await registrationService.resendVerificationCode({
-      authHeader: req.headers.authorization,
-    });
-
-    if (!result.success) {
-      return res.status(result.status).json({
-        success: false,
-        error: result.error,
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      deliveryMode: result.deliveryMode,
-      email: result.email,
-      student: result.student,
-    });
-  } catch (err) {
-    console.error('Error in /api/registration/resend-code:', err);
-    return res.status(500).json({
-      success: false,
-      error: 'Unable to resend verification code right now.',
-    });
-  }
-});
-
-app.post('/api/registration/verify-code', async (req, res) => {
-  try {
-    const body = req.body && typeof req.body === 'object' ? req.body : {};
-    const result = await registrationService.verifyEmailCode({
-      authHeader: req.headers.authorization,
-      code: body.code,
-      name: body.name,
-      college: body.college,
-      studentDetails: body.studentDetails,
-    });
-
-    if (!result.success) {
-      return res.status(result.status).json({
-        success: false,
-        error: result.error,
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      alreadyAllocated: result.alreadyAllocated,
-      student: result.student,
-    });
-  } catch (err) {
-    console.error('Error in /api/registration/verify-code:', err);
-    return res.status(500).json({
-      success: false,
-      error: 'Unable to verify your code right now. Please retry.',
     });
   }
 });
@@ -1124,6 +891,232 @@ app.get('/api/registration/me', async (req, res) => {
     return res.status(500).json({
       success: false,
       error: 'Unable to fetch registration status right now.',
+    });
+  }
+});
+
+// ============================================================================
+// 5-STAGE ENGINEERING DRAWING PIPELINE API ROUTES
+// Stage 1 (OCR) -> Stage 2 (Initial JSON) -> Stage 3 (Python Solver)
+// -> Stage 4 (Update & Validate JSON) -> Stage 5 (Geometry Engine & SVG)
+// ============================================================================
+
+const ALLOWED_OCR_ENGINES = new Set<OcrEnginePreference>([
+  'auto',
+  'glm-ocr',
+  'gemini-vision',
+  'tesseract',
+]);
+
+function parseOcrEnginePreference(raw: unknown): OcrEnginePreference {
+  if (typeof raw === 'string' && ALLOWED_OCR_ENGINES.has(raw as OcrEnginePreference)) {
+    return raw as OcrEnginePreference;
+  }
+  return 'auto';
+}
+
+app.get('/api/pipeline/capabilities', async (_req, res) => {
+  try {
+    const capabilities = await getPipelineCapabilities();
+    return res.json({ ok: true, ...capabilities });
+  } catch (err: any) {
+    console.error('Error in /api/pipeline/capabilities:', err);
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || 'Unable to inspect pipeline capabilities.',
+    });
+  }
+});
+
+app.post('/api/pipeline/ocr', async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const result = await runStage1Ocr({
+      imageBase64: typeof body.imageBase64 === 'string' ? body.imageBase64 : undefined,
+      mimeType: typeof body.mimeType === 'string' ? body.mimeType : undefined,
+      text: typeof body.text === 'string' ? body.text : undefined,
+      engine: parseOcrEnginePreference(body.ocrEngine ?? body.engine),
+    });
+    if (!result.ok) {
+      return res.status(422).json(result);
+    }
+    return res.json(result);
+  } catch (err: any) {
+    console.error('Error in /api/pipeline/ocr:', err);
+    return res.status(500).json({
+      ok: false,
+      stage: 'stage_1_ocr',
+      error: err?.message || 'Stage 1 OCR failed unexpectedly.',
+    });
+  }
+});
+
+app.post('/api/pipeline/initial-json', async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    let ocrPayload = body.ocr;
+    if (!ocrPayload && typeof body.raw_text === 'string') {
+      const stage1 = await runStage1Ocr({ text: body.raw_text });
+      if (!stage1.ok) {
+        return res.status(422).json(stage1);
+      }
+      ocrPayload = stage1;
+    }
+    if (!ocrPayload || typeof ocrPayload.raw_text !== 'string') {
+      return res.status(400).json({
+        ok: false,
+        stage: 'stage_2_initial_json',
+        error: 'Provide a Stage 1 OCR result object or raw_text string.',
+      });
+    }
+
+    const stage2 = buildInitialProblemJson(ocrPayload, {
+      persist: body.persist !== false,
+    });
+    if (!stage2.ok) {
+      return res.status(422).json(stage2);
+    }
+    return res.json(stage2);
+  } catch (err: any) {
+    console.error('Error in /api/pipeline/initial-json:', err);
+    return res.status(500).json({
+      ok: false,
+      stage: 'stage_2_initial_json',
+      error: err?.message || 'Stage 2 initial JSON generation failed.',
+    });
+  }
+});
+
+app.post('/api/pipeline/solve', async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const checked = validateCanonicalProblem(body.problem ?? body);
+    if (!checked.ok) {
+      return res.status(400).json({
+        ok: false,
+        stage: 'stage_3_python_solver',
+        error: `Invalid canonical initial JSON: ${checked.errors.join('; ')}`,
+        schema_errors: checked.errors,
+      });
+    }
+
+    const stage3 = await runStage3PythonSolver(checked.data);
+    if (!stage3.ok) {
+      return res.status(500).json(stage3);
+    }
+
+    const stage4 = updateAndValidateProblemJson(checked.data, stage3, {
+      persist: body.persist !== false,
+    });
+    if (!stage4.ok) {
+      return res.status(422).json(stage4);
+    }
+
+    return res.json({
+      ok: true,
+      stage3,
+      stage4,
+      validated_json: stage4.updated_problem,
+      missing_requirements: stage4.updated_problem.validation.missing_requirements,
+      ready_for_render: stage4.ready_for_render,
+    });
+  } catch (err: any) {
+    console.error('Error in /api/pipeline/solve:', err);
+    return res.status(500).json({
+      ok: false,
+      stage: 'stage_3_python_solver',
+      error: err?.message || 'Stage 3/4 solve and validation failed.',
+    });
+  }
+});
+
+app.post('/api/pipeline/render', (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const stage5 = runStage5SvgRenderer(body.problem ?? body, {
+      isDark: Boolean(body.isDark),
+    });
+    if (!stage5.ok) {
+      return res.status(422).json(stage5);
+    }
+    return res.json(stage5);
+  } catch (err: any) {
+    console.error('Error in /api/pipeline/render:', err);
+    return res.status(500).json({
+      ok: false,
+      stage: 'stage_5_render_svg',
+      error: err?.message || 'Stage 5 SVG rendering failed.',
+    });
+  }
+});
+
+app.post('/api/pipeline/run', async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const result = await runEngineeringDrawingPipeline({
+      imageBase64: typeof body.imageBase64 === 'string' ? body.imageBase64 : undefined,
+      mimeType: typeof body.mimeType === 'string' ? body.mimeType : undefined,
+      text: typeof body.text === 'string' ? body.text : undefined,
+      ocrEngine: parseOcrEnginePreference(body.ocrEngine),
+      editedInitialJson: body.editedInitialJson,
+      isDark: Boolean(body.isDark),
+      persist: body.persist !== false,
+    });
+
+    const status = result.ok
+      ? 200
+      : result.failed_stage === 'stage_3_python_solver' && !result.validated_json
+      ? 500
+      : 422;
+    return res.status(status).json(result);
+  } catch (err: any) {
+    console.error('Error in /api/pipeline/run:', err);
+    return res.status(500).json({
+      ok: false,
+      failed_stage: 'stage_1_ocr',
+      error: err?.message || 'Unexpected pipeline execution error.',
+      stages: [],
+      raw_ocr_text: null,
+      ocr_engine_used: null,
+      initial_json: null,
+      validated_json: null,
+      missing_requirements: [],
+      svg: null,
+      drawing_geometry: null,
+      line_input: null,
+    });
+  }
+});
+
+app.get('/api/pipeline/problems/:problemId', (req, res) => {
+  try {
+    const problemId = String(req.params.problemId || '');
+    if (!/^[a-zA-Z0-9_-]{4,64}$/.test(problemId)) {
+      return res.status(400).json({ ok: false, error: 'Invalid problem_id format.' });
+    }
+    const initialPath = resolvePipelineFilePath(problemId, 'initial.json');
+    const solvedPath = resolvePipelineFilePath(problemId, 'solved.json');
+    const initialJson = fs.existsSync(initialPath)
+      ? JSON.parse(fs.readFileSync(initialPath, 'utf8'))
+      : null;
+    const solvedJson = fs.existsSync(solvedPath)
+      ? JSON.parse(fs.readFileSync(solvedPath, 'utf8'))
+      : null;
+
+    if (!initialJson && !solvedJson) {
+      return res.status(404).json({ ok: false, error: 'Problem record not found.' });
+    }
+    return res.json({
+      ok: true,
+      problem_id: problemId,
+      initial_json: initialJson,
+      validated_json: solvedJson,
+    });
+  } catch (err: any) {
+    console.error('Error in /api/pipeline/problems/:problemId:', err);
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || 'Unable to load persisted problem JSON.',
     });
   }
 });

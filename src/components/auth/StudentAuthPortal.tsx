@@ -3,99 +3,48 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
+  AlertCircle,
   ArrowLeft,
   ArrowRight,
   Building2,
   Check,
   CheckCircle2,
   Copy,
+  ExternalLink,
   Eye,
   EyeOff,
+  GraduationCap,
   KeyRound,
+  Loader2,
   Lock,
   Mail,
   Moon,
-  RefreshCw,
   ShieldCheck,
   Sun,
   User,
-  AlertCircle,
-  ExternalLink,
-  Inbox,
-  Send,
-  ChevronDown,
-  ChevronUp,
-  GraduationCap,
-  Loader2,
-  RotateCcw,
 } from 'lucide-react';
-import { onAuthStateChanged } from 'firebase/auth';
 import {
-  type DispatchQueueItem,
   type StudentProfileSummary,
-  type VerificationEmailMessage,
   type FirebaseRegistrationInput,
   type FieldErrors,
   isValidEdrawId,
   isValidEmail,
-  isValidVerificationCode,
   normalizeEdrawId,
   normalizeEmail,
-  normalizeVerificationCode,
   validateFirebaseRegistrationInput,
 } from '../../utils/studentAuthValidation';
-import {
-  OFFICIAL_SENDER_GMAIL,
-  applyFirebaseVerificationCode,
-  auth,
-  getGmailAccessToken,
-  initGmailAuth,
-  registerStudentWithFirebase,
-  reloadFirebaseUserAndGetToken,
-  signInGmailSender,
-  signInStudentWithFirebase,
-  signInStudentWithGoogle,
-  signOutGmailSender,
-} from '../../firebase';
+import { signInStudentWithGoogle } from '../../firebase';
 import { syncVerifiedStudentToFirestore } from '../../utils/firestoreStudentSync';
-import {
-  GmailConfirmModal,
-  type PendingGmailConfirmation,
-} from './GmailConfirmModal';
-import { GmailDispatcherPanel } from './GmailDispatcherPanel';
-import { SimpleEmailRegistrationForm } from './SimpleEmailRegistrationForm';
 
-type AuthScreen =
-  | 'login'
-  | 'register'
-  | 'check_email'
-  | 'verifying'
-  | 'verify_failed'
-  | 'success'
-  | 'verify';
-
-export interface FirebaseVerifyRouteParams {
-  mode: string | null;
-  oobCode: string | null;
-  verifyFlow: string | null;
-  registrationSuccess: string | null;
-}
+type AuthScreen = 'login' | 'register' | 'success';
 
 interface StudentAuthPortalProps {
   isDark: boolean;
   onToggleTheme: () => void;
   onLoginSuccess: (student: StudentProfileSummary, sessionToken: string) => void;
-  initialVerifyToken?: string | null;
-  onConsumedVerifyToken?: () => void;
-  initialFirebaseVerify?: FirebaseVerifyRouteParams | null;
-  onConsumedFirebaseVerify?: () => void;
 }
-
-const RESEND_COOLDOWN_SECONDS = 45;
-const FIREBASE_CONSOLE_PROVIDERS_URL =
-  'https://console.firebase.google.com/project/gen-lang-client-0761382280/authentication/providers';
 
 function GoogleGIcon() {
   return (
@@ -120,29 +69,9 @@ function GoogleGIcon() {
   );
 }
 
-function mapFirebaseAuthError(err: any, fallback: string): string {
+function mapGoogleAuthError(err: any, fallback: string): string {
   const code = typeof err?.code === 'string' ? err.code : '';
   switch (code) {
-    case 'auth/email-already-in-use':
-      return 'An account with this email address already exists. Sign in below to check verification or view your eDraw ID.';
-    case 'auth/invalid-email':
-      return 'Please enter a valid email address.';
-    case 'auth/weak-password':
-      return 'Password is too weak. Use at least 8 characters including letters and numbers.';
-    case 'auth/invalid-credential':
-    case 'auth/wrong-password':
-    case 'auth/user-not-found':
-      return 'Invalid email address or password.';
-    case 'auth/too-many-requests':
-      return 'Too many attempts in a short time. Please wait a minute and try again.';
-    case 'auth/expired-action-code':
-      return 'This verification link has expired. Sign in or request a fresh verification link.';
-    case 'auth/invalid-action-code':
-      return 'This verification link is invalid or has already been used.';
-    case 'auth/user-disabled':
-      return 'This account has been disabled. Contact your administrator.';
-    case 'auth/operation-not-allowed':
-      return 'Email/Password sign-in is not enabled in Firebase Authentication yet. Enable Email/Password in the Firebase Console, or continue instantly with Google below.';
     case 'auth/popup-blocked':
       return 'The Google sign-in popup was blocked by your browser. Allow popups for this site and try again.';
     case 'auth/popup-closed-by-user':
@@ -150,7 +79,7 @@ function mapFirebaseAuthError(err: any, fallback: string): string {
     case 'auth/unauthorized-domain':
       return 'This preview domain is not yet allowlisted in Firebase Authentication Authorized Domains.';
     case 'auth/google-script-blocked':
-      return 'Could not reach accounts.google.com to open Google Sign-In. Allow accounts.google.com or register with Email & Password below.';
+      return 'Could not reach accounts.google.com to open Google Sign-In. Register with Email & Password below instead.';
     case 'auth/google-oauth-failed':
       return err?.message
         ? `Google Sign-In could not complete (${err.message}). Try again or use Email & Password.`
@@ -166,36 +95,21 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
   isDark,
   onToggleTheme,
   onLoginSuccess,
-  initialVerifyToken,
-  onConsumedVerifyToken,
-  initialFirebaseVerify,
-  onConsumedFirebaseVerify,
 }) => {
-  const [screen, setScreen] = useState<AuthScreen>(() => {
-    if (initialVerifyToken) return 'verify';
-    if (initialFirebaseVerify?.oobCode || initialFirebaseVerify?.verifyFlow === 'firebase') {
-      return 'verifying';
-    }
-    if (initialFirebaseVerify?.registrationSuccess === '1') {
-      return 'verifying';
-    }
-    return 'login';
-  });
+  const [screen, setScreen] = useState<AuthScreen>('login');
 
   // Login form state (supports Registered Email OR EDID-XXXX)
   const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginErrors, setLoginErrors] = useState<{ identifier?: string; password?: string }>({});
   const [loginServerError, setLoginServerError] = useState<string | null>(null);
-  const [loginProviderSetupNeeded, setLoginProviderSetupNeeded] = useState(false);
   const [loginNetworkHelpNeeded, setLoginNetworkHelpNeeded] = useState(false);
   const [loginNotice, setLoginNotice] = useState<string | null>(null);
-  const [unverifiedGmail, setUnverifiedGmail] = useState<string | null>(null);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isGoogleAuthLoading, setIsGoogleAuthLoading] = useState(false);
 
-  // Firebase Registration form state
+  // Direct Registration form state (instant DB registration, non-duplicable email)
   const [regForm, setRegForm] = useState<FirebaseRegistrationInput>({
     name: '',
     email: '',
@@ -206,548 +120,23 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
   });
   const [regFieldErrors, setRegFieldErrors] = useState<FieldErrors<FirebaseRegistrationInput>>({});
   const [regServerError, setRegServerError] = useState<string | null>(null);
-  const [regProviderSetupNeeded, setRegProviderSetupNeeded] = useState(false);
   const [regNetworkHelpNeeded, setRegNetworkHelpNeeded] = useState(false);
   const [regDuplicateEmail, setRegDuplicateEmail] = useState<string | null>(null);
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [showRegConfirmPassword, setShowRegConfirmPassword] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
 
-  // Check-your-email & 6-digit verification code state
-  const [pendingEmail, setPendingEmail] = useState<string>('');
-  const [pendingStudentName, setPendingStudentName] = useState<string>('');
-  const [pendingCollege, setPendingCollege] = useState<string>('');
-  const [pendingStudentDetails, setPendingStudentDetails] = useState<string>('');
-  const [verificationCodeInput, setVerificationCodeInput] = useState<string>('');
-  const [pendingDeliveryMode, setPendingDeliveryMode] = useState<'smtp' | 'gmail_pending'>('gmail_pending');
-  const [checkEmailNotice, setCheckEmailNotice] = useState<string | null>(null);
-  const [checkEmailError, setCheckEmailError] = useState<string | null>(null);
-  const [resendCooldown, setResendCooldown] = useState<number>(0);
-  const [isVerifyingCode, setIsVerifyingCode] = useState(false);
-  const [isResendingCode, setIsResendingCode] = useState(false);
-
-  // Verification / Failure / Success states
-  const [verifyingMessage, setVerifyingMessage] = useState<string>(
-    'Verifying your email and allocating your eDraw ID...'
-  );
-  const [verifyFailedMessage, setVerifyFailedMessage] = useState<string | null>(null);
-  const [canRetryAllocation, setCanRetryAllocation] = useState<boolean>(false);
-  const [activeIdToken, setActiveIdToken] = useState<string | null>(null);
-  const [activeRefreshToken, setActiveRefreshToken] = useState<string | null>(null);
+  // Completed registration state
+  const [registeredStudent, setRegisteredStudent] = useState<StudentProfileSummary | null>(null);
+  const [activeSessionToken, setActiveSessionToken] = useState<string | null>(null);
   const [firestoreSynced, setFirestoreSynced] = useState<boolean>(false);
-  const [firestoreSyncWarning, setFirestoreSyncWarning] = useState<string | null>(null);
-
-  // Legacy Gmail preview / link verification state (for ?verifyToken=...)
-  const [pendingGmail, setPendingGmail] = useState<string>('');
-  const [deliveryMode, setDeliveryMode] = useState<'smtp' | 'preview'>('preview');
-  const [inboxMessages, setInboxMessages] = useState<VerificationEmailMessage[]>([]);
-  const [verifyStatusMessage, setVerifyStatusMessage] = useState<string | null>(null);
-  const [verifyError, setVerifyError] = useState<string | null>(null);
-  const [isVerifyingToken, setIsVerifyingToken] = useState(false);
-  const [isResending, setIsResending] = useState(false);
-  const [verifiedStudent, setVerifiedStudent] = useState<StudentProfileSummary | null>(null);
   const [copiedId, setCopiedId] = useState(false);
-
-  // Official Gmail sender (edrawmit@gmail.com) integration state
-  const [adminSenderEmail, setAdminSenderEmail] = useState<string>(OFFICIAL_SENDER_GMAIL);
-  const [smtpConfigured, setSmtpConfigured] = useState<boolean>(false);
-  const [gmailSenderEmail, setGmailSenderEmail] = useState<string | null>(null);
-  const [hasGmailToken, setHasGmailToken] = useState<boolean>(false);
-  const [isGmailSigningIn, setIsGmailSigningIn] = useState<boolean>(false);
-  const [isDispatcherOpen, setIsDispatcherOpen] = useState<boolean>(false);
-  const [dispatchQueue, setDispatchQueue] = useState<DispatchQueueItem[]>([]);
-  const [isLoadingQueue, setIsLoadingQueue] = useState<boolean>(false);
-  const [dispatchError, setDispatchError] = useState<string | null>(null);
-  const [dispatchNotice, setDispatchNotice] = useState<string | null>(null);
-  const [pendingGmailSend, setPendingGmailSend] = useState<PendingGmailConfirmation | null>(null);
-  const [isSendingGmail, setIsSendingGmail] = useState<boolean>(false);
-  const [isConfirmingReset, setIsConfirmingReset] = useState<boolean>(false);
-  const [isResettingDatabase, setIsResettingDatabase] = useState<boolean>(false);
-
-  // Cooldown timer for Firebase verification resend
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const timer = window.setInterval(() => {
-      setResendCooldown((prev) => (prev <= 1 ? 0 : prev - 1));
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [resendCooldown]);
-
-  const markSuccessUrlFlag = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const url = new URL(window.location.href);
-      url.searchParams.set('registrationSuccess', '1');
-      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
-    } catch {
-      // Ignore in sandboxed iframe environments
-    }
-  }, []);
-
-  const finalizeVerifiedStudentAllocation = useCallback(
-    async (
-      idToken: string,
-      profileHints?: { name?: string; college?: string; studentDetails?: string },
-      enterDashboardImmediately = false
-    ) => {
-      setVerifyingMessage('Allocating your unique eDraw ID on the server...');
-      setVerifyFailedMessage(null);
-      setCanRetryAllocation(false);
-      setFirestoreSyncWarning(null);
-
-      try {
-        const res = await fetch('/api/registration/complete', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${idToken}`,
-          },
-          body: JSON.stringify({
-            name: profileHints?.name || pendingStudentName || regForm.name,
-            college: profileHints?.college || pendingCollege || regForm.college,
-            studentDetails:
-              profileHints?.studentDetails ?? (pendingStudentDetails || regForm.studentDetails),
-          }),
-        });
-
-        const data = await res.json();
-        if (!res.ok || !data.success || !data.student?.edrawId) {
-          setVerifyFailedMessage(
-            data.error || 'Could not allocate your eDraw ID. Please retry.'
-          );
-          setCanRetryAllocation(res.status >= 500 || res.status === 403);
-          setScreen('verify_failed');
-          return;
-        }
-
-        const student = data.student as StudentProfileSummary;
-        setActiveIdToken(idToken);
-        setVerifiedStudent(student);
-        setPendingEmail(student.gmail);
-        setPendingStudentName(student.name);
-        setPendingCollege(student.college);
-        setPendingStudentDetails(student.studentDetails || '');
-
-        // Sync verified profile to Cloud Firestore when Firebase email_verified claim is active
-        const fsResult = await syncVerifiedStudentToFirestore(student);
-        setFirestoreSynced(fsResult.synced);
-        if (!fsResult.synced && !fsResult.skippedUnverifiedClaim && fsResult.error) {
-          setFirestoreSyncWarning(
-            'Your eDraw ID is active; Cloud Firestore profile sync will retry automatically when you open the workspace.'
-          );
-        }
-
-        if (enterDashboardImmediately) {
-          onLoginSuccess(student, idToken);
-          return;
-        }
-
-        markSuccessUrlFlag();
-        setScreen('success');
-      } catch {
-        setVerifyFailedMessage(
-          'A network or database interruption occurred while finalizing your eDraw ID. No partial ID was saved—please retry.'
-        );
-        setCanRetryAllocation(true);
-        setScreen('verify_failed');
-      }
-    },
-    [
-      markSuccessUrlFlag,
-      onLoginSuccess,
-      pendingCollege,
-      pendingStudentDetails,
-      pendingStudentName,
-      regForm.college,
-      regForm.name,
-      regForm.studentDetails,
-    ]
-  );
-
-  const loadDispatchQueue = useCallback(async (tokenOverride?: string | null) => {
-    const token = tokenOverride ?? getGmailAccessToken();
-    if (!token) return;
-    setIsLoadingQueue(true);
-    setDispatchError(null);
-    try {
-      const res = await fetch('/api/auth/dispatch-queue', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setDispatchQueue([]);
-        setDispatchError(data.error || 'Unable to load student dispatch queue.');
-        return;
-      }
-      setDispatchQueue(Array.isArray(data.students) ? (data.students as DispatchQueueItem[]) : []);
-    } catch {
-      setDispatchError('Network error while loading the Gmail dispatch queue.');
-    } finally {
-      setIsLoadingQueue(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    fetch('/api/auth/sender-status')
-      .then((res) => res.json())
-      .then((data) => {
-        if (!active || !data?.success) return;
-        if (typeof data.adminSenderEmail === 'string' && data.adminSenderEmail) {
-          setAdminSenderEmail(data.adminSenderEmail);
-        }
-        setSmtpConfigured(Boolean(data.smtpConfigured));
-      })
-      .catch(() => {});
-
-    const unsubscribeGmail = initGmailAuth(
-      (user, token) => {
-        if (!active) return;
-        setGmailSenderEmail(user.email || null);
-        setHasGmailToken(Boolean(token));
-        void loadDispatchQueue(token);
-      },
-      () => {
-        if (!active) return;
-        setGmailSenderEmail(null);
-        setHasGmailToken(false);
-        setDispatchQueue([]);
-      }
-    );
-
-    return () => {
-      active = false;
-      unsubscribeGmail();
-    };
-  }, [loadDispatchQueue]);
-
-  // Handle Firebase verification return (?mode=verifyEmail&oobCode=..., ?verifyFlow=firebase, or ?registrationSuccess=1 refresh)
-  useEffect(() => {
-    if (!initialFirebaseVerify) return;
-    let cancelled = false;
-
-    const run = async () => {
-      const { mode, oobCode, verifyFlow, registrationSuccess } = initialFirebaseVerify;
-
-      if (oobCode && (mode === 'verifyEmail' || !mode)) {
-        setScreen('verifying');
-        setVerifyingMessage('Completing Firebase email verification...');
-        try {
-          await applyFirebaseVerificationCode(oobCode);
-          if (cancelled) return;
-          onConsumedFirebaseVerify?.();
-
-          const reloaded = await reloadFirebaseUserAndGetToken(true, activeRefreshToken);
-          if (cancelled) return;
-          if (reloaded && reloaded.emailVerified) {
-            if (reloaded.refreshToken) setActiveRefreshToken(reloaded.refreshToken);
-            await finalizeVerifiedStudentAllocation(reloaded.idToken, {
-              name: reloaded.displayName || undefined,
-            });
-            return;
-          }
-
-          // Link verified in another browser/session where user isn't signed in yet
-          setLoginNotice(
-            'Your email address is verified! Sign in with your email and password to view and activate your eDraw ID.'
-          );
-          setScreen('login');
-          return;
-        } catch (err: any) {
-          if (cancelled) return;
-          onConsumedFirebaseVerify?.();
-          setVerifyFailedMessage(
-            mapFirebaseAuthError(
-              err,
-              'This verification link could not be verified. It may be expired or already used.'
-            )
-          );
-          setCanRetryAllocation(false);
-          setScreen('verify_failed');
-          return;
-        }
-      }
-
-      if (verifyFlow === 'firebase' || registrationSuccess === '1') {
-        setScreen('verifying');
-        setVerifyingMessage('Checking your verified account and retrieving your eDraw ID...');
-
-        // Wait briefly for Firebase Auth persistence hydration on page load/refresh
-        const hydratedUser = await new Promise<typeof auth.currentUser>((resolve) => {
-          if (auth.currentUser) {
-            resolve(auth.currentUser);
-            return;
-          }
-          const timeout = window.setTimeout(() => {
-            unsub();
-            resolve(auth.currentUser);
-          }, 2500);
-          const unsub = onAuthStateChanged(auth, (u) => {
-            if (u) {
-              window.clearTimeout(timeout);
-              unsub();
-              resolve(u);
-            }
-          });
-        });
-
-        if (cancelled) return;
-        onConsumedFirebaseVerify?.();
-
-        if (!hydratedUser) {
-          if (verifyFlow === 'firebase') {
-            setLoginNotice(
-              'Email verified! Sign in with your registered email and password to generate and view your official eDraw ID.'
-            );
-          }
-          setScreen('login');
-          return;
-        }
-
-        try {
-          await hydratedUser.reload();
-          if (cancelled) return;
-          const idToken = await hydratedUser.getIdToken(true);
-          if (cancelled) return;
-
-          const meRes = await fetch('/api/registration/me', {
-            headers: { Authorization: `Bearer ${idToken}` },
-          });
-          const meData = await meRes.json();
-          if (cancelled) return;
-
-          if (meRes.ok && meData.success && meData.student?.verified && meData.student?.edrawId) {
-            const student = meData.student as StudentProfileSummary;
-            setActiveIdToken(idToken);
-            setVerifiedStudent(student);
-            setPendingEmail(student.gmail);
-            setPendingStudentName(student.name);
-            setPendingCollege(student.college);
-            setPendingStudentDetails(student.studentDetails || '');
-            const fsResult = await syncVerifiedStudentToFirestore(student);
-            setFirestoreSynced(fsResult.synced);
-            setScreen('success');
-            return;
-          }
-
-          if (hydratedUser.emailVerified) {
-            await finalizeVerifiedStudentAllocation(idToken, {
-              name: hydratedUser.displayName || undefined,
-            });
-            return;
-          }
-
-          setActiveIdToken(idToken);
-          setPendingEmail(hydratedUser.email || meData.student?.gmail || '');
-          setPendingStudentName(hydratedUser.displayName || meData.student?.name || '');
-          setPendingCollege(meData.student?.college || '');
-          setPendingStudentDetails(meData.student?.studentDetails || '');
-          setCheckEmailNotice(
-            'Enter the 6-digit verification code sent to your email address to activate your eDraw ID.'
-          );
-          setScreen('check_email');
-        } catch {
-          if (cancelled) return;
-          setVerifyFailedMessage(
-            'Unable to confirm your verification status right now. Please retry or sign in again.'
-          );
-          setCanRetryAllocation(true);
-          setScreen('verify_failed');
-        }
-      }
-    };
-
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [finalizeVerifiedStudentAllocation, initialFirebaseVerify, onConsumedFirebaseVerify]);
-
-  const handleConnectGmailSender = async () => {
-    setIsGmailSigningIn(true);
-    setDispatchError(null);
-    setDispatchNotice(null);
-    try {
-      const { email, accessToken } = await signInGmailSender();
-      setGmailSenderEmail(email || null);
-      setHasGmailToken(Boolean(accessToken));
-      setIsDispatcherOpen(true);
-      await loadDispatchQueue(accessToken);
-    } catch (err: any) {
-      setDispatchError(
-        err?.message || 'Could not complete Google Sign-In for Gmail verification sending.'
-      );
-    } finally {
-      setIsGmailSigningIn(false);
-    }
-  };
-
-  const handleDisconnectGmailSender = async () => {
-    await signOutGmailSender();
-    setGmailSenderEmail(null);
-    setHasGmailToken(false);
-    setDispatchQueue([]);
-    setDispatchError(null);
-    setDispatchNotice(null);
-  };
-
-  const handleConfirmSendGmail = async () => {
-    if (!pendingGmailSend) return;
-    const token = getGmailAccessToken();
-    if (!token) {
-      setPendingGmailSend(null);
-      setDispatchError('Your Gmail sender session expired. Please sign in with Google again.');
-      return;
-    }
-
-    setIsSendingGmail(true);
-    setDispatchError(null);
-    setVerifyError(null);
-    try {
-      const res = await fetch('/api/auth/send-gmail', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          gmail: pendingGmailSend.recipientEmail,
-          kind: pendingGmailSend.kind,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        const errMsg = data.error || 'Failed to send email through Gmail.';
-        setDispatchError(errMsg);
-        if (screen === 'verify') {
-          setVerifyError(errMsg);
-        }
-        return;
-      }
-
-      const confirmationText =
-        pendingGmailSend.kind === 'verification_code'
-          ? `6-digit verification code sent from ${data.sentFrom} to ${data.sentTo}.`
-          : pendingGmailSend.kind === 'verification_link'
-          ? `Verification link sent from ${data.sentFrom} to ${data.sentTo}.`
-          : `Official eDraw ID (${data.edrawId}) sent from ${data.sentFrom} to ${data.sentTo}.`;
-      setDispatchNotice(confirmationText);
-      if (screen === 'check_email' && pendingGmailSend.kind === 'verification_code') {
-        setCheckEmailError(null);
-        setCheckEmailNotice(
-          `We sent a 6-digit verification code from ${data.sentFrom} to ${data.sentTo}. Enter the code below (valid for 1 hour).`
-        );
-        setResendCooldown(RESEND_COOLDOWN_SECONDS);
-      }
-      if (screen === 'verify') {
-        setVerifyStatusMessage(confirmationText);
-      }
-      await loadDispatchQueue(token);
-      setPendingGmailSend(null);
-    } catch {
-      const netErr = 'Network error while sending email through Gmail.';
-      setDispatchError(netErr);
-      if (screen === 'verify') {
-        setVerifyError(netErr);
-      }
-    } finally {
-      setIsSendingGmail(false);
-    }
-  };
-
-  const handleConfirmResetDatabase = async () => {
-    const token = getGmailAccessToken();
-    if (!token) {
-      setIsConfirmingReset(false);
-      setDispatchError('Your Gmail sender session expired. Please sign in with Google again.');
-      return;
-    }
-
-    setIsResettingDatabase(true);
-    setDispatchError(null);
-    setDispatchNotice(null);
-    try {
-      const res = await fetch('/api/admin/reset-database', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setDispatchError(data.error || 'Unable to reset the student registration database.');
-        return;
-      }
-
-      setDispatchQueue([]);
-      setVerifiedStudent(null);
-      setPendingEmail('');
-      setVerificationCodeInput('');
-      setCheckEmailError(null);
-      setCheckEmailNotice(null);
-      setDispatchNotice(
-        data.message || 'Server student registration database reset to empty (next ID: EDID-1000).'
-      );
-      setIsConfirmingReset(false);
-    } catch {
-      setDispatchError('Network error while resetting the student registration database.');
-    } finally {
-      setIsResettingDatabase(false);
-    }
-  };
-
-  const verifyTokenOnServer = useCallback(
-    async (token: string) => {
-      setIsVerifyingToken(true);
-      setVerifyError(null);
-      try {
-        const res = await fetch('/api/auth/verify-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token }),
-        });
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-          setVerifyError(data.error || 'Unable to verify your Gmail link.');
-          return;
-        }
-
-        const student = data.student as StudentProfileSummary;
-        setVerifiedStudent(student);
-        setPendingGmail(student.gmail);
-        setPendingStudentName(student.name);
-        setDeliveryMode(data.deliveryMode === 'smtp' ? 'smtp' : 'preview');
-        setVerifyStatusMessage(data.message);
-
-        if (data.confirmationEmail) {
-          setInboxMessages((prev) => {
-            const exists = prev.some((m) => m.kind === 'verified_edraw_id');
-            if (exists) return prev;
-            return [data.confirmationEmail as VerificationEmailMessage, ...prev];
-          });
-        }
-      } catch {
-        setVerifyError('Network error while verifying your Gmail link. Please try again.');
-      } finally {
-        setIsVerifyingToken(false);
-      }
-    },
-    []
-  );
-
-  // Handle legacy Gmail link arrival (`/?verifyToken=...`)
-  useEffect(() => {
-    if (!initialVerifyToken) return;
-    setScreen('verify');
-    void verifyTokenOnServer(initialVerifyToken);
-    onConsumedVerifyToken?.();
-  }, [initialVerifyToken, onConsumedVerifyToken, verifyTokenOnServer]);
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginServerError(null);
-    setLoginProviderSetupNeeded(false);
     setLoginNetworkHelpNeeded(false);
     setLoginNotice(null);
-    setUnverifiedGmail(null);
 
     const rawIdentifier = loginIdentifier.trim();
     const nextErrors: { identifier?: string; password?: string } = {};
@@ -767,255 +156,36 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
 
     setIsLoggingIn(true);
     try {
-      // Legacy EDID-XXXX login path preserved
-      if (isValidEdrawId(rawIdentifier)) {
-        const normalizedId = normalizeEdrawId(rawIdentifier);
-        const res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            edrawId: normalizedId,
-            password: loginPassword,
-          }),
-        });
-        const data = await res.json();
+      const normalizedIdentifier = isValidEdrawId(rawIdentifier)
+        ? normalizeEdrawId(rawIdentifier)
+        : normalizeEmail(rawIdentifier);
 
-        if (!res.ok || !data.success) {
-          setLoginServerError(data.error || 'Invalid eDraw ID or password.');
-          if (data.unverifiedGmail) {
-            setUnverifiedGmail(data.unverifiedGmail);
-          }
-          return;
-        }
-
-        onLoginSuccess(data.student as StudentProfileSummary, String(data.token));
-        return;
-      }
-
-      // Firebase Email + Password Sign-In path (automatically falls back to same-origin proxy if browser blocks googleapis.com)
-      const normalizedEmail = normalizeEmail(rawIdentifier);
-      const session = await signInStudentWithFirebase(normalizedEmail, loginPassword);
-      const idToken = session.idToken;
-      setActiveIdToken(idToken);
-      setActiveRefreshToken(session.refreshToken || null);
-
-      const meRes = await fetch('/api/registration/me', {
-        headers: { Authorization: `Bearer ${idToken}` },
-      });
-      const meData = await meRes.json();
-
-      if (meRes.ok && meData.success && meData.student?.verified && meData.student?.edrawId) {
-        const student = meData.student as StudentProfileSummary;
-        await syncVerifiedStudentToFirestore(student);
-        onLoginSuccess(student, idToken);
-        return;
-      }
-
-      if (session.emailVerified) {
-        setScreen('verifying');
-        setVerifyingMessage('Loading your verified eDraw ID...');
-        await finalizeVerifiedStudentAllocation(
-          idToken,
-          {
-            name: meData.student?.name || session.displayName || undefined,
-            college: meData.student?.college || undefined,
-            studentDetails: meData.student?.studentDetails || undefined,
-          },
-          true
-        );
-        return;
-      }
-
-      // Pending code verification: ensure a pending record exists so they can verify via 6-digit code
-      if (!meData.student) {
-        await fetch('/api/registration/pending', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${idToken}`,
-          },
-          body: JSON.stringify({
-            name: session.displayName || normalizedEmail.split('@')[0],
-            college: 'Engineering College',
-            studentDetails: '',
-          }),
-        });
-      }
-
-      setPendingEmail(normalizedEmail);
-      setPendingStudentName(meData.student?.name || session.displayName || '');
-      setPendingCollege(meData.student?.college || '');
-      setPendingStudentDetails(meData.student?.studentDetails || '');
-      setVerificationCodeInput('');
-      setCheckEmailError(null);
-      setCheckEmailNotice(
-        'Your email is not verified yet. Enter the 6-digit verification code sent to your inbox, or resend a fresh code below.'
-      );
-      setScreen('check_email');
-    } catch (err: any) {
-      const code = typeof err?.code === 'string' ? err.code : '';
-      if (code === 'auth/operation-not-allowed') {
-        setLoginProviderSetupNeeded(true);
-      } else if (code === 'auth/network-request-failed') {
-        console.error('Firebase Login network error:', code, err?.message);
-        setLoginNetworkHelpNeeded(true);
-      }
-      setLoginServerError(
-        mapFirebaseAuthError(err, 'Unable to sign in right now. Please try again.')
-      );
-    } finally {
-      setIsLoggingIn(false);
-    }
-  };
-
-  const handleGoogleStudentAuth = async (source: 'login' | 'register') => {
-    if (source === 'login') {
-      setLoginServerError(null);
-      setLoginProviderSetupNeeded(false);
-      setLoginNetworkHelpNeeded(false);
-      setLoginNotice(null);
-      setUnverifiedGmail(null);
-    } else {
-      setRegServerError(null);
-      setRegProviderSetupNeeded(false);
-      setRegNetworkHelpNeeded(false);
-      setRegDuplicateEmail(null);
-    }
-
-    setIsGoogleAuthLoading(true);
-    try {
-      const session = await signInStudentWithGoogle();
-      const idToken = session.idToken;
-      setActiveIdToken(idToken);
-      setActiveRefreshToken(session.refreshToken || null);
-
-      const meRes = await fetch('/api/registration/me', {
-        headers: { Authorization: `Bearer ${idToken}` },
-      });
-      const meData = await meRes.json();
-
-      if (meRes.ok && meData.success && meData.student?.verified && meData.student?.edrawId) {
-        const student = meData.student as StudentProfileSummary;
-        const fsResult = await syncVerifiedStudentToFirestore(student);
-        setFirestoreSynced(fsResult.synced);
-        if (source === 'login') {
-          onLoginSuccess(student, idToken);
-          return;
-        }
-        setVerifiedStudent(student);
-        setPendingEmail(student.gmail);
-        setPendingStudentName(student.name);
-        setPendingCollege(student.college);
-        setPendingStudentDetails(student.studentDetails || '');
-        markSuccessUrlFlag();
-        setScreen('success');
-        return;
-      }
-
-      const fallbackName = regForm.name.trim() || session.displayName || undefined;
-      const fallbackCollege = regForm.college.trim() || undefined;
-      const fallbackDetails = regForm.studentDetails.trim() || undefined;
-
-      if (session.emailVerified) {
-        setScreen('verifying');
-        setVerifyingMessage('Allocating your unique eDraw ID on the server...');
-        await finalizeVerifiedStudentAllocation(
-          idToken,
-          {
-            name: fallbackName,
-            college: fallbackCollege,
-            studentDetails: fallbackDetails,
-          },
-          false
-        );
-        return;
-      }
-
-      const normalizedEmail = normalizeEmail(session.email || '');
-      const pendingRes = await fetch('/api/registration/pending', {
+      const res = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${idToken}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: fallbackName || normalizedEmail.split('@')[0] || 'EDraw Student',
-          college: fallbackCollege || 'Engineering College',
-          studentDetails: fallbackDetails || '',
+          identifier: normalizedIdentifier,
+          password: loginPassword,
         }),
       });
-      const pendingData = await pendingRes.json();
-      if (!pendingRes.ok || !pendingData.success) {
-        const msg = pendingData.error || 'Could not initialize your registration.';
-        if (source === 'login') setLoginServerError(msg);
-        else setRegServerError(msg);
+      const data = await res.json();
+
+      if (!res.ok || !data.success || !data.student || !data.token) {
+        setLoginServerError(data.error || 'Invalid email address, eDraw ID, or password.');
         return;
       }
 
-      const mode: 'smtp' | 'gmail_pending' =
-        pendingData.deliveryMode === 'smtp' ? 'smtp' : 'gmail_pending';
-      const resolvedName = fallbackName || normalizedEmail.split('@')[0] || 'EDraw Student';
-      const resolvedCollege = fallbackCollege || 'Engineering College';
-
-      setPendingEmail(normalizedEmail);
-      setPendingStudentName(resolvedName);
-      setPendingCollege(resolvedCollege);
-      setPendingStudentDetails(fallbackDetails || '');
-      setPendingDeliveryMode(mode);
-      setVerificationCodeInput('');
-      setCheckEmailError(null);
-
-      if (mode === 'smtp') {
-        setResendCooldown(RESEND_COOLDOWN_SECONDS);
-        setCheckEmailNotice(
-          `We sent a 6-digit verification code to ${normalizedEmail}. Enter the code below (valid for 1 hour).`
-        );
-      } else if (
-        hasGmailToken &&
-        gmailSenderEmail &&
-        gmailSenderEmail.toLowerCase() === adminSenderEmail.toLowerCase()
-      ) {
-        setCheckEmailNotice(
-          `Confirm sending the 6-digit verification code from ${gmailSenderEmail} to ${normalizedEmail}, then type the code below.`
-        );
-        setPendingGmailSend({
-          senderEmail: gmailSenderEmail,
-          recipientEmail: normalizedEmail,
-          studentName: resolvedName,
-          college: resolvedCollege,
-          kind: 'verification_code',
-        });
-      } else {
-        setCheckEmailNotice(
-          `Enter the 6-digit verification code sent to ${normalizedEmail} to activate your eDraw ID.`
-        );
-      }
-      setScreen('check_email');
-    } catch (err: any) {
-      const code = typeof err?.code === 'string' ? err.code : '';
-      if (code === 'auth/network-request-failed') {
-        console.error('Firebase Google auth network error:', code, err?.message);
-      }
-      const msg = mapFirebaseAuthError(
-        err,
-        'Unable to sign in with Google right now. Please try again.'
-      );
-      if (source === 'login') {
-        if (code === 'auth/network-request-failed') setLoginNetworkHelpNeeded(true);
-        setLoginServerError(msg);
-      } else {
-        if (code === 'auth/network-request-failed') setRegNetworkHelpNeeded(true);
-        setRegServerError(msg);
-      }
+      onLoginSuccess(data.student as StudentProfileSummary, String(data.token));
+    } catch {
+      setLoginServerError('Unable to reach the server right now. Please try again.');
     } finally {
-      setIsGoogleAuthLoading(false);
+      setIsLoggingIn(false);
     }
   };
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setRegServerError(null);
-    setRegProviderSetupNeeded(false);
     setRegNetworkHelpNeeded(false);
     setRegDuplicateEmail(null);
 
@@ -1032,288 +202,128 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
 
     setIsRegistering(true);
     try {
-      const session = await registerStudentWithFirebase({
-        email: normalizedEmail,
-        password: cleanedForm.password,
-        displayName: cleanedForm.name.trim(),
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: cleanedForm.name.trim(),
+          email: normalizedEmail,
+          college: cleanedForm.college.trim(),
+          studentDetails: cleanedForm.studentDetails.trim(),
+          password: cleanedForm.password,
+          confirmPassword: cleanedForm.confirmPassword,
+        }),
       });
 
-      const idToken = session.idToken;
-      setActiveIdToken(idToken);
-      setActiveRefreshToken(session.refreshToken || null);
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.student?.edrawId || !data.token) {
+        if (data.fieldErrors && typeof data.fieldErrors === 'object') {
+          setRegFieldErrors(data.fieldErrors as FieldErrors<FirebaseRegistrationInput>);
+        }
+        if (res.status === 409) {
+          setRegDuplicateEmail(normalizedEmail);
+        }
+        setRegServerError(
+          data.error || 'Unable to complete registration right now. Please try again.'
+        );
+        return;
+      }
 
-      // Persist pending registration on server with NO EDraw ID yet & generate 6-digit verification code
-      const pendingRes = await fetch('/api/registration/pending', {
+      setRegisteredStudent(data.student as StudentProfileSummary);
+      setActiveSessionToken(String(data.token));
+      setFirestoreSynced(false);
+      setScreen('success');
+    } catch {
+      setRegServerError('Unable to reach the server right now. Please try again.');
+    } finally {
+      setIsRegistering(false);
+    }
+  };
+
+  const handleGoogleStudentAuth = async (source: 'login' | 'register') => {
+    if (source === 'login') {
+      setLoginServerError(null);
+      setLoginNetworkHelpNeeded(false);
+      setLoginNotice(null);
+    } else {
+      setRegServerError(null);
+      setRegNetworkHelpNeeded(false);
+      setRegDuplicateEmail(null);
+    }
+
+    setIsGoogleAuthLoading(true);
+    try {
+      const session = await signInStudentWithGoogle();
+      const idToken = session.idToken;
+
+      const meRes = await fetch('/api/registration/me', {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      const meData = await meRes.json();
+
+      if (meRes.ok && meData.success && meData.student?.edrawId) {
+        const student = meData.student as StudentProfileSummary;
+        const fsResult = await syncVerifiedStudentToFirestore(student);
+        setFirestoreSynced(fsResult.synced);
+        if (source === 'login') {
+          onLoginSuccess(student, idToken);
+          return;
+        }
+        setRegisteredStudent(student);
+        setActiveSessionToken(idToken);
+        setScreen('success');
+        return;
+      }
+
+      const completeRes = await fetch('/api/registration/complete', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${idToken}`,
         },
         body: JSON.stringify({
-          name: cleanedForm.name.trim(),
-          college: cleanedForm.college.trim(),
-          studentDetails: cleanedForm.studentDetails.trim(),
+          name: regForm.name.trim() || session.displayName || undefined,
+          college: regForm.college.trim() || undefined,
+          studentDetails: regForm.studentDetails.trim() || undefined,
         }),
       });
-      const pendingData = await pendingRes.json();
-      if (!pendingRes.ok || !pendingData.success) {
-        setRegServerError(
-          pendingData.error || 'Could not save your pending registration. Please try again.'
-        );
+      const completeData = await completeRes.json();
+
+      if (!completeRes.ok || !completeData.success || !completeData.student?.edrawId) {
+        const errMsg =
+          completeData.error || 'Could not save your registration in the database. Please try again.';
+        if (source === 'login') {
+          setLoginServerError(errMsg);
+        } else {
+          if (completeRes.status === 409 && session.email) {
+            setRegDuplicateEmail(normalizeEmail(session.email));
+          }
+          setRegServerError(errMsg);
+        }
         return;
       }
 
-      const mode: 'smtp' | 'gmail_pending' =
-        pendingData.deliveryMode === 'smtp' ? 'smtp' : 'gmail_pending';
-      const cleanName = cleanedForm.name.trim();
-      const cleanCollege = cleanedForm.college.trim();
-      const cleanDetails = cleanedForm.studentDetails.trim();
-
-      setPendingEmail(normalizedEmail);
-      setPendingStudentName(cleanName);
-      setPendingCollege(cleanCollege);
-      setPendingStudentDetails(cleanDetails);
-      setPendingDeliveryMode(mode);
-      setVerificationCodeInput('');
-      setCheckEmailError(null);
-
-      if (mode === 'smtp') {
-        setResendCooldown(RESEND_COOLDOWN_SECONDS);
-        setCheckEmailNotice(
-          `We sent a 6-digit verification code to ${normalizedEmail}. Enter the code below (valid for 1 hour).`
-        );
-      } else if (
-        hasGmailToken &&
-        gmailSenderEmail &&
-        gmailSenderEmail.toLowerCase() === adminSenderEmail.toLowerCase()
-      ) {
-        setCheckEmailNotice(
-          `Confirm sending the 6-digit verification code from ${gmailSenderEmail} to ${normalizedEmail}, then type the code below.`
-        );
-        setPendingGmailSend({
-          senderEmail: gmailSenderEmail,
-          recipientEmail: normalizedEmail,
-          studentName: cleanName,
-          college: cleanCollege,
-          kind: 'verification_code',
-        });
-      } else {
-        setCheckEmailNotice(
-          `Registration saved for ${normalizedEmail}. Connect Official Sender Mail (${adminSenderEmail}) below to email your 6-digit verification code, then enter it here.`
-        );
-      }
-
-      setScreen('check_email');
-    } catch (err: any) {
-      const code = typeof err?.code === 'string' ? err.code : '';
-      if (code === 'auth/email-already-in-use') {
-        setRegDuplicateEmail(normalizedEmail);
-      } else if (code === 'auth/operation-not-allowed') {
-        setRegProviderSetupNeeded(true);
-      } else if (code === 'auth/network-request-failed') {
-        console.error('Firebase Register network error:', code, err?.message);
-        setRegNetworkHelpNeeded(true);
-      }
-      setRegServerError(
-        mapFirebaseAuthError(err, 'Unable to create your registration right now. Please try again.')
-      );
-    } finally {
-      setIsRegistering(false);
-    }
-  };
-
-  const handleVerifyCodeSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCheckEmailError(null);
-
-    const cleanedCode = normalizeVerificationCode(verificationCodeInput);
-    if (!isValidVerificationCode(cleanedCode)) {
-      setCheckEmailError('Please enter the full 6-digit numeric verification code.');
-      return;
-    }
-
-    setIsVerifyingCode(true);
-    try {
-      const reloaded = await reloadFirebaseUserAndGetToken(true, activeRefreshToken).catch(
-        () => null
-      );
-      if (reloaded?.refreshToken) {
-        setActiveRefreshToken(reloaded.refreshToken);
-      }
-      const tokenToUse = reloaded?.idToken || activeIdToken;
-      if (!tokenToUse) {
-        setLoginNotice('Your session expired. Sign in with your registered email and password to enter your code.');
-        setLoginIdentifier(pendingEmail);
-        setScreen('login');
-        return;
-      }
-
-      const res = await fetch('/api/registration/verify-code', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${tokenToUse}`,
-        },
-        body: JSON.stringify({
-          code: cleanedCode,
-          name: pendingStudentName || regForm.name,
-          college: pendingCollege || regForm.college,
-          studentDetails: pendingStudentDetails || regForm.studentDetails,
-        }),
-      });
-      const data = await res.json();
-
-      if (!res.ok || !data.success || !data.student?.edrawId) {
-        setCheckEmailError(
-          data.error || 'Verification code did not match. Please check your inbox and try again.'
-        );
-        return;
-      }
-
-      const student = data.student as StudentProfileSummary;
-      setActiveIdToken(tokenToUse);
-      setVerifiedStudent(student);
-      setPendingEmail(student.gmail);
-      setPendingStudentName(student.name);
-      setPendingCollege(student.college);
-      setPendingStudentDetails(student.studentDetails || '');
-
+      const student = completeData.student as StudentProfileSummary;
       const fsResult = await syncVerifiedStudentToFirestore(student);
       setFirestoreSynced(fsResult.synced);
-      if (!fsResult.synced && !fsResult.skippedUnverifiedClaim && fsResult.error) {
-        setFirestoreSyncWarning(
-          'Your eDraw ID is active; Cloud Firestore profile sync will retry automatically when you open the workspace.'
-        );
-      }
-
-      markSuccessUrlFlag();
+      setRegisteredStudent(student);
+      setActiveSessionToken(idToken);
       setScreen('success');
-    } catch {
-      setCheckEmailError('Network error while verifying your code. Please try again.');
-    } finally {
-      setIsVerifyingCode(false);
-    }
-  };
-
-  const handleResendVerificationCode = async () => {
-    if (resendCooldown > 0) return;
-    setCheckEmailError(null);
-
-    if (
-      !smtpConfigured &&
-      hasGmailToken &&
-      gmailSenderEmail &&
-      gmailSenderEmail.toLowerCase() === adminSenderEmail.toLowerCase()
-    ) {
-      setPendingGmailSend({
-        senderEmail: gmailSenderEmail,
-        recipientEmail: pendingEmail,
-        studentName: pendingStudentName || regForm.name || 'Student',
-        college: pendingCollege || regForm.college || 'Engineering College',
-        kind: 'verification_code',
-      });
-      return;
-    }
-
-    setIsResendingCode(true);
-    try {
-      const reloaded = await reloadFirebaseUserAndGetToken(true, activeRefreshToken).catch(
-        () => null
+    } catch (err: any) {
+      const code = typeof err?.code === 'string' ? err.code : '';
+      const msg = mapGoogleAuthError(
+        err,
+        'Unable to sign in with Google right now. Please try again.'
       );
-      if (reloaded?.refreshToken) {
-        setActiveRefreshToken(reloaded.refreshToken);
+      if (source === 'login') {
+        if (code === 'auth/network-request-failed') setLoginNetworkHelpNeeded(true);
+        setLoginServerError(msg);
+      } else {
+        if (code === 'auth/network-request-failed') setRegNetworkHelpNeeded(true);
+        setRegServerError(msg);
       }
-      const tokenToUse = reloaded?.idToken || activeIdToken;
-      if (!tokenToUse) {
-        setLoginNotice('Sign in with your email and password so we can resend your verification code.');
-        setLoginIdentifier(pendingEmail);
-        setScreen('login');
-        return;
-      }
-
-      const res = await fetch('/api/registration/resend-code', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${tokenToUse}`,
-        },
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setCheckEmailError(data.error || 'Could not issue a fresh verification code.');
-        return;
-      }
-
-      setPendingDeliveryMode(data.deliveryMode === 'smtp' ? 'smtp' : 'gmail_pending');
-      setVerificationCodeInput('');
-      setResendCooldown(RESEND_COOLDOWN_SECONDS);
-      setCheckEmailNotice(
-        data.deliveryMode === 'smtp'
-          ? `A fresh 6-digit verification code has been sent to ${data.email || pendingEmail}. Check your inbox and spam folder.`
-          : `A fresh verification code was generated for ${data.email || pendingEmail}. Click "Send 6-Digit Code via ${adminSenderEmail}" below to email it.`
-      );
-    } catch {
-      setCheckEmailError('Network error while requesting a new verification code.');
     } finally {
-      setIsResendingCode(false);
-    }
-  };
-
-  const handleRetryAllocation = async () => {
-    setScreen('verifying');
-    setVerifyingMessage('Retrying eDraw ID allocation...');
-    const reloaded = await reloadFirebaseUserAndGetToken(true, activeRefreshToken).catch(
-      () => null
-    );
-    if (!reloaded || !reloaded.emailVerified) {
-      setVerifyFailedMessage(
-        'Your session could not be confirmed as email-verified. Please sign in again after verifying your link.'
-      );
-      setCanRetryAllocation(false);
-      setScreen('verify_failed');
-      return;
-    }
-    if (reloaded.refreshToken) {
-      setActiveRefreshToken(reloaded.refreshToken);
-    }
-    await finalizeVerifiedStudentAllocation(reloaded.idToken, {
-      name: pendingStudentName || reloaded.displayName || undefined,
-      college: pendingCollege || undefined,
-      studentDetails: pendingStudentDetails || undefined,
-    });
-  };
-
-  const handleResendLegacyVerification = async (targetGmail?: string) => {
-    const email = (targetGmail || pendingGmail || '').trim();
-    if (!email) return;
-
-    setIsResending(true);
-    setVerifyError(null);
-    try {
-      const res = await fetch('/api/auth/resend-verification', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gmail: email }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setVerifyError(data.error || 'Could not resend verification link.');
-        return;
-      }
-
-      setPendingGmail(data.gmail);
-      setPendingStudentName(data.studentName);
-      setDeliveryMode(data.deliveryMode === 'smtp' ? 'smtp' : 'preview');
-      setVerifyStatusMessage(data.message);
-      setVerifiedStudent(null);
-      if (data.previewEmail) {
-        setInboxMessages([data.previewEmail as VerificationEmailMessage]);
-      }
-      setScreen('verify');
-    } catch {
-      setVerifyError('Network error while resending verification link.');
-    } finally {
-      setIsResending(false);
+      setIsGoogleAuthLoading(false);
     }
   };
 
@@ -1475,9 +485,9 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
 
             {/* Bottom Quiet Curriculum Summary */}
             <div className="relative z-10 pt-5 border-t border-white/15 flex flex-wrap items-center justify-between gap-2 text-xs text-white/80">
-              <span>Verified Student Portal</span>
+              <span>Student Drafting Portal</span>
               <span className="font-mono text-[11px] text-white/75">
-                EDID-XXXX · Email Verified Access
+                EDID-XXXX · Unique Student Access
               </span>
             </div>
           </div>
@@ -1528,7 +538,7 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
                     Student Sign In
                   </h2>
                   <p className="text-sm text-[#6E6C84] dark:text-slate-400">
-                    Sign in with your verified email address or eDraw ID to open your dashboard.
+                    Sign in with your registered email address or eDraw ID to open your dashboard.
                   </p>
                 </div>
 
@@ -1550,38 +560,11 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
                     <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
                     <div className="space-y-2 flex-1">
                       <p className="font-medium leading-relaxed">{loginServerError}</p>
-                      {loginProviderSetupNeeded && (
-                        <div className="space-y-1.5 pt-1 border-t border-rose-200/80 dark:border-rose-800/60">
-                          <p className="text-[11px] leading-relaxed">
-                            In Firebase Console, open <strong>Authentication → Sign-in method</strong>, click{' '}
-                            <strong>Email/Password</strong>, toggle <strong>Enable</strong>, and save.
-                          </p>
-                          <div className="flex flex-wrap items-center gap-3">
-                            <a
-                              href={FIREBASE_CONSOLE_PROVIDERS_URL}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 font-semibold text-[#612AD6] dark:text-purple-300 underline underline-offset-2 hover:opacity-80"
-                            >
-                              <span>Open Firebase Sign-in Providers</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
-                            <button
-                              type="button"
-                              disabled={isGoogleAuthLoading}
-                              onClick={() => void handleGoogleStudentAuth('login')}
-                              className="font-semibold text-[#612AD6] dark:text-purple-300 underline underline-offset-2 hover:opacity-80 cursor-pointer"
-                            >
-                              Use Google Sign-In instead
-                            </button>
-                          </div>
-                        </div>
-                      )}
                       {loginNetworkHelpNeeded && (
                         <div className="space-y-1.5 pt-1 border-t border-rose-200/80 dark:border-rose-800/60">
                           <p className="text-[11px] leading-relaxed">
-                            Your browser could not reach authentication services (check internet
-                            connectivity or pause content blockers/VPNs blocking{' '}
+                            Your browser could not reach Google authentication services (check
+                            connectivity or pause content blockers blocking{' '}
                             <span className="font-mono">googleapis.com</span> /{' '}
                             <span className="font-mono">accounts.google.com</span>).
                           </p>
@@ -1597,17 +580,6 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
                             </a>
                           )}
                         </div>
-                      )}
-                      {unverifiedGmail && (
-                        <button
-                          type="button"
-                          onClick={() => void handleResendLegacyVerification(unverifiedGmail)}
-                          disabled={isResending}
-                          className="inline-flex items-center gap-1.5 font-semibold text-[#612AD6] dark:text-purple-300 underline underline-offset-2 hover:opacity-80 cursor-pointer"
-                        >
-                          <RefreshCw className={`w-3.5 h-3.5 ${isResending ? 'animate-spin' : ''}`} />
-                          <span>Resend verification link to {unverifiedGmail}</span>
-                        </button>
                       )}
                     </div>
                   </div>
@@ -1649,7 +621,7 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
                       </p>
                     ) : (
                       <p className="text-[11px] text-[#77758F] dark:text-slate-400">
-                        Enter your verified email address or <span className="font-mono">EDID-XXXX</span>
+                        Enter your registered email address or <span className="font-mono">EDID-XXXX</span>
                       </p>
                     )}
                   </div>
@@ -1770,7 +742,7 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
                     Register Student
                   </h2>
                   <p className="text-sm text-[#6E6C84] dark:text-slate-400 mt-1">
-                    Verify your email address to receive your unique{' '}
+                    Register your email once to save your account immediately and receive your unique{' '}
                     <span className="font-mono font-semibold text-[#6B32E4] dark:text-purple-300">
                       EDID-XXXX
                     </span>{' '}
@@ -1786,41 +758,11 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
                     <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
                     <div className="space-y-2 flex-1">
                       <p className="font-medium leading-relaxed">{regServerError}</p>
-                      {regProviderSetupNeeded && (
-                        <div className="space-y-1.5 pt-1 border-t border-rose-200/80 dark:border-rose-800/60">
-                          <p className="text-[11px] leading-relaxed">
-                            To use Email/Password registration, open{' '}
-                            <strong>Authentication → Sign-in method</strong> in Firebase Console, enable{' '}
-                            <strong>Email/Password</strong>, and save.
-                          </p>
-                          <div className="flex flex-wrap items-center gap-3">
-                            <a
-                              href={FIREBASE_CONSOLE_PROVIDERS_URL}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 font-semibold text-[#612AD6] dark:text-purple-300 underline underline-offset-2 hover:opacity-80"
-                            >
-                              <span>Open Firebase Sign-in Providers</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
-                            <button
-                              type="button"
-                              disabled={isGoogleAuthLoading}
-                              onClick={() => void handleGoogleStudentAuth('register')}
-                              className="font-semibold text-[#612AD6] dark:text-purple-300 underline underline-offset-2 hover:opacity-80 cursor-pointer"
-                            >
-                              Continue with Google now
-                            </button>
-                          </div>
-                        </div>
-                      )}
                       {regNetworkHelpNeeded && (
                         <div className="space-y-1.5 pt-1 border-t border-rose-200/80 dark:border-rose-800/60">
                           <p className="text-[11px] leading-relaxed">
-                            Your browser could not reach authentication services (check internet
-                            connectivity or pause content blockers/VPNs blocking{' '}
-                            <span className="font-mono">googleapis.com</span> /{' '}
-                            <span className="font-mono">accounts.google.com</span>).
+                            Your browser could not reach Google authentication services. You can
+                            register directly with Email &amp; Password below.
                           </p>
                           {typeof window !== 'undefined' && window.self !== window.top && (
                             <a
@@ -1910,6 +852,7 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
                         onChange={(e) => {
                           setRegForm((prev) => ({ ...prev, email: e.target.value }));
                           setRegFieldErrors((prev) => ({ ...prev, email: undefined }));
+                          setRegDuplicateEmail(null);
                         }}
                         onBlur={() =>
                           setRegForm((prev) => ({ ...prev, email: normalizeEmail(prev.email) }))
@@ -2102,9 +1045,7 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
                   >
                     {isRegistering && <Loader2 className="w-4 h-4 animate-spin" />}
                     <span>
-                      {isRegistering
-                        ? 'Creating Account & Sending Verification...'
-                        : 'Register & Send Verification Email'}
+                      {isRegistering ? 'Registering Account...' : 'Register & Get eDraw ID'}
                     </span>
                     {!isRegistering && <ArrowRight className="w-4 h-4" />}
                   </button>
@@ -2138,272 +1079,9 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
               </div>
             )}
 
-            {/* ==================== VIEW 3: EDRAW VERIFICATION CODE BOX ==================== */}
-            {screen === 'check_email' && (
+            {/* ==================== VIEW 3: REGISTRATION SUCCESSFUL / YOUR EDRAW ID ==================== */}
+            {screen === 'success' && registeredStudent && (
               <div className="rounded-3xl bg-white dark:bg-slate-900 border border-[#E8E2F5] dark:border-slate-800 p-7 sm:p-8 shadow-[0_18px_50px_-24px_rgba(96,53,181,0.18)] space-y-5">
-                <div className="flex items-center gap-2 text-xs text-[#6E6C84] dark:text-slate-400 font-medium">
-                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                    1. Registered
-                  </span>
-                  <span aria-hidden="true">·</span>
-                  <span className="text-[#6B32E4] dark:text-purple-300 font-semibold">
-                    2. Enter Verification Code
-                  </span>
-                  <span aria-hidden="true">·</span>
-                  <span>3. Your eDraw ID</span>
-                </div>
-
-                <div className="flex items-start gap-3.5">
-                  <div className="w-11 h-11 rounded-2xl bg-[#F2EDFF] dark:bg-purple-950/60 text-[#6B32E4] dark:text-purple-300 flex items-center justify-center shrink-0">
-                    <Inbox className="w-5 h-5" />
-                  </div>
-                  <div className="space-y-1">
-                    <h2 className="text-xl font-bold text-[#202044] dark:text-slate-100">
-                      Enter Verification Code
-                    </h2>
-                    <p className="text-sm text-[#6E6C84] dark:text-slate-400 leading-relaxed">
-                      Enter the 6-digit verification code sent to{' '}
-                      <span className="font-semibold text-[#202044] dark:text-slate-100">
-                        {pendingEmail || 'your email address'}
-                      </span>{' '}
-                      to activate your <span className="font-mono font-semibold">EDID-XXXX</span>.
-                    </p>
-                  </div>
-                </div>
-
-                {checkEmailNotice && (
-                  <div
-                    role="status"
-                    className="p-3.5 rounded-xl bg-[#F8F7FC] dark:bg-slate-950 border border-[#E4DCF7] dark:border-slate-800 text-xs text-[#4A4863] dark:text-slate-300 leading-relaxed"
-                  >
-                    {checkEmailNotice}
-                  </div>
-                )}
-
-                {checkEmailError && (
-                  <div
-                    role="alert"
-                    className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/80 text-xs text-rose-800 dark:text-rose-200 flex items-start gap-2.5"
-                  >
-                    <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
-                    <p className="font-medium leading-relaxed">{checkEmailError}</p>
-                  </div>
-                )}
-
-                <form onSubmit={handleVerifyCodeSubmit} noValidate className="space-y-4">
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="verification-code-input"
-                      className="block text-xs font-semibold text-[#202044] dark:text-slate-200"
-                    >
-                      EDraw Verification Code (6 Digits)
-                    </label>
-                    <input
-                      id="verification-code-input"
-                      name="verificationCode"
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      maxLength={6}
-                      value={verificationCodeInput}
-                      onChange={(e) => {
-                        setVerificationCodeInput(normalizeVerificationCode(e.target.value));
-                        setCheckEmailError(null);
-                      }}
-                      placeholder="000000"
-                      aria-describedby="verification-code-help"
-                      className="w-full h-14 px-4 rounded-2xl bg-[#F8F7FC] dark:bg-slate-950 border-2 border-[#DDD3FA] dark:border-slate-700 focus:border-[#6B32E4] focus:outline-none focus:ring-2 focus:ring-[#6B32E4]/20 text-center font-mono text-2xl font-bold tracking-[0.5em] text-[#202044] dark:text-slate-100 placeholder:text-[#B9B4CC] dark:placeholder:text-slate-600 transition-colors"
-                    />
-                    <p
-                      id="verification-code-help"
-                      className="text-[11px] text-[#77758F] dark:text-slate-400 text-center"
-                    >
-                      Codes expire 1 hour after sending.
-                    </p>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isVerifyingCode || verificationCodeInput.length !== 6}
-                    className="w-full h-11 px-5 rounded-xl bg-[#6B32E4] hover:bg-[#5923CC] disabled:opacity-60 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
-                  >
-                    {isVerifyingCode ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="w-4 h-4" />
-                    )}
-                    <span>
-                      {isVerifyingCode ? 'Verifying Code...' : 'Verify Code & Get eDraw ID'}
-                    </span>
-                  </button>
-                </form>
-
-                <div className="space-y-2">
-                  {pendingDeliveryMode !== 'smtp' &&
-                    (!hasGmailToken ||
-                      gmailSenderEmail?.toLowerCase() !== adminSenderEmail.toLowerCase()) && (
-                      <button
-                        type="button"
-                        disabled={isGmailSigningIn}
-                        onClick={() => void handleConnectGmailSender()}
-                        className="w-full h-10 px-4 rounded-xl bg-[#F2EDFF] dark:bg-purple-950/50 hover:bg-[#E7DCFF] dark:hover:bg-purple-950/80 text-xs font-semibold text-[#5923CC] dark:text-purple-200 flex items-center justify-center gap-2 cursor-pointer transition-colors"
-                      >
-                        <Mail className="w-3.5 h-3.5" />
-                        <span>
-                          {isGmailSigningIn
-                            ? 'Connecting Gmail Sender...'
-                            : `Connect ${adminSenderEmail} to Send Code Email`}
-                        </span>
-                      </button>
-                    )}
-
-                  {pendingDeliveryMode !== 'smtp' &&
-                    hasGmailToken &&
-                    gmailSenderEmail?.toLowerCase() === adminSenderEmail.toLowerCase() && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setPendingGmailSend({
-                            senderEmail: gmailSenderEmail,
-                            recipientEmail: pendingEmail,
-                            studentName: pendingStudentName || regForm.name || 'Student',
-                            college: pendingCollege || regForm.college || 'Engineering College',
-                            kind: 'verification_code',
-                          })
-                        }
-                        className="w-full h-10 px-4 rounded-xl bg-[#F2EDFF] dark:bg-purple-950/50 hover:bg-[#E7DCFF] dark:hover:bg-purple-950/80 text-xs font-semibold text-[#5923CC] dark:text-purple-200 flex items-center justify-center gap-2 cursor-pointer transition-colors"
-                      >
-                        <Send className="w-3.5 h-3.5" />
-                        <span>Send 6-Digit Code via {gmailSenderEmail}</span>
-                      </button>
-                    )}
-
-                  <button
-                    type="button"
-                    disabled={isResendingCode || resendCooldown > 0}
-                    onClick={() => void handleResendVerificationCode()}
-                    className="w-full h-10 px-4 rounded-xl border border-[#DFD7F4] dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-[#F8F7FC] dark:hover:bg-slate-800 disabled:opacity-60 text-xs font-semibold text-[#5923CC] dark:text-purple-300 flex items-center justify-center gap-2 cursor-pointer transition-colors"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isResendingCode ? 'animate-spin' : ''}`} />
-                    <span>
-                      {isResendingCode
-                        ? 'Issuing Fresh Code...'
-                        : resendCooldown > 0
-                        ? `Resend Verification Code (${resendCooldown}s)`
-                        : 'Resend Verification Code'}
-                    </span>
-                  </button>
-                </div>
-
-                <div className="pt-3 border-t border-[#EEEAF8] dark:border-slate-800 flex items-center justify-between gap-2 text-xs text-[#77758F] dark:text-slate-400">
-                  <span>Didn&apos;t see it? Check Spam or Junk.</span>
-                  <button
-                    type="button"
-                    onClick={() => setScreen('login')}
-                    className="font-semibold text-[#6E6C84] dark:text-slate-300 hover:text-[#202044] dark:hover:text-white cursor-pointer"
-                  >
-                    Back to Sign In
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* ==================== VIEW 4: VERIFYING EMAIL ==================== */}
-            {screen === 'verifying' && (
-              <div
-                className="rounded-3xl bg-white dark:bg-slate-900 border border-[#E8E2F5] dark:border-slate-800 p-8 sm:p-10 shadow-[0_18px_50px_-24px_rgba(96,53,181,0.18)] text-center space-y-4"
-                role="status"
-                aria-live="polite"
-              >
-                <div className="w-12 h-12 rounded-2xl bg-[#F2EDFF] dark:bg-purple-950/60 text-[#6B32E4] dark:text-purple-300 flex items-center justify-center mx-auto">
-                  <Loader2 className="w-6 h-6 animate-spin" />
-                </div>
-                <div className="space-y-1.5">
-                  <h2 className="text-xl font-bold text-[#202044] dark:text-slate-100">
-                    Verifying Your Email
-                  </h2>
-                  <p className="text-sm text-[#6E6C84] dark:text-slate-400">{verifyingMessage}</p>
-                </div>
-              </div>
-            )}
-
-            {/* ==================== VIEW 5: VERIFICATION FAILED ==================== */}
-            {screen === 'verify_failed' && (
-              <div
-                className="rounded-3xl bg-white dark:bg-slate-900 border border-[#E8E2F5] dark:border-slate-800 p-7 sm:p-8 shadow-[0_18px_50px_-24px_rgba(96,53,181,0.18)] space-y-5"
-                role="alert"
-              >
-                <div className="flex items-start gap-3.5">
-                  <div className="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 flex items-center justify-center shrink-0">
-                    <AlertCircle className="w-5 h-5" />
-                  </div>
-                  <div className="space-y-1">
-                    <h2 className="text-xl font-bold text-[#202044] dark:text-slate-100">
-                      Verification Could Not Complete
-                    </h2>
-                    <p className="text-sm text-[#6E6C84] dark:text-slate-400 leading-relaxed">
-                      {verifyFailedMessage ||
-                        'Your verification link may have expired or already been used.'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-2.5">
-                  {canRetryAllocation && (
-                    <button
-                      type="button"
-                      onClick={() => void handleRetryAllocation()}
-                      className="w-full h-11 px-5 rounded-xl bg-[#6B32E4] hover:bg-[#5923CC] text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <RotateCcw className="w-4 h-4" />
-                      <span>Retry eDraw ID Allocation</span>
-                    </button>
-                  )}
-
-                  {auth.currentUser && !auth.currentUser.emailVerified && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPendingEmail(auth.currentUser?.email || pendingEmail);
-                        setScreen('check_email');
-                      }}
-                      className="w-full h-10 px-4 rounded-xl border border-[#DFD7F4] dark:border-slate-700 text-xs font-semibold text-[#5923CC] dark:text-purple-300 hover:bg-[#F8F7FC] dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                    >
-                      Resend Verification Email
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLoginServerError(null);
-                      setScreen('login');
-                    }}
-                    className="w-full h-10 px-4 rounded-xl border border-[#E2DBF2] dark:border-slate-700 text-xs font-semibold text-[#4A4863] dark:text-slate-200 hover:bg-[#F8F7FC] dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                  >
-                    Go to Student Sign In
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* ==================== VIEW 6: REGISTRATION SUCCESSFUL / YOUR EDRAW ID ==================== */}
-            {screen === 'success' && verifiedStudent && (
-              <div className="rounded-3xl bg-white dark:bg-slate-900 border border-[#E8E2F5] dark:border-slate-800 p-7 sm:p-8 shadow-[0_18px_50px_-24px_rgba(96,53,181,0.18)] space-y-5">
-                <div className="flex items-center gap-2 text-xs text-[#6E6C84] dark:text-slate-400 font-medium">
-                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                    1. Registered
-                  </span>
-                  <span aria-hidden="true">·</span>
-                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                    2. Email Verified
-                  </span>
-                  <span aria-hidden="true">·</span>
-                  <span className="text-[#6B32E4] dark:text-purple-300 font-semibold">
-                    3. Your eDraw ID
-                  </span>
-                </div>
-
                 <div className="flex items-start gap-3">
                   <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0">
                     <CheckCircle2 className="w-5 h-5" />
@@ -2413,11 +1091,10 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
                       Registration Successful
                     </h2>
                     <p className="text-xs text-[#6E6C84] dark:text-slate-400 mt-0.5 leading-relaxed">
-                      Your email{' '}
                       <span className="font-medium text-[#202044] dark:text-slate-200">
-                        {verifiedStudent.gmail}
+                        {registeredStudent.gmail}
                       </span>{' '}
-                      is verified and your official eDraw ID is active.
+                      has been added to the database and your unique eDraw ID is ready.
                     </p>
                   </div>
                 </div>
@@ -2432,12 +1109,12 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
                       data-testid="verified-edraw-id"
                       className="text-2xl font-bold font-mono tabular-nums tracking-wider text-[#5923CC] dark:text-purple-300 mt-0.5"
                     >
-                      {verifiedStudent.edrawId}
+                      {registeredStudent.edrawId}
                     </div>
                   </div>
                   <button
                     type="button"
-                    onClick={() => handleCopyEdrawId(verifiedStudent.edrawId)}
+                    onClick={() => handleCopyEdrawId(registeredStudent.edrawId)}
                     className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-[#DFD4FA] dark:border-slate-700 text-xs font-semibold text-[#202044] dark:text-slate-200 hover:bg-[#EFE8FF] dark:hover:bg-slate-800 flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                   >
                     {copiedId ? (
@@ -2454,371 +1131,54 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
                   </button>
                 </div>
 
-                {/* Verified Student Details Summary */}
+                {/* Registered Student Details Summary */}
                 <div className="p-4 rounded-2xl bg-[#FAF9FE] dark:bg-slate-950 border border-[#ECE7F8] dark:border-slate-800 space-y-1.5 text-xs">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[#77758F] dark:text-slate-400">Student Name</span>
                     <span className="font-semibold text-[#202044] dark:text-slate-100 truncate">
-                      {verifiedStudent.name}
+                      {registeredStudent.name}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[#77758F] dark:text-slate-400">Email</span>
+                    <span className="font-medium text-[#202044] dark:text-slate-200 truncate">
+                      {registeredStudent.gmail}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[#77758F] dark:text-slate-400">College</span>
                     <span className="font-medium text-[#202044] dark:text-slate-200 truncate">
-                      {verifiedStudent.college}
+                      {registeredStudent.college}
                     </span>
                   </div>
-                  {verifiedStudent.studentDetails && (
+                  {registeredStudent.studentDetails && (
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[#77758F] dark:text-slate-400">Student Details</span>
                       <span className="font-medium text-[#202044] dark:text-slate-200 truncate">
-                        {verifiedStudent.studentDetails}
+                        {registeredStudent.studentDetails}
                       </span>
                     </div>
                   )}
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[#77758F] dark:text-slate-400">Profile Storage</span>
+                    <span className="text-[#77758F] dark:text-slate-400">Database Status</span>
                     <span className="font-medium text-emerald-700 dark:text-emerald-400">
-                      {firestoreSynced ? 'Saved to Cloud Firestore' : 'Verified on Server'}
+                      {firestoreSynced ? 'Saved to Cloud Firestore' : 'Saved to Database (Unique)'}
                     </span>
                   </div>
                 </div>
 
-                {firestoreSyncWarning && (
-                  <p className="text-[11px] text-[#6E6C84] dark:text-slate-400 leading-relaxed">
-                    {firestoreSyncWarning}
-                  </p>
-                )}
-
                 <button
                   type="button"
                   onClick={() =>
-                    onLoginSuccess(verifiedStudent, activeIdToken || 'firebase-verified')
+                    onLoginSuccess(registeredStudent, activeSessionToken || '')
                   }
                   className="w-full h-11 px-5 rounded-xl bg-[#6B32E4] hover:bg-[#5923CC] text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
                 >
                   <span>Enter EDraw Dashboard</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
-
-                {!smtpConfigured &&
-                  hasGmailToken &&
-                  gmailSenderEmail &&
-                  gmailSenderEmail.toLowerCase() === adminSenderEmail.toLowerCase() && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setPendingGmailSend({
-                          senderEmail: gmailSenderEmail,
-                          recipientEmail: verifiedStudent.gmail,
-                          studentName: verifiedStudent.name,
-                          college: verifiedStudent.college,
-                          edrawId: verifiedStudent.edrawId,
-                          kind: 'verified_edraw_id',
-                        })
-                      }
-                      className="w-full h-10 px-4 rounded-xl border border-[#DFD7F4] dark:border-slate-700 bg-[#F8F7FC] dark:bg-slate-800/70 hover:bg-[#EFE8FF] dark:hover:bg-slate-800 text-xs font-semibold text-[#5923CC] dark:text-purple-300 flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      <span>Send {verifiedStudent.edrawId} via {gmailSenderEmail}</span>
-                    </button>
-                  )}
               </div>
             )}
-
-            {/* ==================== VIEW 7: LEGACY TOKEN VERIFICATION ==================== */}
-            {screen === 'verify' && (
-              <div className="rounded-3xl bg-white dark:bg-slate-900 border border-[#E8E2F5] dark:border-slate-800 p-7 sm:p-8 shadow-[0_18px_50px_-24px_rgba(96,53,181,0.18)] space-y-5">
-                <div className="flex items-center gap-2 text-xs text-[#6E6C84] dark:text-slate-400 font-medium">
-                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                    1. Registered
-                  </span>
-                  <span aria-hidden="true">·</span>
-                  <span
-                    className={
-                      verifiedStudent
-                        ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
-                        : 'text-[#6B32E4] dark:text-purple-300 font-semibold'
-                    }
-                  >
-                    2. Email Verification
-                  </span>
-                  <span aria-hidden="true">·</span>
-                  <span
-                    className={
-                      verifiedStudent
-                        ? 'text-[#6B32E4] dark:text-purple-300 font-semibold'
-                        : ''
-                    }
-                  >
-                    3. eDraw ID Ready
-                  </span>
-                </div>
-
-                {verifiedStudent ? (
-                  <div className="space-y-4">
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0">
-                        <CheckCircle2 className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h2 className="text-xl font-bold text-[#202044] dark:text-slate-100">
-                          Email Verified Successfully
-                        </h2>
-                        <p className="text-xs text-[#6E6C84] dark:text-slate-400 mt-0.5 leading-relaxed">
-                          {verifiedStudent.name} ({verifiedStudent.college}) — your account for{' '}
-                          <span className="font-medium text-[#202044] dark:text-slate-200">
-                            {verifiedStudent.gmail}
-                          </span>{' '}
-                          is now active.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-[#F5F1FF] dark:bg-slate-800/80 border border-[#DFD4FA] dark:border-purple-800/50 flex items-center justify-between gap-3">
-                      <div>
-                        <div className="text-[11px] font-semibold text-[#6E6C84] dark:text-slate-400">
-                          Your Official eDraw ID
-                        </div>
-                        <div
-                          data-testid="verified-edraw-id"
-                          className="text-2xl font-bold font-mono tabular-nums tracking-wider text-[#5923CC] dark:text-purple-300 mt-0.5"
-                        >
-                          {verifiedStudent.edrawId}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleCopyEdrawId(verifiedStudent.edrawId)}
-                        className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-[#DFD4FA] dark:border-slate-700 text-xs font-semibold text-[#202044] dark:text-slate-200 hover:bg-[#EFE8FF] dark:hover:bg-slate-800 flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                      >
-                        {copiedId ? (
-                          <>
-                            <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>Copied</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3.5 h-3.5" />
-                            <span>Copy ID</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setLoginIdentifier(verifiedStudent.edrawId);
-                        setLoginPassword('');
-                        setLoginErrors({});
-                        setLoginServerError(null);
-                        setUnverifiedGmail(null);
-                        setScreen('login');
-                      }}
-                      className="w-full h-11 px-5 rounded-xl bg-[#6B32E4] hover:bg-[#5923CC] text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
-                    >
-                      <span>Proceed to Login with {verifiedStudent.edrawId}</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </button>
-
-                    {hasGmailToken &&
-                      gmailSenderEmail &&
-                      gmailSenderEmail.toLowerCase() === adminSenderEmail.toLowerCase() && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setPendingGmailSend({
-                              senderEmail: gmailSenderEmail,
-                              recipientEmail: verifiedStudent.gmail,
-                              studentName: verifiedStudent.name,
-                              college: verifiedStudent.college,
-                              edrawId: verifiedStudent.edrawId,
-                              kind: 'verified_edraw_id',
-                            })
-                          }
-                          className="w-full h-10 px-4 rounded-xl border border-[#DFD4FA] dark:border-slate-700 bg-[#F8F7FC] dark:bg-slate-800/70 hover:bg-[#EFE8FF] dark:hover:bg-slate-800 text-xs font-semibold text-[#5923CC] dark:text-purple-300 flex items-center justify-center gap-2 cursor-pointer"
-                        >
-                          <Send className="w-3.5 h-3.5" />
-                          <span>Send {verifiedStudent.edrawId} via {gmailSenderEmail}</span>
-                        </button>
-                      )}
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <h2 className="text-xl font-bold text-[#202044] dark:text-slate-100">
-                      Verify Your Email Address
-                    </h2>
-                    <p className="text-sm text-[#6E6C84] dark:text-slate-400 leading-relaxed">
-                      {verifyStatusMessage ||
-                        `We sent a verification link to ${pendingGmail || 'your email address'}. Click the link to verify your account and receive your eDraw ID (EDID-XXXX).`}
-                    </p>
-                  </div>
-                )}
-
-                {verifyError && (
-                  <div
-                    role="alert"
-                    className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/80 text-xs text-rose-800 dark:text-rose-200 flex items-start gap-2.5"
-                  >
-                    <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
-                    <p className="font-medium leading-relaxed">{verifyError}</p>
-                  </div>
-                )}
-
-                {deliveryMode === 'preview' && inboxMessages.length > 0 && (
-                  <div className="rounded-2xl border border-[#E2DBF2] dark:border-slate-700 bg-[#FAF9FE] dark:bg-slate-950 overflow-hidden">
-                    <div className="px-4 py-2.5 border-b border-[#E8E2F5] dark:border-slate-800 flex items-center justify-between gap-2 bg-white dark:bg-slate-900">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Inbox className="w-4 h-4 text-[#6B32E4] dark:text-purple-400 shrink-0" />
-                        <span className="text-xs font-semibold text-[#202044] dark:text-slate-200 truncate">
-                          Inbox · {pendingGmail}
-                        </span>
-                      </div>
-                      <span className="text-[11px] font-mono text-[#77758F] dark:text-slate-400 whitespace-nowrap">
-                        {inboxMessages.length} {inboxMessages.length === 1 ? 'message' : 'messages'}
-                      </span>
-                    </div>
-
-                    <div className="divide-y divide-[#ECE7F8] dark:divide-slate-800">
-                      {inboxMessages.map((msg) => (
-                        <div key={msg.id} className="p-4 space-y-2.5">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <div className="text-xs font-bold text-[#202044] dark:text-slate-100">
-                                {msg.subject}
-                              </div>
-                              <div className="text-[11px] text-[#77758F] dark:text-slate-400 truncate mt-0.5">
-                                From: {msg.from} · To: {msg.to}
-                              </div>
-                            </div>
-                          </div>
-
-                          {msg.kind === 'verification_link' && msg.verificationToken ? (
-                            <div className="space-y-2.5 text-xs text-[#4A4863] dark:text-slate-300">
-                              <p className="leading-relaxed">
-                                Hello {msg.studentName}, click the link below to verify your email
-                                ({msg.college}) and generate your official eDraw ID.
-                              </p>
-                              <button
-                                type="button"
-                                disabled={isVerifyingToken || Boolean(verifiedStudent)}
-                                onClick={() => void verifyTokenOnServer(msg.verificationToken!)}
-                                className="px-4 py-2 rounded-xl bg-[#6B32E4] hover:bg-[#5923CC] disabled:opacity-50 text-white text-xs font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                              >
-                                <ExternalLink className="w-3.5 h-3.5" />
-                                <span>
-                                  {verifiedStudent
-                                    ? 'Link Verified'
-                                    : isVerifyingToken
-                                    ? 'Verifying...'
-                                    : 'Click to Verify & Get eDraw ID'}
-                                </span>
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="space-y-1.5 text-xs text-[#4A4863] dark:text-slate-300">
-                              <p className="leading-relaxed">
-                                Verification complete for <strong>{msg.studentName}</strong>. Your verified eDraw ID is{' '}
-                                <span className="font-mono font-bold text-[#5923CC] dark:text-purple-300">
-                                  {msg.edrawId}
-                                </span>
-                                . Use it with your password to sign in to the dashboard.
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="pt-3 border-t border-[#EEEAF8] dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
-                  {!verifiedStudent && pendingGmail ? (
-                    <button
-                      type="button"
-                      onClick={() => void handleResendLegacyVerification(pendingGmail)}
-                      disabled={isResending}
-                      className="inline-flex items-center gap-1.5 font-semibold text-[#6B32E4] dark:text-purple-400 hover:underline cursor-pointer"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${isResending ? 'animate-spin' : ''}`} />
-                      <span>{isResending ? 'Resending...' : 'Resend Verification Link'}</span>
-                    </button>
-                  ) : (
-                    <span className="text-[#77758F] dark:text-slate-400">
-                      {pendingStudentName ? `Registered for ${pendingStudentName}` : 'Email Verification'}
-                    </span>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => setScreen('login')}
-                    className="font-semibold text-[#6E6C84] dark:text-slate-300 hover:text-[#202044] dark:hover:text-white cursor-pointer"
-                  >
-                    Back to Sign In
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {(screen === 'login' || screen === 'register') && (
-              <div className="mt-4">
-                <SimpleEmailRegistrationForm />
-              </div>
-            )}
-
-            {/* Official Sender Gmail Dispatcher Accordion */}
-            <div className="mt-4">
-              <button
-                type="button"
-                onClick={() => setIsDispatcherOpen((prev) => !prev)}
-                className="w-full px-4 py-2.5 rounded-2xl border border-[#E8E2F5] dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 hover:bg-white dark:hover:bg-slate-900 text-xs font-semibold text-[#4A4863] dark:text-slate-300 flex items-center justify-between gap-2 transition-colors cursor-pointer"
-              >
-                <span className="flex items-center gap-2 min-w-0">
-                  <Mail className="w-3.5 h-3.5 text-[#6B32E4] dark:text-purple-400 shrink-0" />
-                  <span className="truncate">
-                    Official Sender Mail ({adminSenderEmail})
-                    {hasGmailToken && gmailSenderEmail ? ` · Connected` : ''}
-                  </span>
-                </span>
-                {isDispatcherOpen ? (
-                  <ChevronUp className="w-4 h-4 shrink-0" />
-                ) : (
-                  <ChevronDown className="w-4 h-4 shrink-0" />
-                )}
-              </button>
-
-              {isDispatcherOpen && (
-                <div className="mt-2">
-                  <GmailDispatcherPanel
-                    connectedEmail={gmailSenderEmail}
-                    hasToken={hasGmailToken}
-                    isSigningIn={isGmailSigningIn}
-                    isLoadingQueue={isLoadingQueue}
-                    isResettingDatabase={isResettingDatabase}
-                    smtpConfigured={smtpConfigured}
-                    adminSenderEmail={adminSenderEmail}
-                    queue={dispatchQueue}
-                    dispatchError={dispatchError}
-                    dispatchNotice={dispatchNotice}
-                    onSignInGoogle={() => void handleConnectGmailSender()}
-                    onSignOutGoogle={() => void handleDisconnectGmailSender()}
-                    onRefreshQueue={() => void loadDispatchQueue()}
-                    onRequestResetDatabase={() => setIsConfirmingReset(true)}
-                    onRequestSend={(item, kind) =>
-                      setPendingGmailSend({
-                        senderEmail: gmailSenderEmail || adminSenderEmail,
-                        recipientEmail: item.gmail,
-                        studentName: item.name,
-                        college: item.college,
-                        edrawId: item.edrawId,
-                        kind,
-                      })
-                    }
-                  />
-                </div>
-              )}
-            </div>
           </div>
 
           {/* Quiet Footer */}
@@ -2827,68 +1187,6 @@ export const StudentAuthPortal: React.FC<StudentAuthPortalProps> = ({
           </footer>
         </section>
       </div>
-
-      <GmailConfirmModal
-        pending={pendingGmailSend}
-        isSending={isSendingGmail}
-        onConfirm={() => void handleConfirmSendGmail()}
-        onCancel={() => {
-          if (!isSendingGmail) setPendingGmailSend(null);
-        }}
-      />
-
-      {isConfirmingReset && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="reset-db-dialog-title"
-          className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4"
-        >
-          <div className="w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 border border-[#E8E2F5] dark:border-slate-800 p-6 shadow-2xl space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 flex items-center justify-center shrink-0">
-                <AlertCircle className="w-5 h-5" />
-              </div>
-              <div className="space-y-1">
-                <h3
-                  id="reset-db-dialog-title"
-                  className="text-base font-bold text-[#202044] dark:text-slate-100"
-                >
-                  Reset Student Registration Database?
-                </h3>
-                <p className="text-xs text-[#6E6C84] dark:text-slate-400 leading-relaxed">
-                  This clears all student records and resets the next allocated identifier back to{' '}
-                  <span className="font-mono font-semibold text-[#202044] dark:text-slate-200">
-                    EDID-1000
-                  </span>
-                  . Any test users created inside Firebase Auth or Firestore must also be cleared
-                  from the Firebase Console if you want to reuse the same test email.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2.5 pt-2">
-              <button
-                type="button"
-                disabled={isResettingDatabase}
-                onClick={() => setIsConfirmingReset(false)}
-                className="h-10 px-4 rounded-xl border border-[#E2DBF2] dark:border-slate-700 text-xs font-semibold text-[#4A4863] dark:text-slate-200 hover:bg-[#F8F7FC] dark:hover:bg-slate-800 cursor-pointer disabled:opacity-60"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={isResettingDatabase}
-                onClick={() => void handleConfirmResetDatabase()}
-                className="h-10 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold inline-flex items-center gap-2 cursor-pointer disabled:opacity-60"
-              >
-                {isResettingDatabase && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <span>{isResettingDatabase ? 'Resetting...' : 'Reset Database'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

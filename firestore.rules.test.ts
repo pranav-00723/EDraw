@@ -49,3 +49,16 @@ test('firestore.rules enforces Master Gate on progress subcollection', () => {
   assert.match(rulesText, /exists\(\/databases\/\$\(database\)\/documents\/students\/\$\(studentUid\)\)/);
   assert.match(rulesText, /resource\.data\.ownerUid == request\.auth\.uid/);
 });
+
+test('firestore.rules enforces immutable non-duplicable /registeredEmails/{emailHash} index', () => {
+  const hashPattern = blueprint.entities.RegisteredEmailClaim.properties.emailHash.pattern;
+  assert.equal(hashPattern, '^[a-f0-9]{64}$');
+  assert.ok(rulesText.includes(hashPattern));
+  assert.match(rulesText, /match \/registeredEmails\/\{emailHash\}[\s\S]*?allow list:\s*if false;/);
+  assert.match(rulesText, /match \/registeredEmails\/\{emailHash\}[\s\S]*?allow update:\s*if false;/);
+  assert.match(
+    rulesText,
+    /existsAfter\(\/databases\/\$\(database\)\/documents\/students\/\$\(request\.auth\.uid\)\)/
+  );
+});
+

@@ -136,20 +136,56 @@ function verifyCodeHash(uid: string, email: string, code: string, storedHash: st
   return crypto.timingSafeEqual(actualBuf, expectedBuf);
 }
 
-async function postToAppsScriptWebhook(payload: Record<string, unknown>): Promise<boolean> {
-  const webhookUrl = (process.env.APPS_SCRIPT_WEBHOOK_URL || '').trim();
+export async function postToAppsScriptWebhook(
+  payload: Record<string, unknown>,
+  options?: { webhookUrl?: string; fetchImpl?: typeof fetch }
+): Promise<boolean> {
+  const webhookUrl = (options?.webhookUrl ?? process.env.APPS_SCRIPT_WEBHOOK_URL ?? '').trim();
   if (!/^https:\/\/.+/i.test(webhookUrl)) return false;
 
+  const fetcher = options?.fetchImpl || fetch;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10000);
+  const timer = setTimeout(() => controller.abort(), 12000);
   try {
-    const res = await fetch(webhookUrl, {
+    const res = await fetcher(webhookUrl, {
       method: 'POST',
+      redirect: 'follow',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
-    return res.ok;
+    if (!res.ok) return false;
+
+    const finalUrl = typeof res.url === 'string' ? res.url.toLowerCase() : '';
+    if (finalUrl.includes('accounts.google.com')) {
+      return false;
+    }
+
+    const contentType = (res.headers?.get?.('content-type') || '').toLowerCase();
+    const rawBody = typeof res.text === 'function' ? (await res.text()).trim() : '';
+
+    if (
+      /you need access|script function not found|accounts\.google\.com|servicelogin|exception:/i.test(
+        rawBody
+      )
+    ) {
+      return false;
+    }
+
+    if (contentType.includes('application/json') || rawBody.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(rawBody) as { ok?: boolean; success?: boolean; error?: string };
+        if (parsed.ok === false || parsed.success === false || Boolean(parsed.error)) {
+          return false;
+        }
+      } catch {
+        // Non-JSON response body handled above
+      }
+    }
+
+    return true;
+  } catch {
+    return false;
   } finally {
     clearTimeout(timer);
   }
@@ -309,6 +345,26 @@ export class RegistrationService {
     return ids;
   }
 
+  private readLegacyRegisteredEmails(): Set<string> {
+    const emails = new Set<string>();
+    try {
+      if (!fs.existsSync(this.legacyStudentsPath)) return emails;
+      const raw = fs.readFileSync(this.legacyStudentsPath, 'utf8');
+      const parsed = JSON.parse(raw) as { students?: Array<{ gmail?: string; email?: string }> };
+      if (Array.isArray(parsed.students)) {
+        for (const s of parsed.students) {
+          const mail = typeof s.email === 'string' ? s.email : s.gmail;
+          if (typeof mail === 'string' && mail.trim()) {
+            emails.add(normalizeEmail(mail));
+          }
+        }
+      }
+    } catch {
+      // Ignore unreadable legacy file
+    }
+    return emails;
+  }
+
   private writeDb(db: RegistrationDatabaseFile): void {
     const dir = path.dirname(this.storePath);
     fs.mkdirSync(dir, { recursive: true });
@@ -457,6 +513,9 @@ export class RegistrationService {
     | {
         success: true;
         deliveryMode: CodeDeliveryMode;
+        autoEmailSent: boolean;
+        senderEmail: string;
+        deliveryError?: string;
         record: ServerRegistrationRecord;
         student: StudentProfileSummary;
       }
@@ -547,17 +606,25 @@ export class RegistrationService {
       return { success: false, status: lockResult.status, error: lockResult.error };
     }
 
+    const senderEmail = getAdminSenderEmail();
     let deliveryMode: CodeDeliveryMode = 'gmail_pending';
-    if (!lockResult.alreadyVerified && lockResult.rawCode) {
+    let autoEmailSent = false;
+    let deliveryError: string | undefined;
+
+    if (lockResult.alreadyVerified) {
+      deliveryMode = 'smtp';
+      autoEmailSent = true;
+    } else if (lockResult.rawCode) {
       try {
-        const sentViaSmtp = await this.otpEmailSender({
+        const sentAutomatically = await this.otpEmailSender({
           to: lockResult.record.email,
           studentName: lockResult.record.name,
           college: lockResult.record.college,
           code: lockResult.rawCode,
         });
-        if (sentViaSmtp) {
+        if (sentAutomatically) {
           deliveryMode = 'smtp';
+          autoEmailSent = true;
           await this.withLock(() => {
             const db = this.readDb();
             const rec = db.records[lockResult.record.uid];
@@ -566,15 +633,21 @@ export class RegistrationService {
               this.writeDb(db);
             }
           });
+        } else {
+          deliveryError = `Automatic email dispatch from ${senderEmail} is not active yet. Configure SMTP_PASS (Gmail App Password for ${senderEmail}) or APPS_SCRIPT_WEBHOOK_URL in server environment variables, then click Resend Verification Code.`;
         }
       } catch (err) {
-        console.warn('SMTP verification code email failed:', err);
+        console.warn('Automatic verification code email failed:', err);
+        deliveryError = `Automatic email delivery from ${senderEmail} encountered an error. Verify SMTP_PASS or APPS_SCRIPT_WEBHOOK_URL and click Resend Verification Code.`;
       }
     }
 
     return {
       success: true,
       deliveryMode,
+      autoEmailSent,
+      senderEmail,
+      ...(deliveryError ? { deliveryError } : {}),
       record: lockResult.record,
       student: toRegistrationProfileSummary(lockResult.record),
     };
@@ -586,6 +659,9 @@ export class RegistrationService {
     | {
         success: true;
         deliveryMode: CodeDeliveryMode;
+        autoEmailSent: boolean;
+        senderEmail: string;
+        deliveryError?: string;
         email: string;
         student: StudentProfileSummary;
       }
@@ -640,16 +716,21 @@ export class RegistrationService {
       return { success: false, status: lockResult.status, error: lockResult.error };
     }
 
+    const senderEmail = getAdminSenderEmail();
     let deliveryMode: CodeDeliveryMode = 'gmail_pending';
+    let autoEmailSent = false;
+    let deliveryError: string | undefined;
+
     try {
-      const sentViaSmtp = await this.otpEmailSender({
+      const sentAutomatically = await this.otpEmailSender({
         to: lockResult.record.email,
         studentName: lockResult.record.name,
         college: lockResult.record.college,
         code: lockResult.rawCode,
       });
-      if (sentViaSmtp) {
+      if (sentAutomatically) {
         deliveryMode = 'smtp';
+        autoEmailSent = true;
         await this.withLock(() => {
           const db = this.readDb();
           const rec = db.records[uid];
@@ -658,14 +739,20 @@ export class RegistrationService {
             this.writeDb(db);
           }
         });
+      } else {
+        deliveryError = `Automatic email dispatch from ${senderEmail} is not active yet. Configure SMTP_PASS (Gmail App Password for ${senderEmail}) or APPS_SCRIPT_WEBHOOK_URL in server environment variables, then try again.`;
       }
     } catch (err) {
-      console.warn('SMTP resend verification code failed:', err);
+      console.warn('Automatic resend verification code failed:', err);
+      deliveryError = `Automatic email delivery from ${senderEmail} encountered an error. Verify SMTP_PASS or APPS_SCRIPT_WEBHOOK_URL and retry.`;
     }
 
     return {
       success: true,
       deliveryMode,
+      autoEmailSent,
+      senderEmail,
+      ...(deliveryError ? { deliveryError } : {}),
       email: lockResult.record.email,
       student: toRegistrationProfileSummary(lockResult.record),
     };
@@ -1088,15 +1175,7 @@ export class RegistrationService {
       return { success: false, status: authResult.status, error: authResult.error };
     }
 
-    const { uid, email, emailVerified } = authResult.caller;
-    if (!emailVerified) {
-      return {
-        success: false,
-        status: 403,
-        error:
-          'Your email address is not verified yet. Please enter the 6-digit verification code sent to your email.',
-      };
-    }
+    const { uid, email } = authResult.caller;
 
     const lockResult = await this.withLock(() => {
       const db = this.readDb();
@@ -1112,17 +1191,25 @@ export class RegistrationService {
         };
       }
 
-      // Prevent duplicate verified registrations for the same email across UIDs
+      // Prevent duplicate registrations for the same email across all active accounts & stores
       const duplicateByEmail = Object.values(db.records).find(
-        (r) => r.email === email && r.uid !== uid && r.edrawId
+        (r) => normalizeEmail(r.email) === email && r.uid !== uid && Boolean(r.edrawId)
       );
-      if (duplicateByEmail) {
+      const legacyEmails = this.readLegacyRegisteredEmails();
+      if (duplicateByEmail || legacyEmails.has(email)) {
         return {
           success: false as const,
           status: 409,
           error:
-            'This email address already has an active eDraw ID. Please sign in with your existing account.',
+            'This email address is already registered in the database. Duplicate registrations are not allowed. Please sign in with your existing account.',
         };
+      }
+
+      // Clean up any stale unallocated pending_verification stubs for this email from previous flows
+      for (const [otherUid, otherRec] of Object.entries(db.records)) {
+        if (otherUid !== uid && !otherRec.edrawId && normalizeEmail(otherRec.email) === email) {
+          delete db.records[otherUid];
+        }
       }
 
       const fallbackName =
@@ -1180,33 +1267,6 @@ export class RegistrationService {
         student: toRegistrationProfileSummary(completed),
       };
     });
-
-    if (!lockResult.success || lockResult.alreadyAllocated || !lockResult.record.edrawId) {
-      return lockResult;
-    }
-
-    try {
-      const sentIdEmail = await this.verifiedIdEmailSender({
-        to: lockResult.record.email,
-        studentName: lockResult.record.name,
-        college: lockResult.record.college,
-        edrawId: lockResult.record.edrawId,
-      });
-      if (sentIdEmail) {
-        const sentAt = new Date(this.nowProvider()).toISOString();
-        await this.withLock(() => {
-          const latest = this.readDb();
-          const rec = latest.records[uid];
-          if (rec) {
-            rec.edrawIdEmailSentAt = sentAt;
-            this.writeDb(latest);
-            lockResult.record = rec;
-          }
-        });
-      }
-    } catch (err) {
-      console.warn('Automatic verified eDraw ID email failed:', err);
-    }
 
     return lockResult;
   }

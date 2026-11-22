@@ -92,7 +92,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {studentEdrawId && (
               <div className="p-3.5 rounded-2xl bg-[#F8F7FC] dark:bg-slate-950 border border-[#ECE8F8] dark:border-slate-800 space-y-1.5 text-xs">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[#77758A] dark:text-slate-400">Verified eDraw ID</span>
+                  <span className="text-[#77758A] dark:text-slate-400">Student eDraw ID</span>
                   <div className="flex items-center gap-2">
                     <span className="font-mono font-bold text-[#6035B5] dark:text-purple-300 tabular-nums">
                       {studentEdrawId}

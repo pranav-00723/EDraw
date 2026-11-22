@@ -12,6 +12,10 @@ service cloud.firestore {
       return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    function isValidEmailHash(hash) {
+      return hash is string && hash.size() == 64 && hash.matches('^[a-f0-9]{64}$');
+    }
+
     function incoming() {
       return request.resource.data;
     }
@@ -125,7 +129,56 @@ service cloud.firestore {
         data.updatedAt is timestamp;
     }
 
-    // Collection: /students/{studentUid} (PII strictly isolated to verified owner)
+    // Validation Blueprint: RegisteredEmailClaim (matching firebase-blueprint.json)
+    function isValidRegisteredEmailClaim(data, emailHash) {
+      return data.keys().hasAll([
+          'emailHash',
+          'uid',
+          'edrawId',
+          'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'emailHash',
+          'uid',
+          'edrawId',
+          'createdAt'
+        ]) &&
+        data.emailHash is string &&
+        data.emailHash == emailHash &&
+        isValidEmailHash(data.emailHash) &&
+        data.uid is string &&
+        data.uid == request.auth.uid &&
+        isValidId(data.uid) &&
+        data.edrawId is string &&
+        data.edrawId.size() == 9 &&
+        data.edrawId.matches('^EDID-[0-9]{4}$') &&
+        data.createdAt is timestamp;
+    }
+
+    // Collection: /registeredEmails/{emailHash} (immutable uniqueness index preventing duplicate emails)
+    match /registeredEmails/{emailHash} {
+      allow get: if isEmailVerified() &&
+        isValidEmailHash(emailHash) &&
+        resource != null &&
+        existing().uid == request.auth.uid;
+
+      allow list: if false;
+
+      allow create: if isEmailVerified() &&
+        isValidEmailHash(emailHash) &&
+        isValidRegisteredEmailClaim(incoming(), emailHash) &&
+        incoming().createdAt == request.time &&
+        existsAfter(/databases/$(database)/documents/students/$(request.auth.uid)) &&
+        getAfter(/databases/$(database)/documents/students/$(request.auth.uid)).data.uid == request.auth.uid;
+
+      allow update: if false;
+
+      allow delete: if isEmailVerified() &&
+        isValidEmailHash(emailHash) &&
+        existing().uid == request.auth.uid;
+    }
+
+    // Collection: /students/{studentUid} (PII strictly isolated to owner)
     match /students/{studentUid} {
       allow get: if isOwner(studentUid) && isValidId(studentUid);
       allow list: if false;

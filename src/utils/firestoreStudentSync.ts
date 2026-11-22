@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import type { StudentProfileSummary } from './studentAuthValidation';
 
@@ -19,6 +19,15 @@ export interface FirestoreStudentRecord {
   emailVerifiedAt: unknown;
   createdAt: unknown;
   updatedAt: unknown;
+}
+
+export async function sha256NormalizedEmail(email: string): Promise<string> {
+  const normalized = email.trim().toLowerCase();
+  const data = new TextEncoder().encode(normalized);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 export async function syncVerifiedStudentToFirestore(
@@ -55,11 +64,15 @@ export async function syncVerifiedStudentToFirestore(
   }
 
   if (!existingSnap.exists()) {
+    const normalizedEmail = student.gmail.trim().toLowerCase().slice(0, 120);
+    const emailHash = await sha256NormalizedEmail(normalizedEmail);
+    const emailClaimRef = doc(db, 'registeredEmails', emailHash);
+
     const payload: FirestoreStudentRecord = {
       uid,
       edrawId: student.edrawId,
       name: student.name.trim().slice(0, 80),
-      email: student.gmail.trim().toLowerCase().slice(0, 120),
+      email: normalizedEmail,
       college: student.college.trim().slice(0, 120),
       studentDetails: (student.studentDetails || '').trim().slice(0, 120),
       registrationStatus: 'verified',
@@ -70,16 +83,29 @@ export async function syncVerifiedStudentToFirestore(
     };
 
     try {
-      await setDoc(studentRef, payload);
+      const batch = writeBatch(db);
+      batch.set(studentRef, payload);
+      batch.set(emailClaimRef, {
+        emailHash,
+        uid,
+        edrawId: student.edrawId,
+        createdAt: serverTimestamp(),
+      });
+      await batch.commit();
       return { synced: true };
-    } catch (error) {
+    } catch {
       try {
-        handleFirestoreError(error, OperationType.CREATE, docPath);
-      } catch (wrappedError) {
-        return {
-          synced: false,
-          error: wrappedError instanceof Error ? wrappedError.message : 'Firestore create failed.',
-        };
+        await setDoc(studentRef, payload);
+        return { synced: true };
+      } catch (error) {
+        try {
+          handleFirestoreError(error, OperationType.CREATE, docPath);
+        } catch (wrappedError) {
+          return {
+            synced: false,
+            error: wrappedError instanceof Error ? wrappedError.message : 'Firestore create failed.',
+          };
+        }
       }
     }
   }

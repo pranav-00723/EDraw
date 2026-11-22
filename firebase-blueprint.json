@@ -126,6 +126,45 @@
         "completedModules",
         "updatedAt"
       ]
+    },
+    "RegisteredEmailClaim": {
+      "title": "RegisteredEmailClaim",
+      "description": "Immutable unique email lock document keyed by SHA-256 hash of normalized lowercase email to prevent duplicate registrations.",
+      "type": "object",
+      "properties": {
+        "emailHash": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "SHA-256 hex digest of normalized lowercase email matching the document ID."
+        },
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Owner authentication UID that registered this email."
+        },
+        "edrawId": {
+          "type": "string",
+          "minLength": 9,
+          "maxLength": 9,
+          "pattern": "^EDID-[0-9]{4}$",
+          "description": "Allocated student eDraw ID associated with this email claim."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the email claim was created."
+        }
+      },
+      "required": [
+        "emailHash",
+        "uid",
+        "edrawId",
+        "createdAt"
+      ]
     }
   },
   "firestore": {
@@ -133,13 +172,19 @@
       "schema": {
         "$ref": "#/entities/StudentProfile"
       },
-      "description": "Private per-student verified profile document containing PII strictly isolated to the owning verified user."
+      "description": "Private per-student profile document containing PII strictly isolated to the owning user."
     },
     "/students/{studentUid}/progress/{progressId}": {
       "schema": {
         "$ref": "#/entities/LearningProgressRecord"
       },
       "description": "Student learning progress subcollection gated on parent student document ownership."
+    },
+    "/registeredEmails/{emailHash}": {
+      "schema": {
+        "$ref": "#/entities/RegisteredEmailClaim"
+      },
+      "description": "Immutable per-email uniqueness index keyed by SHA-256 email hash so duplicate email registrations are rejected."
     }
   }
 }

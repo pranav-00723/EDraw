@@ -33,7 +33,7 @@ function makeVerifier(map: Record<string, VerifiedFirebaseCaller>): TokenVerifie
   };
 }
 
-test('allocates EDID-XXXX only after email verification and enforces idempotency across retries', async () => {
+test('allocates EDID-XXXX immediately without email verification and enforces idempotency across retries', async () => {
   const { dir, storePath, legacyPath } = makeTempPaths();
   const tokens: Record<string, VerifiedFirebaseCaller> = {
     unverified_tok: { uid: 'uid-1', email: 'ananya@college.edu', emailVerified: false },
@@ -45,32 +45,12 @@ test('allocates EDID-XXXX only after email verification and enforces idempotency
     verifyToken: makeVerifier(tokens),
   });
 
-  // 1. Pending registration creates record with NO edrawId
-  const pending = await service.upsertPendingRegistration({
+  // 1. Completing immediately allocates EDID-1000 even when emailVerified is false
+  const firstComplete = await service.completeVerifiedRegistration({
     authHeader: 'Bearer unverified_tok',
     name: 'Ananya Rao',
     college: 'IIT Madras',
     studentDetails: 'ME24B012 · Mechanical',
-  });
-  assert.equal(pending.success, true);
-  if (pending.success) {
-    assert.equal(pending.record.edrawId, null);
-    assert.equal(pending.record.registrationStatus, 'pending_verification');
-    assert.equal(pending.record.verified, false);
-  }
-
-  // 2. Completing before email verification is blocked (403) and allocates NO ID
-  const blocked = await service.completeVerifiedRegistration({
-    authHeader: 'Bearer unverified_tok',
-  });
-  assert.equal(blocked.success, false);
-  if (!blocked.success) {
-    assert.equal(blocked.status, 403);
-  }
-
-  // 3. Completing after email verification allocates EDID-1000
-  const firstComplete = await service.completeVerifiedRegistration({
-    authHeader: 'Bearer verified_tok',
   });
   assert.equal(firstComplete.success, true);
   if (!firstComplete.success) return;
@@ -79,7 +59,7 @@ test('allocates EDID-XXXX only after email verification and enforces idempotency
   assert.equal(firstComplete.record.registrationStatus, 'verified');
   assert.equal(firstComplete.record.verified, true);
 
-  // 4. Repeated callback / page refresh is idempotent and preserves EDID-1000
+  // 2. Repeated callback / page refresh is idempotent and preserves EDID-1000
   const secondComplete = await service.completeVerifiedRegistration({
     authHeader: 'Bearer verified_tok',
     name: 'Changed Name Should Not Overwrite ID',
@@ -89,16 +69,27 @@ test('allocates EDID-XXXX only after email verification and enforces idempotency
   assert.equal(secondComplete.alreadyAllocated, true);
   assert.equal(secondComplete.record.edrawId, 'EDID-1000');
 
-  // 5. Attempting upsertPendingRegistration after allocation never overwrites EDID-1000
-  const afterPending = await service.upsertPendingRegistration({
-    authHeader: 'Bearer verified_tok',
-    name: 'Ananya Rao',
-    college: 'IIT Madras',
-    studentDetails: 'ME24B012',
+  // 3. Duplicate email already stored in students.json is rejected with 409
+  fs.writeFileSync(
+    legacyPath,
+    JSON.stringify({ students: [{ edrawId: 'EDID-1005', gmail: 'already.in.db@college.edu' }] }),
+    'utf8'
+  );
+  const serviceWithLegacy = new RegistrationService({
+    storePath,
+    legacyStudentsPath: legacyPath,
+    verifyToken: makeVerifier({
+      dup_legacy_tok: { uid: 'uid-legacy-dup', email: 'ALREADY.IN.DB@college.edu', emailVerified: true },
+    }),
   });
-  assert.equal(afterPending.success, true);
-  if (afterPending.success) {
-    assert.equal(afterPending.record.edrawId, 'EDID-1000');
+  const legacyDup = await serviceWithLegacy.completeVerifiedRegistration({
+    authHeader: 'Bearer dup_legacy_tok',
+    name: 'Duplicate User',
+    college: 'IIT Madras',
+  });
+  assert.equal(legacyDup.success, false);
+  if (!legacyDup.success) {
+    assert.equal(legacyDup.status, 409);
   }
 
   fs.rmSync(dir, { recursive: true, force: true });
@@ -203,6 +194,39 @@ test('rejects duplicate email across different UIDs and unauthorized/missing tok
   });
   assert.equal(duplicate.success, false);
   if (!duplicate.success) assert.equal(duplicate.status, 409);
+
+  // Stale unallocated pending_verification stub under another UID must NOT block completion
+  const currentDb = JSON.parse(fs.readFileSync(storePath, 'utf8'));
+  currentDb.records['uid-orphan-stub'] = {
+    uid: 'uid-orphan-stub',
+    name: 'Orphan',
+    email: 'fresh.after.stub@college.edu',
+    college: 'College C',
+    studentDetails: '',
+    edrawId: null,
+    registrationStatus: 'pending_verification',
+    verified: false,
+    emailVerifiedAt: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  fs.writeFileSync(storePath, JSON.stringify(currentDb, null, 2), 'utf8');
+
+  const serviceFresh = new RegistrationService({
+    storePath,
+    legacyStudentsPath: legacyPath,
+    verifyToken: makeVerifier({
+      user_c: { uid: 'uid-c', email: 'fresh.after.stub@college.edu', emailVerified: true },
+    }),
+  });
+  const allowed = await serviceFresh.completeVerifiedRegistration({
+    authHeader: 'Bearer user_c',
+    name: 'Fresh Student',
+    college: 'College C',
+  });
+  assert.equal(allowed.success, true);
+  const afterDb = JSON.parse(fs.readFileSync(storePath, 'utf8'));
+  assert.equal('uid-orphan-stub' in afterDb.records, false);
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -467,3 +491,127 @@ test('auto-sends verified EDID-XXXX email once on verification and resetDatabase
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('postToAppsScriptWebhook accepts valid JSON/text OK and rejects 403, login redirects, HTML permission pages, and error payloads', async () => {
+  const { postToAppsScriptWebhook } = await import('./registrationService');
+
+  const okJson = await postToAppsScriptWebhook(
+    { to: 'student@gmail.com', code: '123456' },
+    {
+      webhookUrl: 'https://script.google.com/macros/s/test/exec',
+      fetchImpl: (async () =>
+        ({
+          ok: true,
+          status: 200,
+          url: 'https://script.googleusercontent.com/macros/echo',
+          headers: new Headers({ 'content-type': 'application/json' }),
+          text: async () => JSON.stringify({ ok: true }),
+        }) as unknown as Response) as typeof fetch,
+    }
+  );
+  assert.equal(okJson, true);
+
+  const forbidden = await postToAppsScriptWebhook(
+    { to: 'student@gmail.com' },
+    {
+      webhookUrl: 'https://script.google.com/macros/s/test/exec',
+      fetchImpl: (async () =>
+        ({
+          ok: false,
+          status: 403,
+          url: 'https://script.google.com/macros/s/test/exec',
+          headers: new Headers({ 'content-type': 'text/html' }),
+          text: async () => '<html>You need access</html>',
+        }) as unknown as Response) as typeof fetch,
+    }
+  );
+  assert.equal(forbidden, false);
+
+  const loginRedirect = await postToAppsScriptWebhook(
+    { to: 'student@gmail.com' },
+    {
+      webhookUrl: 'https://script.google.com/macros/s/test/exec',
+      fetchImpl: (async () =>
+        ({
+          ok: true,
+          status: 200,
+          url: 'https://accounts.google.com/ServiceLogin',
+          headers: new Headers({ 'content-type': 'text/html' }),
+          text: async () => '<html>Sign in</html>',
+        }) as unknown as Response) as typeof fetch,
+    }
+  );
+  assert.equal(loginRedirect, false);
+
+  const permissionHtml = await postToAppsScriptWebhook(
+    { to: 'student@gmail.com' },
+    {
+      webhookUrl: 'https://script.google.com/macros/s/test/exec',
+      fetchImpl: (async () =>
+        ({
+          ok: true,
+          status: 200,
+          url: 'https://script.google.com/macros/s/test/exec',
+          headers: new Headers({ 'content-type': 'text/html' }),
+          text: async () => '<html><body>You need access to view this script</body></html>',
+        }) as unknown as Response) as typeof fetch,
+    }
+  );
+  assert.equal(permissionHtml, false);
+
+  const jsonError = await postToAppsScriptWebhook(
+    { to: 'student@gmail.com' },
+    {
+      webhookUrl: 'https://script.google.com/macros/s/test/exec',
+      fetchImpl: (async () =>
+        ({
+          ok: true,
+          status: 200,
+          url: 'https://script.googleusercontent.com/macros/echo',
+          headers: new Headers({ 'content-type': 'application/json' }),
+          text: async () => JSON.stringify({ success: false, error: 'Quota exceeded' }),
+        }) as unknown as Response) as typeof fetch,
+    }
+  );
+  assert.equal(jsonError, false);
+});
+
+test('upsertPendingRegistration and resendVerificationCode expose autoEmailSent, senderEmail, and deliveryError when automated sender is unconfigured', async () => {
+  const { dir, storePath, legacyPath } = makeTempPaths();
+  const service = new RegistrationService({
+    storePath,
+    legacyStudentsPath: legacyPath,
+    verifyToken: makeVerifier({
+      tok_unconf: { uid: 'uid-unconf', email: 'auto.test@college.edu', emailVerified: false },
+    }),
+    codeGenerator: () => '135791',
+    otpEmailSender: async () => false,
+  });
+
+  const pending = await service.upsertPendingRegistration({
+    authHeader: 'Bearer tok_unconf',
+    name: 'Auto Student',
+    college: 'MIT Chennai',
+  });
+  assert.equal(pending.success, true);
+  if (pending.success) {
+    assert.equal(pending.autoEmailSent, false);
+    assert.equal(pending.senderEmail, 'edrawmit@gmail.com');
+    assert.equal(pending.deliveryMode, 'gmail_pending');
+    assert.ok(pending.deliveryError && pending.deliveryError.includes('edrawmit@gmail.com'));
+  }
+
+  const resent = await service.resendVerificationCode({
+    authHeader: 'Bearer tok_unconf',
+  });
+  assert.equal(resent.success, true);
+  if (resent.success) {
+    assert.equal(resent.autoEmailSent, false);
+    assert.equal(resent.senderEmail, 'edrawmit@gmail.com');
+    assert.equal(resent.deliveryMode, 'gmail_pending');
+    assert.ok(resent.deliveryError && resent.deliveryError.includes('edrawmit@gmail.com'));
+  }
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+

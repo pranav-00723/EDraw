@@ -15,9 +15,13 @@ import {
   verifyPassword,
 } from './studentAuth';
 
-function makeTempStorePath(): string {
+function makeTempStorePaths(): { dir: string; storePath: string; registrationsPath: string } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edraw-auth-test-'));
-  return path.join(dir, 'students.json');
+  return {
+    dir,
+    storePath: path.join(dir, 'students.json'),
+    registrationsPath: path.join(dir, 'registrations.json'),
+  };
 }
 
 test('hashes and verifies passwords with per-user salts using scrypt', () => {
@@ -38,105 +42,165 @@ test('generates unique EDID-XXXX identifiers avoiding collisions', () => {
   }
 });
 
-test('full lifecycle: register -> verify Gmail link -> receive EDID-XXXX -> login -> bearer auth -> logout', async () => {
-  const storePath = makeTempStorePath();
-  const service = new StudentAuthService(storePath);
+test('instant zero-verification lifecycle: register -> immediate EDID-1000 & token -> login by email or EDID -> bearer auth -> logout', async () => {
+  const { dir, storePath, registrationsPath } = makeTempStorePaths();
+  const service = new StudentAuthService(storePath, registrationsPath);
 
-  const reg = await service.registerStudent(
-    {
-      name: 'Priya Nair',
-      gmail: 'priya.nair@gmail.com',
-      college: 'Anna University',
-      password: 'Password123',
-      confirmPassword: 'Password123',
-    },
-    'http://localhost:3000'
-  );
+  const reg = await service.registerStudent({
+    name: 'Priya Nair',
+    email: 'Priya.Nair@college.edu',
+    college: 'Anna University',
+    studentDetails: 'ME24B018',
+    password: 'Password123',
+    confirmPassword: 'Password123',
+  });
 
   assert.equal(reg.success, true);
   if (!reg.success) return;
-  assert.equal(reg.gmail, 'priya.nair@gmail.com');
-  assert.ok(reg.previewEmail?.verificationToken);
 
-  // Verify token
-  const verifyRes = await service.verifyEmailToken(reg.previewEmail!.verificationToken!);
-  assert.equal(verifyRes.success, true);
-  if (!verifyRes.success) return;
+  // Immediate database insertion, normalized email, active status, and session token
+  assert.equal(reg.gmail, 'priya.nair@college.edu');
+  assert.equal(reg.student.edrawId, 'EDID-1000');
+  assert.equal(reg.student.verified, true);
+  assert.equal(reg.student.studentDetails, 'ME24B018');
+  assert.ok(reg.token);
 
-  const assignedId = verifyRes.student.edrawId;
-  assert.match(assignedId, /^EDID-[0-9]{4}$/);
-  assert.equal(verifyRes.student.verified, true);
-  assert.equal(verifyRes.confirmationEmail?.edrawId, assignedId);
-
-  // Reusing the same verification token must fail
-  const reuseRes = await service.verifyEmailToken(reg.previewEmail!.verificationToken!);
-  assert.equal(reuseRes.success, false);
+  // Token returned on registration immediately authenticates /api/auth/me
+  const regMe = service.getAuthenticatedStudent(`Bearer ${reg.token}`);
+  assert.equal(regMe?.edrawId, 'EDID-1000');
+  assert.equal(regMe?.gmail, 'priya.nair@college.edu');
 
   // Wrong password fails
-  const wrongPw = service.loginStudent({ edrawId: assignedId, password: 'WrongPassword1' });
+  const wrongPw = service.loginStudent({ identifier: 'EDID-1000', password: 'WrongPassword1' });
   assert.equal(wrongPw.success, false);
 
-  // Valid EDID-XXXX + password succeeds
-  const loginRes = service.loginStudent({ edrawId: assignedId, password: 'Password123' });
-  assert.equal(loginRes.success, true);
-  if (!loginRes.success) return;
+  // Login by EDID-XXXX succeeds immediately
+  const loginById = service.loginStudent({ edrawId: 'edid-1000', password: 'Password123' });
+  assert.equal(loginById.success, true);
+  if (!loginById.success) return;
+  assert.equal(loginById.student.edrawId, 'EDID-1000');
 
-  // Bearer token authenticates /api/auth/me
-  const me = service.getAuthenticatedStudent(`Bearer ${loginRes.token}`);
-  assert.equal(me?.edrawId, assignedId);
+  // Login by email address (case-insensitive) succeeds immediately
+  const loginByEmail = service.loginStudent({
+    identifier: '  PRIYA.NAIR@COLLEGE.EDU ',
+    password: 'Password123',
+  });
+  assert.equal(loginByEmail.success, true);
+  if (!loginByEmail.success) return;
+  assert.equal(loginByEmail.student.edrawId, 'EDID-1000');
+
+  // Bearer token authenticates /api/auth/me and logout revokes it
+  const me = service.getAuthenticatedStudent(`Bearer ${loginByEmail.token}`);
+  assert.equal(me?.edrawId, 'EDID-1000');
   assert.equal(me?.college, 'Anna University');
 
-  // Logout revokes token
-  service.logoutToken(`Bearer ${loginRes.token}`);
-  assert.equal(service.getAuthenticatedStudent(`Bearer ${loginRes.token}`), null);
+  service.logoutToken(`Bearer ${loginByEmail.token}`);
+  assert.equal(service.getAuthenticatedStudent(`Bearer ${loginByEmail.token}`), null);
 
-  // Duplicate verified Gmail registration is rejected
-  const dup = await service.registerStudent(
-    {
-      name: 'Priya Duplicate',
-      gmail: 'priya.nair@gmail.com',
-      college: 'Anna University',
-      password: 'Password123',
-      confirmPassword: 'Password123',
-    },
-    'http://localhost:3000'
-  );
-  assert.equal(dup.success, false);
-
-  fs.rmSync(path.dirname(storePath), { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test('blocks login for unverified student until Gmail verification completes', async () => {
-  const storePath = makeTempStorePath();
-  const service = new StudentAuthService(storePath);
+test('enforces strict non-duplicable emails (case-insensitive, concurrent, and across sibling registrations store)', async () => {
+  const { dir, storePath, registrationsPath } = makeTempStorePaths();
+  // Seed sibling registrations.json with an existing active student AND a stale unallocated pending stub
+  fs.writeFileSync(
+    registrationsPath,
+    JSON.stringify({
+      nextCounter: 1001,
+      records: {
+        'uid-google-1': {
+          uid: 'uid-google-1',
+          email: 'existing.google@gmail.com',
+          edrawId: 'EDID-1000',
+        },
+        'uid-stale-pending': {
+          uid: 'uid-stale-pending',
+          email: 'stale.pending@gmail.com',
+          edrawId: null,
+          registrationStatus: 'pending_verification',
+          verified: false,
+        },
+      },
+    }),
+    'utf8'
+  );
 
-  const reg = await service.registerStudent(
-    {
-      name: 'Karthik Raj',
-      gmail: 'karthik.raj@gmail.com',
+  const service = new StudentAuthService(storePath, registrationsPath);
+
+  // Stale unallocated pending_verification stub must NOT block registration
+  const staleAllowed = await service.registerStudent({
+    name: 'Fresh Student',
+    email: 'stale.pending@gmail.com',
+    college: 'MIT Chennai',
+    password: 'Password123',
+    confirmPassword: 'Password123',
+  });
+  assert.equal(staleAllowed.success, true);
+  if (staleAllowed.success) {
+    assert.equal(staleAllowed.student.edrawId, 'EDID-1001');
+  }
+
+  // Email with an active EDID-XXXX in sibling registrations.json must be rejected with 409
+  const crossStoreDup = await service.registerStudent({
+    name: 'Duplicate Google',
+    email: 'EXISTING.GOOGLE@GMAIL.COM',
+    college: 'MIT Chennai',
+    password: 'Password123',
+    confirmPassword: 'Password123',
+  });
+  assert.equal(crossStoreDup.success, false);
+  if (!crossStoreDup.success) {
+    assert.equal(crossStoreDup.status, 409);
+  }
+
+  // Concurrent duplicate submissions for the same email: exactly ONE succeeds, others get 409
+  const raceResults = await Promise.all([
+    service.registerStudent({
+      name: 'Karthik One',
+      email: 'karthik.unique@gmail.com',
       college: 'PSG Tech',
       password: 'Password123',
       confirmPassword: 'Password123',
-    },
-    'http://localhost:3000'
-  );
-  assert.equal(reg.success, true);
+    }),
+    service.registerStudent({
+      name: 'Karthik Two',
+      email: 'KARTHIK.UNIQUE@GMAIL.COM',
+      college: 'PSG Tech',
+      password: 'Password123',
+      confirmPassword: 'Password123',
+    }),
+    service.registerStudent({
+      name: 'Karthik Three',
+      email: '  Karthik.Unique@gmail.com ',
+      college: 'PSG Tech',
+      password: 'Password123',
+      confirmPassword: 'Password123',
+    }),
+  ]);
 
-  // Peek stored EDID to verify unverified login is blocked
-  const db = JSON.parse(fs.readFileSync(storePath, 'utf8'));
-  const edrawId = db.students[0].edrawId;
+  const successes = raceResults.filter((r) => r.success);
+  const conflicts = raceResults.filter((r) => !r.success && r.status === 409);
+  assert.equal(successes.length, 1);
+  assert.equal(conflicts.length, 2);
 
-  const blocked = service.loginStudent({ edrawId, password: 'Password123' });
-  assert.equal(blocked.success, false);
-  if (!blocked.success) {
-    assert.equal(blocked.status, 403);
-    assert.equal(blocked.unverifiedGmail, 'karthik.raj@gmail.com');
+  // Skipped EDID-1000 (sibling) and EDID-1001 (stale.pending) -> allocated EDID-1002
+  if (successes[0].success) {
+    assert.equal(successes[0].student.edrawId, 'EDID-1002');
   }
 
-  fs.rmSync(path.dirname(storePath), { recursive: true, force: true });
+  // Persisted database has strictly 1 record for karthik.unique@gmail.com
+  const stored = JSON.parse(fs.readFileSync(storePath, 'utf8')) as {
+    students: Array<{ gmail: string }>;
+  };
+  assert.equal(
+    stored.students.filter((s) => s.gmail === 'karthik.unique@gmail.com').length,
+    1
+  );
+
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test('builds sanitized RFC 2822 MIME payload and exposes sanitized dispatch queue without hashes', async () => {
+test('builds sanitized RFC 2822 MIME payload and exposes sanitized student records without hashes', async () => {
   const {
     buildMimeRawEmail,
     buildVerificationEmailContent,
@@ -165,31 +229,22 @@ test('builds sanitized RFC 2822 MIME payload and exposes sanitized dispatch queu
   assert.equal(decoded.includes('\r\nX-Injected:'), false);
   assert.equal(decoded.includes('To: student@gmail.com'), true);
 
-  const storePath = makeTempStorePath();
-  const service = new StudentAuthService(storePath);
-  await service.registerStudent(
-    {
-      name: 'Rohan Das',
-      gmail: 'rohan.das@gmail.com',
-      college: 'NIT Trichy',
-      password: 'Password123',
-      confirmPassword: 'Password123',
-    },
-    'http://localhost:3000'
-  );
+  const { dir, storePath, registrationsPath } = makeTempStorePaths();
+  const service = new StudentAuthService(storePath, registrationsPath);
+  await service.registerStudent({
+    name: 'Rohan Das',
+    email: 'rohan.das@gmail.com',
+    college: 'NIT Trichy',
+    password: 'Password123',
+    confirmPassword: 'Password123',
+  });
 
   const queue = service.getDispatchQueue();
   assert.equal(queue.length, 1);
   assert.equal(queue[0].gmail, 'rohan.das@gmail.com');
-  assert.equal(queue[0].verified, false);
+  assert.equal(queue[0].verified, true);
   assert.equal('passwordHash' in queue[0], false);
   assert.equal('verificationTokenHash' in queue[0], false);
 
-  const authCheck = await service.verifyGoogleSenderBearer(undefined);
-  assert.equal(authCheck.ok, false);
-  if (!authCheck.ok) {
-    assert.equal(authCheck.status, 401);
-  }
-
-  fs.rmSync(path.dirname(storePath), { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true });
 });

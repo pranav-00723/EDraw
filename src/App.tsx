@@ -57,29 +57,6 @@ export default function App() {
   // Authenticated student session (held in memory only, verified via Bearer token)
   const [authStudent, setAuthStudent] = useState<StudentProfileSummary | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
-  const [initialVerifyToken, setInitialVerifyToken] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get('verifyToken');
-    return token && /^[a-f0-9]{64}$/i.test(token.trim()) ? token.trim() : null;
-  });
-  const [initialFirebaseVerify, setInitialFirebaseVerify] = useState<{
-    mode: string | null;
-    oobCode: string | null;
-    verifyFlow: string | null;
-    registrationSuccess: string | null;
-  } | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const params = new URLSearchParams(window.location.search);
-    const mode = params.get('mode');
-    const oobCode = params.get('oobCode');
-    const verifyFlow = params.get('verifyFlow');
-    const registrationSuccess = params.get('registrationSuccess');
-    if (mode === 'verifyEmail' || oobCode || verifyFlow === 'firebase' || registrationSuccess === '1') {
-      return { mode, oobCode, verifyFlow, registrationSuccess };
-    }
-    return null;
-  });
 
   // Verify Firestore connectivity on startup
   useEffect(() => {
@@ -261,37 +238,6 @@ export default function App() {
   const [pendingScannedLine, setPendingScannedLine] = useState<any>(null);
   const [pendingScannedPoint, setPendingScannedPoint] = useState<any>(null);
 
-  const handleConsumedVerifyToken = useCallback(() => {
-    setInitialVerifyToken(null);
-    if (typeof window !== 'undefined') {
-      try {
-        const url = new URL(window.location.href);
-        url.searchParams.delete('verifyToken');
-        window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
-      } catch {
-        // Ignore in sandboxed iframe environments
-      }
-    }
-  }, []);
-
-  const handleConsumedFirebaseVerify = useCallback(() => {
-    setInitialFirebaseVerify(null);
-    if (typeof window !== 'undefined') {
-      try {
-        const url = new URL(window.location.href);
-        url.searchParams.delete('mode');
-        url.searchParams.delete('oobCode');
-        url.searchParams.delete('apiKey');
-        url.searchParams.delete('continueUrl');
-        url.searchParams.delete('lang');
-        url.searchParams.delete('verifyFlow');
-        window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
-      } catch {
-        // Ignore in sandboxed iframe environments
-      }
-    }
-  }, []);
-
   const handleLoginSuccess = useCallback(
     (student: StudentProfileSummary, token: string) => {
       setAuthStudent(student);
@@ -354,10 +300,6 @@ export default function App() {
         isDark={isDark}
         onToggleTheme={() => setIsDark((prev) => !prev)}
         onLoginSuccess={handleLoginSuccess}
-        initialVerifyToken={initialVerifyToken}
-        onConsumedVerifyToken={handleConsumedVerifyToken}
-        initialFirebaseVerify={initialFirebaseVerify}
-        onConsumedFirebaseVerify={handleConsumedFirebaseVerify}
       />
     );
   }

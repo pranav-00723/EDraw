@@ -5,19 +5,14 @@
 
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import {
-  applyActionCode,
   createUserWithEmailAndPassword,
   getAuth,
   GoogleAuthProvider,
-  onAuthStateChanged,
-  sendEmailVerification,
   signInWithCredential,
   signInWithEmailAndPassword,
   signInWithPopup,
   updateProfile,
-  type ActionCodeSettings,
   type Auth,
-  type User,
 } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
@@ -25,9 +20,6 @@ import firebaseConfig from '../firebase-applet-config.json';
 const app = getApps().some((a) => a.name === '[DEFAULT]')
   ? getApp('[DEFAULT]')
   : initializeApp(firebaseConfig);
-const gmailSenderApp = getApps().some((a) => a.name === 'gmail-sender')
-  ? getApp('gmail-sender')
-  : initializeApp(firebaseConfig, 'gmail-sender');
 
 const configWithOptionalDb = firebaseConfig as typeof firebaseConfig & {
   firestoreDatabaseId?: string;
@@ -37,41 +29,6 @@ export const db = configWithOptionalDb.firestoreDatabaseId
   ? getFirestore(app, configWithOptionalDb.firestoreDatabaseId)
   : getFirestore(app);
 export const auth = getAuth(app);
-export const gmailAuth = getAuth(gmailSenderApp);
-
-export const SCOPES = ['https://www.googleapis.com/auth/gmail.send'];
-export const OFFICIAL_SENDER_GMAIL = 'edrawmit@gmail.com';
-
-const gmailProvider = new GoogleAuthProvider();
-for (const scope of SCOPES) {
-  gmailProvider.addScope(scope);
-}
-gmailProvider.setCustomParameters({
-  login_hint: OFFICIAL_SENDER_GMAIL,
-  prompt: 'consent select_account',
-});
-
-let isSigningInGmail = false;
-let cachedGmailAccessToken: string | null = null;
-
-export const initGmailAuth = (
-  onAuthSuccess?: (user: User, token: string) => void,
-  onAuthCleared?: () => void
-) => {
-  return onAuthStateChanged(gmailAuth, (user: User | null) => {
-    if (user) {
-      if (cachedGmailAccessToken) {
-        onAuthSuccess?.(user, cachedGmailAccessToken);
-      } else if (!isSigningInGmail) {
-        cachedGmailAccessToken = null;
-        onAuthCleared?.();
-      }
-    } else {
-      cachedGmailAccessToken = null;
-      onAuthCleared?.();
-    }
-  });
-};
 
 export interface AuthSessionResult {
   uid: string;
@@ -292,44 +249,6 @@ async function signInWithGoogleViaGis(
   }
 }
 
-export const signInGmailSender = async (): Promise<{
-  email: string;
-  accessToken: string;
-}> => {
-  try {
-    isSigningInGmail = true;
-    try {
-      const result = await signInWithPopup(gmailAuth, gmailProvider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (!credential?.accessToken) {
-        throw new Error('Could not obtain a Gmail sending access token from Google sign-in.');
-      }
-      cachedGmailAccessToken = credential.accessToken;
-      return { email: result.user.email || '', accessToken: cachedGmailAccessToken };
-    } catch (err: any) {
-      if (err?.code === 'auth/network-request-failed' && configWithOptionalDb.oAuthClientId) {
-        const fallback = await signInWithGoogleViaGis(
-          ['openid', 'email', 'profile', ...SCOPES],
-          OFFICIAL_SENDER_GMAIL,
-          gmailAuth
-        );
-        cachedGmailAccessToken = fallback.accessToken;
-        return { email: fallback.session.email, accessToken: fallback.accessToken };
-      }
-      throw err;
-    }
-  } finally {
-    isSigningInGmail = false;
-  }
-};
-
-export const getGmailAccessToken = (): string | null => cachedGmailAccessToken;
-
-export const signOutGmailSender = async (): Promise<void> => {
-  cachedGmailAccessToken = null;
-  await gmailAuth.signOut().catch(() => undefined);
-};
-
 export async function registerStudentWithFirebase(params: {
   email: string;
   password: string;
@@ -361,45 +280,6 @@ export async function registerStudentWithFirebase(params: {
       });
     }
     throw err;
-  }
-}
-
-export async function sendFirebaseVerificationEmail(
-  user: User,
-  returnOrigin?: string
-): Promise<{ usedContinueUrl: boolean }> {
-  const origin =
-    returnOrigin || (typeof window !== 'undefined' ? window.location.origin : '');
-  if (origin && /^https?:\/\//i.test(origin)) {
-    const actionCodeSettings: ActionCodeSettings = {
-      url: `${origin.replace(/\/+$/, '')}/?verifyFlow=firebase`,
-      handleCodeInApp: false,
-    };
-    try {
-      await sendEmailVerification(user, actionCodeSettings);
-      return { usedContinueUrl: true };
-    } catch (err: any) {
-      const code = typeof err?.code === 'string' ? err.code : '';
-      if (
-        code === 'auth/unauthorized-continue-uri' ||
-        code === 'auth/invalid-continue-uri' ||
-        code === 'auth/missing-continue-uri'
-      ) {
-        await sendEmailVerification(user);
-        return { usedContinueUrl: false };
-      }
-      throw err;
-    }
-  }
-
-  await sendEmailVerification(user);
-  return { usedContinueUrl: false };
-}
-
-export async function applyFirebaseVerificationCode(oobCode: string): Promise<void> {
-  await applyActionCode(auth, oobCode);
-  if (auth.currentUser) {
-    await auth.currentUser.reload();
   }
 }
 

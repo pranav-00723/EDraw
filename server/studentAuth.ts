@@ -9,9 +9,11 @@ import path from 'path';
 import nodemailer from 'nodemailer';
 import {
   isValidEdrawId,
+  isValidEmail,
   normalizeEdrawId,
+  normalizeEmail,
   normalizeGmail,
-  validateRegistrationInput,
+  validateFirebaseRegistrationInput,
   type DispatchQueueItem,
   type GmailDispatchKind,
   type StudentProfileSummary,
@@ -23,6 +25,7 @@ export interface StoredStudentRecord {
   name: string;
   gmail: string;
   college: string;
+  studentDetails?: string;
   passwordHash: string;
   verified: boolean;
   verificationTokenHash: string | null;
@@ -47,7 +50,9 @@ export type EmailDeliveryMode = 'smtp' | 'preview';
 
 export interface RegistrationResponsePayload {
   success: true;
-  deliveryMode: EmailDeliveryMode;
+  token: string;
+  student: StudentProfileSummary;
+  deliveryMode?: EmailDeliveryMode;
   gmail: string;
   studentName: string;
   college: string;
@@ -77,7 +82,9 @@ export function getAdminSenderEmail(): string {
 }
 
 export function isSmtpConfigured(): boolean {
-  return Boolean((process.env.SMTP_USER || '').trim() && (process.env.SMTP_PASS || '').trim());
+  const pass = (process.env.SMTP_PASS || '').replace(/\s+/g, '').trim();
+  const user = (process.env.SMTP_USER || '').trim() || getAdminSenderEmail();
+  return Boolean(user && pass);
 }
 
 export function isAppsScriptWebhookConfigured(): boolean {
@@ -264,16 +271,11 @@ export function hashToken(rawToken: string): string {
 }
 
 export function generateUniqueEdrawId(existingIds: Set<string>): string {
-  for (let attempt = 0; attempt < 200; attempt++) {
-    const num = crypto.randomInt(1000, 10000);
-    const candidate = `EDID-${num}`;
+  for (let n = 1000; n <= 9999; n++) {
+    const candidate = `EDID-${n}`;
     if (!existingIds.has(candidate)) {
       return candidate;
     }
-  }
-  for (let n = 1000; n <= 9999; n++) {
-    const candidate = `EDID-${n}`;
-    if (!existingIds.has(candidate)) return candidate;
   }
   throw new Error('No available EDID-XXXX identifiers remain.');
 }
@@ -329,14 +331,17 @@ export function toPublicProfile(record: StoredStudentRecord): StudentProfileSumm
     name: record.name,
     gmail: record.gmail,
     college: record.college,
-    verified: record.verified,
+    studentDetails: record.studentDetails || '',
+    registrationStatus: 'verified',
+    verified: true,
+    emailVerifiedAt: record.verifiedAt || record.createdAt,
     createdAt: record.createdAt,
   };
 }
 
 export function getSmtpTransporter() {
-  const user = (process.env.SMTP_USER || '').trim();
-  const pass = (process.env.SMTP_PASS || '').trim();
+  const user = (process.env.SMTP_USER || '').trim() || getAdminSenderEmail();
+  const pass = (process.env.SMTP_PASS || '').replace(/\s+/g, '').trim();
   if (!user || !pass) return null;
 
   const host = (process.env.SMTP_HOST || 'smtp.gmail.com').trim();
@@ -356,11 +361,51 @@ export function getSmtpTransporter() {
 
 export class StudentAuthService {
   private readonly storePath: string;
+  private readonly registrationsStorePath: string;
   private readonly revokedTokens = new Set<string>();
+  private lockChain: Promise<unknown> = Promise.resolve();
 
-  constructor(storePath?: string) {
+  constructor(storePath?: string, registrationsStorePath?: string) {
     this.storePath =
       storePath || path.resolve(process.cwd(), '.edraw-data', 'students.json');
+    this.registrationsStorePath =
+      registrationsStorePath ||
+      path.resolve(path.dirname(this.storePath), 'registrations.json');
+  }
+
+  private withLock<T>(task: () => Promise<T> | T): Promise<T> {
+    const run = this.lockChain.then(() => task());
+    this.lockChain = run.catch(() => undefined);
+    return run;
+  }
+
+  private readCrossStoreMetadata(): { emails: Set<string>; edrawIds: Set<string> } {
+    const emails = new Set<string>();
+    const edrawIds = new Set<string>();
+    try {
+      if (!fs.existsSync(this.registrationsStorePath)) {
+        return { emails, edrawIds };
+      }
+      const raw = fs.readFileSync(this.registrationsStorePath, 'utf8');
+      const parsed = JSON.parse(raw) as {
+        records?: Record<string, { email?: string; edrawId?: string | null; verified?: boolean }>;
+      };
+      if (parsed?.records && typeof parsed.records === 'object') {
+        for (const rec of Object.values(parsed.records)) {
+          const allocatedId = typeof rec?.edrawId === 'string' ? rec.edrawId.trim() : '';
+          if (!allocatedId) {
+            continue;
+          }
+          edrawIds.add(allocatedId);
+          if (typeof rec?.email === 'string' && rec.email.trim()) {
+            emails.add(normalizeEmail(rec.email));
+          }
+        }
+      }
+    } catch {
+      // Ignore unreadable sibling store
+    }
+    return { emails, edrawIds };
   }
 
   private readDb(): StudentDatabaseFile {
@@ -484,17 +529,31 @@ export class StudentAuthService {
   async registerStudent(
     input: {
       name: string;
-      gmail: string;
+      email?: string;
+      gmail?: string;
       college: string;
+      studentDetails?: string;
       password: string;
       confirmPassword: string;
     },
-    baseUrl: string
+    _baseUrl?: string
   ): Promise<
     | RegistrationResponsePayload
     | { success: false; status: number; error: string; fieldErrors?: Record<string, string> }
   > {
-    const fieldErrors = validateRegistrationInput(input);
+    const rawEmail = typeof input.email === 'string' && input.email.trim()
+      ? input.email
+      : typeof input.gmail === 'string'
+      ? input.gmail
+      : '';
+    const fieldErrors = validateFirebaseRegistrationInput({
+      name: typeof input.name === 'string' ? input.name : '',
+      email: rawEmail,
+      college: typeof input.college === 'string' ? input.college : '',
+      studentDetails: typeof input.studentDetails === 'string' ? input.studentDetails : '',
+      password: typeof input.password === 'string' ? input.password : '',
+      confirmPassword: typeof input.confirmPassword === 'string' ? input.confirmPassword : '',
+    });
     if (Object.keys(fieldErrors).length > 0) {
       return {
         success: false,
@@ -505,85 +564,71 @@ export class StudentAuthService {
     }
 
     const name = input.name.trim();
-    const gmail = normalizeGmail(input.gmail);
+    const email = normalizeEmail(rawEmail);
     const college = input.college.trim();
+    const studentDetails =
+      typeof input.studentDetails === 'string' ? input.studentDetails.trim().slice(0, 120) : '';
 
-    const db = this.readDb();
-    const existingByGmail = db.students.find((s) => s.gmail === gmail);
+    return this.withLock(() => {
+      const db = this.readDb();
+      const sibling = this.readCrossStoreMetadata();
+      const existingByEmail = db.students.find((s) => normalizeEmail(s.gmail) === email);
 
-    if (existingByGmail && existingByGmail.verified) {
-      return {
-        success: false,
-        status: 409,
-        error: 'An account with this Google Mail ID is already registered and verified. Please sign in with your eDraw ID.',
-        fieldErrors: { gmail: 'This Google Mail ID is already registered.' },
-      };
-    }
+      if (existingByEmail || sibling.emails.has(email)) {
+        return {
+          success: false as const,
+          status: 409,
+          error:
+            'This email address is already registered in the database. Duplicate registrations are not allowed. Please sign in instead.',
+          fieldErrors: {
+            email: 'This email address is already registered.',
+            gmail: 'This email address is already registered.',
+          },
+        };
+      }
 
-    const rawToken = crypto.randomBytes(32).toString('hex');
-    const tokenHash = hashToken(rawToken);
-    const expiresAt = Date.now() + VERIFICATION_TTL_MS;
-    const passwordHash = hashPassword(input.password);
-
-    let record: StoredStudentRecord;
-    if (existingByGmail && !existingByGmail.verified) {
-      // Update pending unverified registration cleanly
-      existingByGmail.name = name;
-      existingByGmail.college = college;
-      existingByGmail.passwordHash = passwordHash;
-      existingByGmail.verificationTokenHash = tokenHash;
-      existingByGmail.verificationExpiresAt = expiresAt;
-      record = existingByGmail;
-    } else {
-      const existingIds = new Set(db.students.map((s) => s.edrawId));
+      const existingIds = new Set<string>([
+        ...db.students.map((s) => s.edrawId),
+        ...sibling.edrawIds,
+      ]);
       const edrawId = generateUniqueEdrawId(existingIds);
-      record = {
+      const nowIso = new Date().toISOString();
+      const passwordHash = hashPassword(input.password);
+
+      const record: StoredStudentRecord = {
         edrawId,
         name,
-        gmail,
+        gmail: email,
         college,
+        studentDetails,
         passwordHash,
-        verified: false,
-        verificationTokenHash: tokenHash,
-        verificationExpiresAt: expiresAt,
-        createdAt: new Date().toISOString(),
-        verifiedAt: null,
+        verified: true,
+        verificationTokenHash: null,
+        verificationExpiresAt: null,
+        createdAt: nowIso,
+        verifiedAt: nowIso,
       };
       db.students.push(record);
-    }
+      this.writeDb(db);
 
-    this.writeDb(db);
-
-    const safeBase = baseUrl.replace(/\/+$/, '');
-    const verificationUrl = `${safeBase}/?verifyToken=${rawToken}`;
-
-    const mailResult = await this.dispatchVerificationEmail({
-      gmail: record.gmail,
-      studentName: record.name,
-      college: record.college,
-      verificationUrl,
-      verificationToken: rawToken,
+      const token = createSessionToken(record);
+      return {
+        success: true as const,
+        token,
+        student: toPublicProfile(record),
+        gmail: record.gmail,
+        studentName: record.name,
+        college: record.college,
+        message: `Registration complete! ${record.gmail} has been added to the database with ID ${record.edrawId}.`,
+      };
     });
-
-    return {
-      success: true,
-      deliveryMode: mailResult.deliveryMode,
-      gmail: record.gmail,
-      studentName: record.name,
-      college: record.college,
-      message:
-        mailResult.deliveryMode === 'smtp'
-          ? `A verification link has been sent to ${record.gmail}. Open your Gmail inbox and click the link to verify your account and receive your eDraw ID.`
-          : `Verification link generated for ${record.gmail}. Click the link in the Gmail inbox preview below to verify your account and receive your eDraw ID.`,
-      previewEmail: mailResult.previewEmail,
-    };
   }
 
   async resendVerification(
     gmailInput: string,
     baseUrl: string
   ): Promise<
-    | RegistrationResponsePayload
+    | Omit<RegistrationResponsePayload, 'token' | 'student'>
     | { success: false; status: number; error: string }
   > {
     const gmail = normalizeGmail(gmailInput || '');
@@ -687,39 +732,42 @@ export class StudentAuthService {
   }
 
   loginStudent(input: {
-    edrawId: string;
+    identifier?: string;
+    edrawId?: string;
+    email?: string;
     password: string;
   }):
     | { success: true; token: string; student: StudentProfileSummary }
     | { success: false; status: number; error: string; unverifiedGmail?: string } {
-    const edrawId = normalizeEdrawId(input.edrawId || '');
+    const rawIdentifier = (
+      (typeof input.identifier === 'string' && input.identifier) ||
+      (typeof input.edrawId === 'string' && input.edrawId) ||
+      (typeof input.email === 'string' && input.email) ||
+      ''
+    ).trim();
     const password = typeof input.password === 'string' ? input.password : '';
 
-    if (!isValidEdrawId(edrawId) || !password) {
+    const isId = isValidEdrawId(rawIdentifier);
+    const isMail = isValidEmail(rawIdentifier);
+
+    if ((!isId && !isMail) || !password) {
       return {
         success: false,
         status: 400,
-        error: 'Enter a valid eDraw ID (EDID-XXXX) and password.',
+        error: 'Enter a valid registered email address or eDraw ID (EDID-XXXX) and password.',
       };
     }
 
     const db = this.readDb();
-    const record = db.students.find((s) => s.edrawId === edrawId);
+    const record = isId
+      ? db.students.find((s) => normalizeEdrawId(s.edrawId) === normalizeEdrawId(rawIdentifier))
+      : db.students.find((s) => normalizeEmail(s.gmail) === normalizeEmail(rawIdentifier));
 
     if (!record || !verifyPassword(password, record.passwordHash)) {
       return {
         success: false,
         status: 401,
-        error: 'Invalid eDraw ID or password.',
-      };
-    }
-
-    if (!record.verified) {
-      return {
-        success: false,
-        status: 403,
-        error: 'Your Google Mail ID is not verified yet. Please click the verification link sent to your Gmail inbox first.',
-        unverifiedGmail: record.gmail,
+        error: 'Invalid email address, eDraw ID, or password.',
       };
     }
 

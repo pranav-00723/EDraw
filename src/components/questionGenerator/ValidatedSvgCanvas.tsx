@@ -16,6 +16,7 @@ import {
 import type { CanonicalEngineeringProblem } from '../../pipeline/schema';
 import { getMeasurementValue } from '../../pipeline/schema';
 import type { LineProblemInput } from '../../types/lines';
+import type { PointInput } from '../../types/projection';
 import { computeLineProjection } from '../../utils/linesMath';
 import { RotatingLineConstructionEngine } from '../../modules/lines/RotatingLineConstructionEngine';
 
@@ -23,6 +24,7 @@ interface ValidatedSvgCanvasProps {
   svg: string | null;
   validatedJson: CanonicalEngineeringProblem | null;
   lineInput: LineProblemInput | null;
+  pointInputs?: PointInput[] | null;
   error: string | null;
   configurationHint?: string;
   failedStage: string | null;
@@ -37,6 +39,7 @@ export const ValidatedSvgCanvas: React.FC<ValidatedSvgCanvasProps> = ({
   svg,
   validatedJson,
   lineInput,
+  pointInputs,
   error,
   configurationHint,
   failedStage,
@@ -68,9 +71,12 @@ export const ValidatedSvgCanvas: React.FC<ValidatedSvgCanvasProps> = ({
     const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
+    const geom = validatedJson.geometry;
     const label =
-      validatedJson.geometry.entity_type === 'straight_line'
-        ? validatedJson.geometry.line_label
+      geom.entity_type === 'straight_line'
+        ? geom.line_label
+        : geom.entity_type === 'point_set'
+        ? geom.points.map((p) => p.label).join('') || 'Points'
         : validatedJson.problem_id;
     a.href = url;
     a.download = `EDraw_${label}_${validatedJson.problem_id}.svg`;
@@ -100,31 +106,99 @@ export const ValidatedSvgCanvas: React.FC<ValidatedSvgCanvasProps> = ({
     const ambiguities = validatedJson?.validation.ambiguities ?? [];
     const missingRequirements = validatedJson?.validation.missing_requirements ?? [];
     const uncertainReadings = validatedJson?.source.uncertain_readings ?? [];
+    const partialDerived = validatedJson
+      ? Object.values(validatedJson.unknowns).filter((u) => u.status === 'derived' && u.value !== null)
+      : [];
+    const isUnsupported = solverStatus === 'unsupported';
+    const isNeedsClarification = solverStatus === 'needs_clarification';
 
     return (
       <div
         role="alert"
         data-testid="stage5-blocked-panel"
-        className="p-5 rounded-2xl border border-amber-300 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/30 flex flex-col gap-4"
+        className={`p-5 rounded-2xl border flex flex-col gap-4 ${
+          isUnsupported
+            ? 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/70'
+            : 'border-amber-300 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/30'
+        }`}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-2.5">
-            <ShieldAlert className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <ShieldAlert
+              className={`w-5 h-5 shrink-0 mt-0.5 ${
+                isUnsupported
+                  ? 'text-slate-600 dark:text-slate-300'
+                  : 'text-amber-600 dark:text-amber-400'
+              }`}
+            />
             <div>
-              <h3 className="text-sm font-bold text-amber-950 dark:text-amber-200">
-                Stage 5 Drawing Blocked — Validation Gate Enforced
+              <h3
+                className={`text-sm font-bold ${
+                  isUnsupported
+                    ? 'text-slate-900 dark:text-slate-100'
+                    : 'text-amber-950 dark:text-amber-200'
+                }`}
+              >
+                {isUnsupported
+                  ? `Module Recognized (${validatedJson?.module?.name || 'Registered Module'}) — Solver Extension Pending`
+                  : isNeedsClarification
+                  ? 'Stage 5 Drawing Blocked — Clarification Required'
+                  : 'Stage 5 Drawing Blocked — Validation Gate Enforced'}
               </h3>
-              <p className="text-xs text-amber-900/90 dark:text-amber-300/90 mt-0.5 leading-relaxed">
+              <p
+                className={`text-xs mt-0.5 leading-relaxed ${
+                  isUnsupported
+                    ? 'text-slate-600 dark:text-slate-300'
+                    : 'text-amber-900/90 dark:text-amber-300/90'
+                }`}
+              >
                 {error ||
                   validatedJson?.drawing_instructions.blocked_reason ||
                   'The problem is not uniquely and validly solved. EDraw will not fabricate missing dimensions or draw contradictory geometry.'}
               </p>
             </div>
           </div>
-          <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold uppercase bg-amber-200/80 dark:bg-amber-900/70 text-amber-900 dark:text-amber-200 shrink-0">
+          <span
+            className={`px-2.5 py-1 rounded-md text-[10px] font-mono font-bold uppercase shrink-0 ${
+              isUnsupported
+                ? 'bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200'
+                : 'bg-amber-200/80 dark:bg-amber-900/70 text-amber-900 dark:text-amber-200'
+            }`}
+          >
             {failedStage === 'stage_1_ocr' ? 'OCR FAILED' : solverStatus}
           </span>
         </div>
+
+        {partialDerived.length > 0 && (
+          <div
+            data-testid="partial-derived-panel"
+            className="p-3.5 rounded-xl bg-white/90 dark:bg-slate-900/85 border border-emerald-200 dark:border-emerald-800/70 flex flex-col gap-2"
+          >
+            <span className="text-xs font-bold text-emerald-900 dark:text-emerald-300">
+              Partial Verified Quantities Computed Before Gate ({partialDerived.length})
+            </span>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 font-mono text-[11px]">
+              {partialDerived.map((u) => (
+                <div
+                  key={u.property}
+                  className="p-2 rounded-lg bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-900/60"
+                >
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block truncate">
+                    {u.property}
+                  </span>
+                  <span className="font-bold text-emerald-800 dark:text-emerald-300 tabular-nums">
+                    {Number(u.value).toFixed(4).replace(/\.?0+$/, '')} {u.unit}
+                  </span>
+                  {u.provenance.formula && (
+                    <span className="block text-[10px] text-slate-500 truncate" title={u.provenance.formula}>
+                      {u.provenance.formula}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {configurationHint && (
           <div className="p-3 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-amber-200 dark:border-amber-800/70 text-xs text-slate-700 dark:text-slate-300">
@@ -274,7 +348,16 @@ export const ValidatedSvgCanvas: React.FC<ValidatedSvgCanvasProps> = ({
   }
 
   const geom = validatedJson!.geometry;
-  const lineLabel = geom.entity_type === 'straight_line' ? geom.line_label : validatedJson!.problem_id;
+  const isPointSet = geom.entity_type === 'point_set';
+  const pointNamesLabel = isPointSet
+    ? geom.points.map((p) => p.label).join(', ')
+    : '';
+  const lineLabel =
+    geom.entity_type === 'straight_line'
+      ? geom.line_label
+      : isPointSet
+      ? pointNamesLabel
+      : validatedJson!.problem_id;
   const startLabel = geom.entity_type === 'straight_line' ? geom.endpoints.start : 'A';
   const endLabel = geom.entity_type === 'straight_line' ? geom.endpoints.end : 'B';
   const coords = geom.entity_type === 'straight_line' ? geom.solved_coordinates : null;
@@ -288,14 +371,18 @@ export const ValidatedSvgCanvas: React.FC<ValidatedSvgCanvasProps> = ({
   const alpha = getMeasurementValue(validatedJson!, 'alpha_fv');
   const beta = getMeasurementValue(validatedJson!, 'beta_tv');
 
+  const canShowInteractiveLine = !isPointSet && Boolean(computedInteractiveLine);
+
   return (
     <div className="flex flex-col gap-3">
       {/* Mode Switcher & Export Bar */}
       <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
           <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
-            Line {lineLabel} — Stage 4 Validated Drawing
+            {isPointSet
+              ? `Point${geom.points.length > 1 ? 's' : ''} ${pointNamesLabel} — Stage 4 Validated Drawing`
+              : `Line ${lineLabel} — Stage 4 Validated Drawing`}
           </span>
           <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300">
             BIS SP 46 First-Angle
@@ -303,32 +390,34 @@ export const ValidatedSvgCanvas: React.FC<ValidatedSvgCanvasProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-[11px] font-semibold">
-            <button
-              type="button"
-              onClick={() => setRenderMode('svg')}
-              className={`px-2.5 py-1 rounded-md transition flex items-center gap-1 cursor-pointer ${
-                renderMode === 'svg'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-300'
-              }`}
-            >
-              <Compass className="w-3.5 h-3.5" />
-              <span>Deterministic SVG</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setRenderMode('interactive')}
-              className={`px-2.5 py-1 rounded-md transition flex items-center gap-1 cursor-pointer ${
-                renderMode === 'interactive'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-300'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>8-Step Interactive</span>
-            </button>
-          </div>
+          {canShowInteractiveLine && (
+            <div className="flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-[11px] font-semibold">
+              <button
+                type="button"
+                onClick={() => setRenderMode('svg')}
+                className={`px-2.5 py-1 rounded-md transition flex items-center gap-1 cursor-pointer ${
+                  renderMode === 'svg'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                <Compass className="w-3.5 h-3.5" />
+                <span>Deterministic SVG</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRenderMode('interactive')}
+                className={`px-2.5 py-1 rounded-md transition flex items-center gap-1 cursor-pointer ${
+                  renderMode === 'interactive'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>8-Step Interactive</span>
+              </button>
+            </div>
+          )}
 
           <button
             type="button"
@@ -341,49 +430,99 @@ export const ValidatedSvgCanvas: React.FC<ValidatedSvgCanvasProps> = ({
         </div>
       </div>
 
-      {renderMode === 'svg' ? (
+      {renderMode === 'svg' || !canShowInteractiveLine ? (
         <div
           data-testid="stage5-svg-preview"
           data-line-label={lineLabel}
+          data-entity-type={geom.entity_type}
           className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-hidden shadow-xs"
         >
           {svgDataUrl && (
             <img
               src={svgDataUrl}
-              alt={`First-Angle Orthographic Projection of Straight Line ${lineLabel} with Front View ${startLabel.toLowerCase()}′${endLabel.toLowerCase()}′ and Top View ${startLabel.toLowerCase()}${endLabel.toLowerCase()}`}
+              alt={
+                isPointSet
+                  ? `First-Angle Orthographic Projection of Point${geom.points.length > 1 ? 's' : ''} ${pointNamesLabel}`
+                  : `First-Angle Orthographic Projection of Straight Line ${lineLabel} with Front View ${startLabel.toLowerCase()}′${endLabel.toLowerCase()}′ and Top View ${startLabel.toLowerCase()}${endLabel.toLowerCase()}`
+              }
               className="w-full h-auto block"
             />
           )}
 
-          {/* Deterministic Coordinate & Measurement Summary Strip */}
-          <div className="p-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
-            <div className="p-2 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800">
-              <span className="text-slate-400 block text-[10px]">True Length (TL)</span>
-              <span className="font-bold text-slate-900 dark:text-slate-100">
-                {tl !== null ? `${tl.toFixed(2)} mm` : '—'}
-              </span>
+          {isPointSet ? (
+            <div className="p-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] font-mono">
+              {(geom.solved_points && geom.solved_points.length > 0
+                ? geom.solved_points
+                : geom.points.map((p) => ({
+                    label: p.label,
+                    quadrant: p.declared_quadrant || 'Pending',
+                    x_mm: p.x_mm,
+                    y_mm: p.y_mm,
+                    z_mm: p.z_mm,
+                    front_view_y: null as number | null,
+                    top_view_y: null as number | null,
+                    front_view_label: `${p.label.toLowerCase()}′`,
+                    top_view_label: p.label.toLowerCase(),
+                  }))
+              ).map((pt) => {
+                const matchedInput = pointInputs?.find((pi) => pi.name === pt.label);
+                return (
+                  <div
+                    key={pt.label}
+                    className="p-2.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800 flex flex-col gap-1"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-bold text-slate-900 dark:text-slate-100">
+                        Point {pt.label} ({pt.quadrant ?? 'Unspecified'})
+                      </span>
+                      <span className="text-[10px] text-slate-500 tabular-nums">
+                        {matchedInput
+                          ? `${matchedInput.distanceHp} mm ${matchedInput.hpRelation} HP · ${matchedInput.distanceVp} mm ${matchedInput.vpRelation} VP`
+                          : `x=${pt.x_mm ?? 0}, y=${pt.y_mm ?? 0}, z=${pt.z_mm ?? 0}`}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-300 tabular-nums">
+                      <span>
+                        FV {pt.front_view_label}: y={pt.front_view_y ?? '—'} mm
+                      </span>
+                      <span>
+                        TV {pt.top_view_label}: y={pt.top_view_y ?? '—'} mm
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <div className="p-2 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800">
-              <span className="text-slate-400 block text-[10px]">
-                FV ({coords?.front_view.start.label}{coords?.front_view.end.label}) / TV ({coords?.top_view.start.label}{coords?.top_view.end.label})
-              </span>
-              <span className="font-bold text-blue-600 dark:text-blue-400">
-                {fv !== null ? fv.toFixed(2) : '—'} / {tv !== null ? tv.toFixed(2) : '—'} mm
-              </span>
+          ) : (
+            <div className="p-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
+              <div className="p-2 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800">
+                <span className="text-slate-400 block text-[10px]">True Length (TL)</span>
+                <span className="font-bold text-slate-900 dark:text-slate-100 tabular-nums">
+                  {tl !== null ? `${tl.toFixed(2)} mm` : '—'}
+                </span>
+              </div>
+              <div className="p-2 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800">
+                <span className="text-slate-400 block text-[10px]">
+                  FV ({coords?.front_view.start.label}{coords?.front_view.end.label}) / TV ({coords?.top_view.start.label}{coords?.top_view.end.label})
+                </span>
+                <span className="font-bold text-blue-600 dark:text-blue-400 tabular-nums">
+                  {fv !== null ? fv.toFixed(2) : '—'} / {tv !== null ? tv.toFixed(2) : '—'} mm
+                </span>
+              </div>
+              <div className="p-2 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800">
+                <span className="text-slate-400 block text-[10px]">DEP / θ / φ</span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                  {dep !== null ? `${dep.toFixed(2)} mm` : '—'} · {theta !== null ? `${theta.toFixed(1)}°` : '—'} · {phi !== null ? `${phi.toFixed(1)}°` : '—'}
+                </span>
+              </div>
+              <div className="p-2 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800">
+                <span className="text-slate-400 block text-[10px]">Apparent α / β</span>
+                <span className="font-bold text-purple-600 dark:text-purple-400 tabular-nums">
+                  {alpha !== null ? `${alpha.toFixed(1)}°` : '—'} / {beta !== null ? `${beta.toFixed(1)}°` : '—'}
+                </span>
+              </div>
             </div>
-            <div className="p-2 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800">
-              <span className="text-slate-400 block text-[10px]">DEP / θ / φ</span>
-              <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                {dep !== null ? `${dep.toFixed(2)} mm` : '—'} · {theta !== null ? `${theta.toFixed(1)}°` : '—'} · {phi !== null ? `${phi.toFixed(1)}°` : '—'}
-              </span>
-            </div>
-            <div className="p-2 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800">
-              <span className="text-slate-400 block text-[10px]">Apparent α / β</span>
-              <span className="font-bold text-purple-600 dark:text-purple-400">
-                {alpha !== null ? `${alpha.toFixed(1)}°` : '—'} / {beta !== null ? `${beta.toFixed(1)}°` : '—'}
-              </span>
-            </div>
-          </div>
+          )}
         </div>
       ) : (
         computedInteractiveLine && (

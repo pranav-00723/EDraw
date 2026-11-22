@@ -40,6 +40,137 @@ function deg2rad(d: number): number {
   return (d * Math.PI) / 180;
 }
 
+function expectedPointQuadrantCode(y: number, z: number): string {
+  const onHp = Math.abs(z) <= 1e-3;
+  const onVp = Math.abs(y) <= 1e-3;
+  if (onHp && onVp) return 'ON_BOTH_XY';
+  if (onHp) return y > 0 ? 'ON_HP_IN_FRONT' : 'ON_HP_BEHIND';
+  if (onVp) return z > 0 ? 'ON_VP_ABOVE' : 'ON_VP_BELOW';
+  if (z > 0 && y > 0) return 'FIRST';
+  if (z > 0 && y < 0) return 'SECOND';
+  if (z < 0 && y < 0) return 'THIRD';
+  return 'FOURTH';
+}
+
+function runIndependentPointSetValidation(
+  problem: CanonicalEngineeringProblem
+): {
+  checks: ValidationCheck[];
+  issues: ValidationIssue[];
+  fieldValid: Record<string, boolean>;
+} {
+  const checks: ValidationCheck[] = [];
+  const issues: ValidationIssue[] = [];
+  const fieldValid: Record<string, boolean> = {};
+
+  if (problem.geometry.entity_type !== 'point_set') {
+    return { checks, issues, fieldValid };
+  }
+
+  const solvedPoints = problem.geometry.solved_points || [];
+  const isSingle = problem.geometry.points.length === 1;
+  const solvedMap = new Map(solvedPoints.map((p) => [p.label, p]));
+
+  const mark = (prop: string, passed: boolean) => {
+    if (fieldValid[prop] === false) return;
+    fieldValid[prop] = passed;
+  };
+
+  for (const sp of solvedPoints) {
+    if (sp.status !== 'solved') continue;
+    if (sp.y_mm === null || sp.z_mm === null || sp.front_view_y === null || sp.top_view_y === null) {
+      issues.push({
+        code: 'INCOMPLETE_SOLVED_POINT',
+        stage: 'stage_4_validator',
+        severity: 'error',
+        field: sp.label,
+        message: `Solved point ${sp.label} is missing numeric coordinates.`,
+      });
+      continue;
+    }
+
+    const prefix = isSingle ? '' : `${sp.label}.`;
+    const fvOk = Math.abs(sp.front_view_y - sp.z_mm) <= 1e-3;
+    const tvOk = Math.abs(sp.top_view_y + sp.y_mm) <= 1e-3;
+    const expectedQuad = expectedPointQuadrantCode(sp.y_mm, sp.z_mm);
+    const quadOk = sp.quadrant === expectedQuad;
+
+    checks.push(
+      {
+        id: `stage4_point_fv_${sp.label}`,
+        name: `Stage 4 Point ${sp.label} Front View (fv_y = z)`,
+        passed: fvOk,
+        expected: `${sp.z_mm.toFixed(4)} mm`,
+        actual: `${sp.front_view_y.toFixed(4)} mm`,
+        tolerance: 1e-3,
+      },
+      {
+        id: `stage4_point_tv_${sp.label}`,
+        name: `Stage 4 Point ${sp.label} Top View (tv_y = -y)`,
+        passed: tvOk,
+        expected: `${(-sp.y_mm).toFixed(4)} mm`,
+        actual: `${sp.top_view_y.toFixed(4)} mm`,
+        tolerance: 1e-3,
+      },
+      {
+        id: `stage4_point_quadrant_${sp.label}`,
+        name: `Stage 4 Point ${sp.label} Quadrant Classification`,
+        passed: quadOk,
+        expected: expectedQuad,
+        actual: sp.quadrant || 'null',
+        tolerance: null,
+      }
+    );
+
+    mark(`${prefix}z_mm`, fvOk && quadOk);
+    mark(`${prefix}front_view_y`, fvOk);
+    mark(`${prefix}y_mm`, tvOk && quadOk);
+    mark(`${prefix}top_view_y`, tvOk);
+    if (sp.x_mm !== null) mark(`${prefix}x_mm`, true);
+
+    if (!fvOk || !tvOk || !quadOk) {
+      issues.push({
+        code: 'POINT_PROJECTION_CHECK_FAILED',
+        stage: 'stage_4_validator',
+        severity: 'error',
+        field: sp.label,
+        message: `Point ${sp.label} failed independent projection or quadrant verification.`,
+      });
+    }
+  }
+
+  for (const rel of problem.geometry.relative_relations) {
+    const subj = solvedMap.get(rel.subject);
+    const ref = solvedMap.get(rel.reference);
+    if (!subj || !ref || subj.status !== 'solved' || ref.status !== 'solved') continue;
+    const key = rel.axis === 'x' ? 'x_mm' : rel.axis === 'y' ? 'y_mm' : 'z_mm';
+    const sv = subj[key];
+    const rv = ref[key];
+    if (sv === null || rv === null) continue;
+    const actualDelta = sv - rv;
+    const ok = Math.abs(actualDelta - rel.delta_mm) <= TOL_MM;
+    checks.push({
+      id: `stage4_point_rel_${rel.id}`,
+      name: `Stage 4 Relative Offset (${rel.subject}.${rel.axis} - ${rel.reference}.${rel.axis})`,
+      passed: ok,
+      expected: `${rel.delta_mm.toFixed(4)} mm`,
+      actual: `${actualDelta.toFixed(4)} mm`,
+      tolerance: TOL_MM,
+    });
+    if (!ok) {
+      issues.push({
+        code: 'RELATIVE_OFFSET_VIOLATION',
+        stage: 'stage_4_validator',
+        severity: 'error',
+        field: `${rel.subject}.${key}`,
+        message: `Relative offset ${rel.subject}.${rel.axis} - ${rel.reference}.${rel.axis} = ${actualDelta.toFixed(2)} mm != ${rel.delta_mm} mm.`,
+      });
+    }
+  }
+
+  return { checks, issues, fieldValid };
+}
+
 /**
  * Independent Stage 4 mathematical & geometric constraint verification.
  * Never marks a derived value as validated merely because Stage 3 completed.
@@ -51,18 +182,15 @@ function runIndependentGeometricValidation(
   issues: ValidationIssue[];
   fieldValid: Record<string, boolean>;
 } {
+  if (problem.geometry.entity_type === 'point_set') {
+    return runIndependentPointSetValidation(problem);
+  }
+
   const checks: ValidationCheck[] = [];
   const issues: ValidationIssue[] = [];
   const fieldValid: Record<string, boolean> = {};
 
   if (problem.geometry.entity_type !== 'straight_line') {
-    issues.push({
-      code: 'UNSUPPORTED_ENTITY',
-      stage: 'stage_4_validator',
-      severity: 'error',
-      field: 'geometry.entity_type',
-      message: `Validator currently supports straight_line, got ${problem.geometry.entity_type}.`,
-    });
     return { checks, issues, fieldValid };
   }
 
@@ -70,6 +198,8 @@ function runIndependentGeometricValidation(
   const fv = getMeasurementValue(problem, 'front_view_length');
   const tv = getMeasurementValue(problem, 'top_view_length');
   const dep = getMeasurementValue(problem, 'dep');
+  const absDz = getMeasurementValue(problem, 'abs_delta_z');
+  const absDy = getMeasurementValue(problem, 'abs_delta_y');
   const theta = getMeasurementValue(problem, 'theta_hp');
   const phi = getMeasurementValue(problem, 'phi_vp');
   const z1 = getMeasurementValue(problem, 'start_z_hp');
@@ -84,7 +214,6 @@ function runIndependentGeometricValidation(
     fieldValid[prop] = passed;
   };
 
-  // 1. Check physical bounds on lengths & angles
   if (tl !== null) {
     const ok = tl > 0;
     mark('true_length', ok);
@@ -98,10 +227,13 @@ function runIndependentGeometricValidation(
       });
     }
   }
+
   for (const [prop, val] of [
     ['front_view_length', fv],
     ['top_view_length', tv],
     ['dep', dep],
+    ['abs_delta_z', absDz],
+    ['abs_delta_y', absDy],
   ] as const) {
     if (val !== null) {
       const ok = val >= -1e-4;
@@ -139,7 +271,6 @@ function runIndependentGeometricValidation(
     }
   }
 
-  // 2. Direction cosine check: sin²θ + sin²φ <= 1
   if (theta !== null && phi !== null) {
     const sin2 = Math.sin(deg2rad(theta)) ** 2 + Math.sin(deg2rad(phi)) ** 2;
     const passed = sin2 <= 1 + TOL_TRIG;
@@ -164,7 +295,68 @@ function runIndependentGeometricValidation(
     }
   }
 
-  // 3. Projection length identities: FV = TL cos(phi), TV = TL cos(theta)
+  // Partial right-triangle validation checks (critical for partial FV + alpha or TV + beta problems)
+  if (fv !== null && alpha !== null && dep !== null) {
+    const expectedDep = fv * Math.cos(deg2rad(alpha));
+    const ok = Math.abs(expectedDep - dep) <= TOL_MM;
+    checks.push({
+      id: 'stage4_fv_alpha_dep',
+      name: 'Stage 4 Front View Cos Identity (DEP = FV·cos α)',
+      passed: ok,
+      expected: `${expectedDep.toFixed(4)} mm`,
+      actual: `${dep.toFixed(4)} mm`,
+      tolerance: TOL_MM,
+    });
+    mark('dep', ok);
+    mark('front_view_length', ok);
+    mark('alpha_fv', ok);
+  }
+  if (fv !== null && alpha !== null && absDz !== null) {
+    const expectedDz = fv * Math.sin(deg2rad(alpha));
+    const ok = Math.abs(expectedDz - absDz) <= TOL_MM;
+    checks.push({
+      id: 'stage4_fv_alpha_dz',
+      name: 'Stage 4 Front View Sin Identity (|Δz| = FV·sin α)',
+      passed: ok,
+      expected: `${expectedDz.toFixed(4)} mm`,
+      actual: `${absDz.toFixed(4)} mm`,
+      tolerance: TOL_MM,
+    });
+    mark('abs_delta_z', ok);
+    mark('front_view_length', ok);
+    mark('alpha_fv', ok);
+  }
+  if (tv !== null && beta !== null && dep !== null) {
+    const expectedDep = tv * Math.cos(deg2rad(beta));
+    const ok = Math.abs(expectedDep - dep) <= TOL_MM;
+    checks.push({
+      id: 'stage4_tv_beta_dep',
+      name: 'Stage 4 Top View Cos Identity (DEP = TV·cos β)',
+      passed: ok,
+      expected: `${expectedDep.toFixed(4)} mm`,
+      actual: `${dep.toFixed(4)} mm`,
+      tolerance: TOL_MM,
+    });
+    mark('dep', ok);
+    mark('top_view_length', ok);
+    mark('beta_tv', ok);
+  }
+  if (tv !== null && beta !== null && absDy !== null) {
+    const expectedDy = tv * Math.sin(deg2rad(beta));
+    const ok = Math.abs(expectedDy - absDy) <= TOL_MM;
+    checks.push({
+      id: 'stage4_tv_beta_dy',
+      name: 'Stage 4 Top View Sin Identity (|Δy| = TV·sin β)',
+      passed: ok,
+      expected: `${expectedDy.toFixed(4)} mm`,
+      actual: `${absDy.toFixed(4)} mm`,
+      tolerance: TOL_MM,
+    });
+    mark('abs_delta_y', ok);
+    mark('top_view_length', ok);
+    mark('beta_tv', ok);
+  }
+
   if (tl !== null && phi !== null && fv !== null) {
     const expectedFv = tl * Math.cos(deg2rad(phi));
     const passed = Math.abs(expectedFv - fv) <= TOL_MM && fv <= tl + TOL_MM;
@@ -211,7 +403,6 @@ function runIndependentGeometricValidation(
     }
   }
 
-  // 4. 3D coordinate & projector checks
   if (tl !== null && dep !== null && z1 !== null && y1 !== null && z2 !== null && y2 !== null) {
     const dz = z2 - z1;
     const dy = y2 - y1;
@@ -233,6 +424,13 @@ function runIndependentGeometricValidation(
     mark('start_y_vp', tlOk);
     mark('end_z_hp', tlOk);
     mark('end_y_vp', tlOk);
+
+    if (absDz !== null) {
+      mark('abs_delta_z', Math.abs(Math.abs(dz) - absDz) <= TOL_MM);
+    }
+    if (absDy !== null) {
+      mark('abs_delta_y', Math.abs(Math.abs(dy) - absDy) <= TOL_MM);
+    }
 
     if (fv !== null) {
       const fvOk = Math.abs(fv2d - fv) <= TOL_MM;
@@ -289,7 +487,6 @@ function runIndependentGeometricValidation(
     }
   }
 
-  // 5. Coordinate object alignment check
   const coords = problem.geometry.solved_coordinates;
   if (coords) {
     const startAligned = Math.abs(coords.front_view.start.x - coords.top_view.start.x) <= 1e-4;
@@ -318,7 +515,7 @@ function runIndependentGeometricValidation(
 }
 
 /**
- * Stage 4 Entry Point: Update the existing canonical JSON with validated derived values
+ * Stage 4 Entry Point (Layer F): Update canonical JSON with validated derived values
  * without overwriting explicit givens, and safely persist via atomic write.
  */
 export function updateAndValidateProblemJson(
@@ -329,7 +526,6 @@ export function updateAndValidateProblemJson(
     storeDir?: string;
   }
 ): Stage4Result {
-  // Verify input schema first so we never mutate/persist malformed objects
   const initialCheck = validateCanonicalProblem(initialProblem);
   if (!initialCheck.ok) {
     return {
@@ -340,7 +536,6 @@ export function updateAndValidateProblemJson(
     };
   }
 
-  // Deep clone to preserve immutability and prevent partial overwrites on error
   const updated: CanonicalEngineeringProblem = structuredClone(initialCheck.data);
 
   // Merge derived values strictly into `unknowns` — NEVER overwrite `givens`
@@ -349,6 +544,8 @@ export function updateAndValidateProblemJson(
     const derived = solverOutput.derived_values[prop];
     if (
       solverOutput.solver_status !== 'inconsistent' &&
+      solverOutput.solver_status !== 'unsupported' &&
+      solverOutput.solver_status !== 'needs_clarification' &&
       derived &&
       typeof derived.value === 'number' &&
       Number.isFinite(derived.value)
@@ -359,6 +556,7 @@ export function updateAndValidateProblemJson(
         unit: derived.unit,
         status: 'derived',
         source_stage: 'stage_3_python_solver',
+        epistemic_status: 'calculated',
         dependencies: derived.dependencies,
         formula: derived.formula,
         reason: null,
@@ -381,6 +579,7 @@ export function updateAndValidateProblemJson(
             : 'unknown',
         provenance: {
           ...existingField.provenance,
+          epistemic_status: 'unresolved',
           reason: unresolvedReason,
         },
         validation_status: solverOutput.solver_status === 'inconsistent' ? 'failed' : 'unvalidated',
@@ -389,16 +588,18 @@ export function updateAndValidateProblemJson(
   }
   updated.unknowns = nextUnknowns;
 
-  // Attach solved coordinates ONLY if solver status is 'solved'
   if (updated.geometry.entity_type === 'straight_line') {
     updated.geometry.solved_coordinates =
       solverOutput.solver_status === 'solved' ? solverOutput.solved_coordinates : null;
+  } else if (updated.geometry.entity_type === 'point_set') {
+    updated.geometry.solved_points =
+      solverOutput.solver_status !== 'inconsistent' ? solverOutput.solved_points : null;
   }
 
-  // Run independent Stage 4 mathematical & geometric checks
+  updated.derivation = solverOutput.derivation ?? [];
+
   const independent = runIndependentGeometricValidation(updated);
 
-  // Merge parser issues + solver issues + validator issues (deduplicated by code+message)
   const seenIssueKeys = new Set<string>();
   const mergedIssues: ValidationIssue[] = [];
   for (const issue of [
@@ -414,12 +615,12 @@ export function updateAndValidateProblemJson(
   }
 
   const allChecks = [...solverOutput.checks, ...independent.checks];
+  const hasFailedCheck = allChecks.some((c) => !c.passed);
   const hasBlockingError =
     mergedIssues.some((i) => i.severity === 'error') ||
-    allChecks.some((c) => !c.passed) ||
+    hasFailedCheck ||
     updated.source.uncertain_readings.some((u) => u.severity === 'blocking');
 
-  // Update per-field validation_status ONLY after independent Stage 4 checks pass
   for (const [prop, field] of Object.entries(updated.givens)) {
     const passed = independent.fieldValid[prop];
     field.validation_status =
@@ -431,19 +632,19 @@ export function updateAndValidateProblemJson(
         ? 'failed'
         : 'validated';
   }
+
   for (const [prop, field] of Object.entries(updated.unknowns)) {
     if (field.status !== 'derived' || field.value === null) {
-      field.validation_status =
-        field.status === 'inconsistent' ? 'failed' : 'unvalidated';
+      field.validation_status = field.status === 'inconsistent' ? 'failed' : 'unvalidated';
       continue;
     }
     const passed = independent.fieldValid[prop];
-    if (passed === false || hasBlockingError) {
+    if (passed === false || hasFailedCheck || solverOutput.solver_status === 'inconsistent') {
       field.validation_status = 'failed';
     } else if (passed === true) {
       field.validation_status = 'validated';
     } else {
-      field.validation_status = 'unvalidated';
+      field.validation_status = hasBlockingError ? 'failed' : 'unvalidated';
     }
   }
 
@@ -452,20 +653,39 @@ export function updateAndValidateProblemJson(
       ? 'inconsistent'
       : solverOutput.solver_status;
 
-  const hasSolvedCoords =
-    updated.geometry.entity_type === 'straight_line' && updated.geometry.solved_coordinates !== null;
+  const hasSolvedGeometry =
+    (updated.geometry.entity_type === 'straight_line' &&
+      updated.geometry.solved_coordinates !== null) ||
+    (updated.geometry.entity_type === 'point_set' &&
+      Array.isArray(updated.geometry.solved_points) &&
+      updated.geometry.solved_points.length > 0 &&
+      updated.geometry.solved_points.every((p) => p.status === 'solved'));
 
   const geometryValid =
-    finalSolverStatus === 'solved' && !hasBlockingError && allChecks.length > 0 && hasSolvedCoords;
+    finalSolverStatus === 'solved' &&
+    !hasBlockingError &&
+    allChecks.length > 0 &&
+    hasSolvedGeometry;
 
-  // If independent Stage 4 checks failed, revoke coordinates and block rendering
-  if (!geometryValid && updated.geometry.entity_type === 'straight_line') {
-    updated.geometry.solved_coordinates = null;
+  if (!geometryValid) {
+    if (updated.geometry.entity_type === 'straight_line') {
+      updated.geometry.solved_coordinates = null;
+    } else if (updated.geometry.entity_type === 'point_set' && finalSolverStatus === 'inconsistent') {
+      updated.geometry.solved_points = null;
+    }
   }
 
   let blockedReason: string | null = null;
   if (!geometryValid) {
-    if (finalSolverStatus === 'inconsistent') {
+    if (finalSolverStatus === 'unsupported') {
+      blockedReason =
+        mergedIssues.find((i) => i.code === 'UNSUPPORTED_MODULE')?.message ||
+        'Module accurately identified, but automated solver/renderer is not implemented for this module yet.';
+    } else if (finalSolverStatus === 'needs_clarification') {
+      blockedReason =
+        mergedIssues.find((i) => i.code === 'MODULE_NEEDS_CLARIFICATION')?.message ||
+        'Question could not be classified into an Engineering Graphics module without clarification.';
+    } else if (finalSolverStatus === 'inconsistent') {
       blockedReason =
         mergedIssues.find((i) => i.severity === 'error')?.message ||
         'Contradictory geometric constraints detected; sketch generation blocked.';
@@ -474,24 +694,28 @@ export function updateAndValidateProblemJson(
         solverOutput.ambiguities[0]?.reason ||
         mergedIssues.find((i) => i.severity === 'error')?.message ||
         'Ambiguous geometry or uncertain OCR symbol; resolve before rendering.';
-    } else if (finalSolverStatus === 'underdetermined') {
+    } else if (finalSolverStatus === 'underdetermined' || finalSolverStatus === 'partially_solved') {
       blockedReason =
         mergedIssues.find((i) => i.code === 'UNDERDETERMINED_SYSTEM')?.message ||
-        'Underdetermined geometry: additional independent measurements are required before rendering.';
+        'Underdetermined geometry: additional independent measurements are required before full sketch rendering.';
     } else {
       blockedReason = 'Geometry validation did not pass; rendering blocked.';
     }
   }
 
   updated.validation = {
-    schema_valid: false, // will be set true after final Zod validation below
+    schema_valid: false,
     solver_status: finalSolverStatus,
     geometry_valid: geometryValid,
     ready_for_render: geometryValid,
     issues: mergedIssues,
     ambiguities: solverOutput.ambiguities,
     missing_requirements:
-      finalSolverStatus === 'underdetermined' ? solverOutput.missing_requirements : [],
+      finalSolverStatus === 'underdetermined' ||
+      finalSolverStatus === 'partially_solved' ||
+      finalSolverStatus === 'needs_clarification'
+        ? solverOutput.missing_requirements
+        : [],
     checks: allChecks,
   };
 
@@ -501,7 +725,6 @@ export function updateAndValidateProblemJson(
     blocked_reason: blockedReason,
   };
 
-  // Validate updated JSON against canonical Zod schema BEFORE persisting
   const finalSchemaCheck = validateCanonicalProblem({
     ...updated,
     validation: {

@@ -237,6 +237,7 @@ export default function App() {
 
   const [pendingScannedLine, setPendingScannedLine] = useState<any>(null);
   const [pendingScannedPoint, setPendingScannedPoint] = useState<any>(null);
+  const [pendingScannedPoints, setPendingScannedPoints] = useState<any[] | null>(null);
 
   const handleLoginSuccess = useCallback(
     (student: StudentProfileSummary, token: string) => {
@@ -365,6 +366,12 @@ export default function App() {
                         handleRecordProblemSolved();
                         navigateTo('/projection-of-lines');
                       }}
+                      onNavigateToPointModule={(scannedPts) => {
+                        setPendingScannedPoints(scannedPts);
+                        setPendingScannedPoint(scannedPts[0] || null);
+                        handleRecordProblemSolved();
+                        navigateTo('/projection-of-points');
+                      }}
                     />
                   ) : currentRoute === '/projection-of-points' ? (
                     <PointsModule
@@ -374,6 +381,7 @@ export default function App() {
                       onChangeVpColor={setVpColor}
                       isDark={isDark}
                       initialPointInput={pendingScannedPoint || undefined}
+                      initialPointInputs={pendingScannedPoints || undefined}
                     />
                   ) : currentRoute === '/projection-of-lines' ? (
                     <LinesModule
@@ -426,6 +434,13 @@ export default function App() {
         isDark={isDark}
         onApplyPoint={(scannedPt) => {
           setPendingScannedPoint(scannedPt);
+          setPendingScannedPoints([scannedPt]);
+          handleRecordProblemSolved();
+          navigateTo('/projection-of-points');
+        }}
+        onApplyPoints={(scannedPts) => {
+          setPendingScannedPoints(scannedPts);
+          setPendingScannedPoint(scannedPts[0] || null);
           handleRecordProblemSolved();
           navigateTo('/projection-of-points');
         }}

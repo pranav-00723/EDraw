@@ -20,10 +20,14 @@ import {
   Cpu,
   Info,
   ScanText,
+  Download,
+  Layers,
 } from 'lucide-react';
 import type { LineProblemInput } from '../../types/lines';
+import type { PointInput } from '../../types/projection';
 import type {
   CanonicalEngineeringProblem,
+  DerivationStep,
   MissingRequirement,
   PipelineStageTrace,
 } from '../../pipeline/schema';
@@ -42,6 +46,15 @@ interface QuestionToGraphicsGeneratorProps {
   vpColor: string;
   isDark?: boolean;
   onNavigateToLineModule?: (lineInput: LineProblemInput) => void;
+  onNavigateToPointModule?: (pointInputs: PointInput[]) => void;
+}
+
+interface VisualizationConfigSummary {
+  module_id?: string;
+  renderer_id?: string;
+  views?: string[];
+  solver_status?: string;
+  derivation?: DerivationStep[];
 }
 
 interface PipelineRunApiResponse {
@@ -55,8 +68,13 @@ interface PipelineRunApiResponse {
   initial_json: CanonicalEngineeringProblem | null;
   validated_json: CanonicalEngineeringProblem | null;
   missing_requirements?: MissingRequirement[];
+  derivation?: DerivationStep[];
   svg: string | null;
   line_input: LineProblemInput | null;
+  point_inputs?: PointInput[] | null;
+  visualization_config?: VisualizationConfigSummary | null;
+  generated_js_module?: string | null;
+  js_validation?: { valid: boolean; errors: string[] } | null;
 }
 
 interface PipelineCapabilitiesResponse {
@@ -92,44 +110,62 @@ const PRESET_QUESTIONS = [
   {
     id: 'p1',
     title: 'N.D. Bhatt Classic: Line AB Inclined to Both HP & VP',
-    badge: 'Fully Given',
+    badge: 'Lines · Fully Given',
     text: 'A line AB 80 mm long is inclined at 30° to the HP and 45° to the VP. Its end A is 20 mm above HP and 30 mm in front of VP. Draw its projections.',
+  },
+  {
+    id: 'pt1',
+    title: 'Projection of Point A (1st Quadrant)',
+    badge: 'Points · Direct',
+    text: 'A point A is 20 mm above HP and 30 mm in front of VP. Draw its orthographic projections and determine its quadrant.',
+  },
+  {
+    id: 'pt2',
+    title: 'Multi-Point Relative Offsets (Points P & Q)',
+    badge: 'Points · Relative Solver',
+    text: 'Point P is 20 mm above HP and 30 mm in front of VP. Point Q is 15 mm above P and 10 mm closer to VP. Draw projections of P and Q.',
+  },
+  {
+    id: 'pt3',
+    title: 'Projection of Point B (3rd Quadrant)',
+    badge: 'Points · 3rd Quadrant',
+    text: 'A point B is 25 mm below the HP and 35 mm behind the VP. Draw its front view and top view.',
   },
   {
     id: 'p2',
     title: 'Derivable Unknowns: Line NM (Given TL, FV, TV)',
-    badge: 'Python Derives θ, φ, DEP',
+    badge: 'Lines · Derives θ, φ, DEP',
     text: 'A line NM 75 mm long has its front view 60 mm long and top view 55 mm long. End N is 15 mm above HP and 20 mm in front of VP. Draw its projections and find true inclinations.',
   },
   {
     id: 'p3',
-    title: 'Unit Conversion: Line LK (cm & m to mm)',
-    badge: 'Mixed Units',
+    title: 'Arbitrary Labels & Mixed Units: Line LK',
+    badge: 'Lines · Non-AB Labels',
     text: 'A line LK 8 cm long is inclined at 30° to the HP and 45° to the VP. End L is 0.02 m above HP and 3 cm in front of VP. Draw its projections.',
   },
   {
-    id: 'p4',
-    title: 'Parallel to HP & Inclined to VP: Line JP',
-    badge: 'Auxiliary Case',
-    text: 'A line JP 65 mm long is parallel to the HP and inclined at 30° to the VP. Point J is 30 mm above the HP and 15 mm in front of the VP. Draw its projections.',
-  },
-  {
-    id: 'p5',
-    title: 'Perpendicular to HP: Line AB (Visible & Hidden)',
-    badge: 'BIS SP 46',
-    text: 'A line AB 40 mm long is perpendicular to the HP and parallel to the VP. Point A is 50 mm above the HP and 25 mm in front of the VP. Point B is 10 mm above the HP. Draw its projections.',
+    id: 'p_partial',
+    title: 'Partial FV + α (FV=65, α=45° with XY — No TL Swap)',
+    badge: 'Lines · Partial Solve Gate',
+    text: 'A line AB has its end A 20 mm above HP and 30 mm in front of VP. Its front view measures 65 mm long and is inclined at 45° with XY.',
   },
   {
     id: 'p6',
     title: 'Underdetermined Question (Safety Gate Test)',
-    badge: 'Missing Dimensions',
+    badge: 'Gate · Missing Params',
     text: 'A line AB has its end A 20 mm above HP and 30 mm in front of VP. The line is inclined at 30° to HP. Draw its projections.',
   },
   {
     id: 'p7',
     title: 'Contradictory Measurements (Safety Gate Test)',
-    badge: 'Invalid θ + φ > 90°',
+    badge: 'Gate · θ + φ > 90°',
     text: 'A line AB 80 mm long is inclined at 60° to the HP and 50° to the VP. Its end A is 20 mm above HP and 30 mm in front of VP. Draw its projections.',
+  },
+  {
+    id: 'p_unsupported',
+    title: 'Unsupported Solid Topic (Hexagonal Pyramid)',
+    badge: 'Router · Unsupported Gate',
+    text: 'A regular hexagonal pyramid of 30 mm base side and 60 mm axis rests on HP on one of its base edges with its axis inclined at 45° to HP. Draw its projections.',
   },
 ];
 
@@ -138,6 +174,7 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
   vpColor,
   isDark = false,
   onNavigateToLineModule,
+  onNavigateToPointModule,
 }) => {
   const [inputText, setInputText] = useState<string>(PRESET_QUESTIONS[0].text);
   const [selectedPresetId, setSelectedPresetId] = useState<string>(PRESET_QUESTIONS[0].id);
@@ -152,16 +189,16 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [pipelineResult, setPipelineResult] = useState<PipelineRunApiResponse | null>(null);
 
-  // Active tab: Stage 5 Drawing | Stage 2 Editable Initial JSON | Stage 4 Validated JSON | Trace & Checks
+  // Active tab: Stage 5 Drawing | Stage 2 Editable Initial JSON | Stage 4 Validated JSON | Generated JS | Trace & Derivation
   const [activeTab, setActiveTab] = useState<
-    'drawing' | 'initial_json' | 'validated_json' | 'trace'
+    'drawing' | 'initial_json' | 'validated_json' | 'generated_js' | 'trace'
   >('drawing');
 
   // Editable Stage 2 Initial JSON state
   const [initialJsonDraft, setInitialJsonDraft] = useState<string>('');
   const [isInitialJsonEdited, setIsInitialJsonEdited] = useState<boolean>(false);
   const [initialJsonSyntaxError, setInitialJsonSyntaxError] = useState<string | null>(null);
-  const [copiedTarget, setCopiedTarget] = useState<'initial' | 'validated' | null>(null);
+  const [copiedTarget, setCopiedTarget] = useState<'initial' | 'validated' | 'js' | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const activeRequestIdRef = useRef<number>(0);
@@ -232,6 +269,11 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
           validated_json: null,
           svg: null,
           line_input: null,
+          point_inputs: null,
+          derivation: [],
+          visualization_config: null,
+          generated_js_module: null,
+          js_validation: null,
         });
       } finally {
         if (reqId === activeRequestIdRef.current) {
@@ -353,10 +395,12 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
     }
   };
 
-  const handleCopy = (target: 'initial' | 'validated') => {
+  const handleCopy = (target: 'initial' | 'validated' | 'js') => {
     const content =
       target === 'initial'
         ? initialJsonDraft
+        : target === 'js'
+        ? pipelineResult?.generated_js_module || ''
         : pipelineResult?.validated_json
         ? JSON.stringify(pipelineResult.validated_json, null, 2)
         : '';
@@ -366,15 +410,33 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
     setTimeout(() => setCopiedTarget(null), 1800);
   };
 
+  const handleDownloadJs = () => {
+    const code = pipelineResult?.generated_js_module;
+    if (!code) return;
+    const blob = new Blob([code], { type: 'text/javascript;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const pid = pipelineResult?.validated_json?.problem_id || 'question';
+    a.href = url;
+    a.download = `edraw_${pid}.js`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const validatedJson = pipelineResult?.validated_json ?? null;
+  const activeProblem = validatedJson || pipelineResult?.initial_json || null;
   const readyForRender = Boolean(validatedJson?.validation.ready_for_render && pipelineResult?.svg);
-  const geom = validatedJson?.geometry;
-  const lineLabel =
-    geom?.entity_type === 'straight_line'
-      ? geom.line_label
-      : pipelineResult?.initial_json?.geometry.entity_type === 'straight_line'
-      ? pipelineResult.initial_json.geometry.line_label
-      : '—';
+  const geom = activeProblem?.geometry;
+  const moduleMeta = activeProblem?.module ?? null;
+  const isPointSet = geom?.entity_type === 'point_set';
+  const isStraightLine = geom?.entity_type === 'straight_line';
+  const entitySummaryLabel = isStraightLine
+    ? `Line ${geom.line_label}`
+    : isPointSet
+    ? `Point${geom.points.length > 1 ? 's' : ''} ${geom.points.map((p) => p.label).join(', ')}`
+    : moduleMeta?.name || 'General Engineering';
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex flex-col gap-5">
@@ -620,63 +682,154 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
             )}
           </div>
 
-          {/* Provenance Summary: Explicit Givens vs Python-Derived Unknowns */}
+          {/* Module Classification & Provenance Summary */}
           <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs flex flex-col gap-3">
+            {moduleMeta && (
+              <div
+                data-testid="module-classification-banner"
+                className="pb-2.5 border-b border-slate-100 dark:border-slate-800 flex flex-col gap-1"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                    <span>{moduleMeta.name}</span>
+                  </span>
+                  <span className="text-[11px] font-mono text-slate-500 tabular-nums">
+                    {moduleMeta.confidence !== null
+                      ? `${Math.round(moduleMeta.confidence * 100)}% conf`
+                      : 'rule conf'}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                  <span>{moduleMeta.id}</span>
+                  <span aria-hidden="true">·</span>
+                  <span>{activeProblem?.interpretation?.interpretation_method || 'deterministic_semantic'}</span>
+                  <span aria-hidden="true">·</span>
+                  <span>{moduleMeta.implementation_status === 'implemented' ? 'Executable' : 'Pending Solver'}</span>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold font-mono uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                 <ShieldCheck className="w-4 h-4 text-emerald-500" />
                 Givens vs Python-Derived Values
               </span>
               <span className="text-[11px] font-mono text-slate-500">
-                Line <strong>{lineLabel}</strong>
+                <strong>{entitySummaryLabel}</strong>
               </span>
             </div>
 
-            <div className="divide-y divide-slate-100 dark:divide-slate-800 text-[11px] font-mono max-h-[340px] overflow-y-auto">
-              {STRAIGHT_LINE_PROPERTIES.map((spec) => {
-                const givenField = validatedJson?.givens[spec.property] ?? pipelineResult?.initial_json?.givens[spec.property];
-                const unknownField = validatedJson?.unknowns[spec.property] ?? pipelineResult?.initial_json?.unknowns[spec.property];
-                const field = givenField || unknownField;
-
-                const statusBadge =
-                  field?.status === 'given'
-                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300'
-                    : field?.status === 'derived'
-                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300'
-                    : field?.status === 'inconsistent'
-                    ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300'
-                    : field?.status === 'ambiguous'
-                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300'
-                    : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400';
-
-                return (
-                  <div key={spec.property} className="py-1.5 flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <span className="text-slate-600 dark:text-slate-300 block truncate">
-                        {spec.label}
-                      </span>
-                      {field?.original_unit && field.original_unit !== field.unit && (
-                        <span className="text-[10px] text-slate-400">
-                          converted from {field.original_value} {field.original_unit}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
+            {isPointSet && geom?.entity_type === 'point_set' ? (
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 text-[11px] font-mono max-h-[340px] overflow-y-auto">
+                {(geom.solved_points && geom.solved_points.length > 0
+                  ? geom.solved_points
+                  : geom.points.map((p) => ({
+                      label: p.label,
+                      quadrant: p.declared_quadrant || 'Pending',
+                      front_view_y: null as number | null,
+                      top_view_y: null as number | null,
+                      front_view_label: `${p.label.toLowerCase()}′`,
+                      top_view_label: p.label.toLowerCase(),
+                      x_mm: p.x_mm,
+                      y_mm: p.y_mm,
+                      z_mm: p.z_mm,
+                    }))
+                ).map((pt) => (
+                  <div key={pt.label} className="py-2 flex flex-col gap-1">
+                    <div className="flex items-center justify-between gap-2">
                       <span className="font-bold text-slate-900 dark:text-slate-100">
-                        {field && field.value !== null
-                          ? `${Number(field.value.toFixed(2))} ${field.unit}`
-                          : 'null'}
+                        Point {pt.label} · {pt.quadrant ?? 'Unspecified'}
                       </span>
-                      <span className={`px-1.5 py-0.5 rounded text-[9px] uppercase font-bold ${statusBadge}`}>
-                        {field?.status ?? 'unknown'}
+                      <span className="text-slate-500 tabular-nums">
+                        FV {pt.front_view_label}={pt.front_view_y ?? '—'} · TV {pt.top_view_label}={pt.top_view_y ?? '—'}
                       </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5 text-[10px] text-slate-600 dark:text-slate-300 tabular-nums">
+                      <span>x: {pt.x_mm ?? 'auto'} mm</span>
+                      <span>y: {pt.y_mm ?? 'null'} mm</span>
+                      <span>z: {pt.z_mm ?? 'null'} mm</span>
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            ) : isStraightLine ? (
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 text-[11px] font-mono max-h-[340px] overflow-y-auto">
+                {STRAIGHT_LINE_PROPERTIES.map((spec) => {
+                  const givenField =
+                    validatedJson?.givens[spec.property] ??
+                    pipelineResult?.initial_json?.givens[spec.property];
+                  const unknownField =
+                    validatedJson?.unknowns[spec.property] ??
+                    pipelineResult?.initial_json?.unknowns[spec.property];
+                  const field = givenField || unknownField;
 
-            {onNavigateToLineModule && (
+                  const statusBadge =
+                    field?.status === 'given'
+                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300'
+                      : field?.status === 'derived'
+                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300'
+                      : field?.status === 'inconsistent'
+                      ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300'
+                      : field?.status === 'ambiguous'
+                      ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300'
+                      : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400';
+
+                  return (
+                    <div key={spec.property} className="py-1.5 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <span className="text-slate-600 dark:text-slate-300 block truncate">
+                          {spec.label}
+                        </span>
+                        {field?.original_unit && field.original_unit !== field.unit && (
+                          <span className="text-[10px] text-slate-400">
+                            converted from {field.original_value} {field.original_unit}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="font-bold text-slate-900 dark:text-slate-100 tabular-nums">
+                          {field && field.value !== null
+                            ? `${Number(field.value.toFixed(2))} ${field.unit}`
+                            : 'null'}
+                        </span>
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] uppercase font-bold ${statusBadge}`}>
+                          {field?.status ?? 'unknown'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500 dark:text-slate-400 py-2 leading-relaxed">
+                {activeProblem?.module?.selection_reason ||
+                  activeProblem?.task.description ||
+                  'Run the pipeline on an engineering drawing question to inspect parsed givens and solver outputs.'}
+              </p>
+            )}
+
+            {isPointSet && onNavigateToPointModule && (
+              <button
+                type="button"
+                disabled={!readyForRender || !pipelineResult?.point_inputs?.length}
+                onClick={() => {
+                  if (readyForRender && pipelineResult?.point_inputs?.length) {
+                    onNavigateToPointModule(pipelineResult.point_inputs);
+                  }
+                }}
+                className="w-full py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-45 disabled:cursor-not-allowed text-slate-800 dark:text-slate-200 text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <span>
+                  {readyForRender
+                    ? 'Open Validated Point(s) in Points Module'
+                    : 'Solve & Validate Before Opening in Points Module'}
+                </span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+
+            {!isPointSet && onNavigateToLineModule && (
               <button
                 type="button"
                 disabled={!readyForRender || !pipelineResult?.line_input}
@@ -756,6 +909,20 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
             <button
               type="button"
               role="tab"
+              aria-selected={activeTab === 'generated_js'}
+              onClick={() => setActiveTab('generated_js')}
+              className={`px-2.5 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                activeTab === 'generated_js'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs font-bold'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+              }`}
+            >
+              <Code2 className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Generated JS</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
               aria-selected={activeTab === 'trace'}
               onClick={() => setActiveTab('trace')}
               className={`px-2.5 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
@@ -775,6 +942,7 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
               svg={pipelineResult?.svg ?? null}
               validatedJson={validatedJson}
               lineInput={pipelineResult?.line_input ?? null}
+              pointInputs={pipelineResult?.point_inputs ?? null}
               error={pipelineResult?.error ?? null}
               configurationHint={pipelineResult?.configuration_hint}
               failedStage={pipelineResult?.failed_stage ?? null}
@@ -961,7 +1129,104 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
             </div>
           )}
 
-          {/* TAB 4: Stage 1 Raw OCR Trace & Stage 4 Independent Geometric Checks */}
+          {/* TAB 4: Layer G Question-Specific Generated JS Module */}
+          {activeTab === 'generated_js' && (
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs flex flex-col gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Code2 className="w-4 h-4 text-indigo-500" />
+                  <h2 className="text-xs font-bold font-mono uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                    Layer G · Question-Specific JS Execution Module
+                  </h2>
+                  {pipelineResult?.js_validation && (
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold uppercase ${
+                        pipelineResult.js_validation.valid
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300'
+                          : 'bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300'
+                      }`}
+                    >
+                      {pipelineResult.js_validation.valid ? 'AST Validated' : 'Validation Failed'}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleCopy('js')}
+                    disabled={!pipelineResult?.generated_js_module}
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-40 text-xs font-mono flex items-center gap-1 text-slate-700 dark:text-slate-300 cursor-pointer"
+                  >
+                    {copiedTarget === 'js' ? (
+                      <Check className="w-3 h-3 text-emerald-500" />
+                    ) : (
+                      <Copy className="w-3 h-3" />
+                    )}
+                    <span>{copiedTarget === 'js' ? 'Copied' : 'Copy JS'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDownloadJs}
+                    disabled={!pipelineResult?.generated_js_module}
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-40 text-xs font-mono flex items-center gap-1 text-slate-700 dark:text-slate-300 cursor-pointer"
+                  >
+                    <Download className="w-3 h-3" />
+                    <span>Export .js</span>
+                  </button>
+                </div>
+              </div>
+
+              {pipelineResult?.visualization_config && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[11px] font-mono">
+                  <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 min-w-0">
+                    <span className="text-slate-400 block text-[10px]">Module</span>
+                    <span className="font-bold text-slate-900 dark:text-slate-100 block break-all">
+                      {pipelineResult.visualization_config.module_id || '—'}
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 min-w-0">
+                    <span className="text-slate-400 block text-[10px]">Renderer</span>
+                    <span className="font-bold text-slate-900 dark:text-slate-100 block break-all">
+                      {pipelineResult.visualization_config.renderer_id || '—'}
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 min-w-0">
+                    <span className="text-slate-400 block text-[10px]">Views</span>
+                    <span className="font-bold text-slate-900 dark:text-slate-100 block">
+                      {Array.isArray(pipelineResult.visualization_config.views)
+                        ? pipelineResult.visualization_config.views.join(', ')
+                        : '—'}
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 min-w-0">
+                    <span className="text-slate-400 block text-[10px]">Steps / Status</span>
+                    <span className="font-bold text-slate-900 dark:text-slate-100 block">
+                      {Array.isArray(pipelineResult.visualization_config.derivation)
+                        ? pipelineResult.visualization_config.derivation.length
+                        : validatedJson?.derivation?.length ?? 0}{' '}
+                      · {pipelineResult.visualization_config.solver_status || '—'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {pipelineResult?.generated_js_module ? (
+                <pre
+                  data-testid="generated-js-code"
+                  className="w-full max-h-[400px] overflow-auto p-4 rounded-xl bg-slate-950 text-slate-100 text-[11px] font-mono leading-relaxed border border-slate-800"
+                >
+                  {pipelineResult.generated_js_module}
+                </pre>
+              ) : (
+                <p className="text-xs text-slate-500 py-8 text-center">
+                  No question-specific JS module generated yet.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* TAB 5: Stage 1 Raw OCR Trace, Derivation Steps & Stage 4 Independent Checks */}
           {activeTab === 'trace' && (
             <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs flex flex-col gap-4">
               {/* Stage 1 Raw OCR Text */}
@@ -977,7 +1242,46 @@ export const QuestionToGraphicsGenerator: React.FC<QuestionToGraphicsGeneratorPr
                 <pre className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs font-mono text-slate-800 dark:text-slate-200 whitespace-pre-wrap">
                   {pipelineResult?.raw_ocr_text ?? 'No OCR output recorded.'}
                 </pre>
+                {activeProblem?.source.diagram_evidence && activeProblem.source.diagram_evidence.length > 0 && (
+                  <div className="p-2.5 rounded-lg bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 text-[11px] font-mono text-blue-900 dark:text-blue-200">
+                    <span className="font-bold block mb-1">Preserved Diagram Evidence:</span>
+                    {activeProblem.source.diagram_evidence.join(' | ')}
+                  </div>
+                )}
               </div>
+
+              {/* Layer E/H Mathematical Derivation */}
+              {validatedJson && validatedJson.derivation && validatedJson.derivation.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs font-bold font-mono uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                    Step-by-Step Mathematical Derivation
+                  </span>
+                  <div className="space-y-1.5">
+                    {validatedJson.derivation.map((d) => (
+                      <div
+                        key={d.step}
+                        className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800 text-xs"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-slate-900 dark:text-slate-100">
+                            {d.step}. {d.explanation}
+                          </span>
+                          {d.result && (
+                            <span className="font-mono font-bold text-emerald-700 dark:text-emerald-300 text-[11px]">
+                              {d.result}
+                            </span>
+                          )}
+                        </div>
+                        {d.formula && (
+                          <span className="block font-mono text-[11px] text-slate-500 mt-0.5">
+                            {d.formula}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Independent Geometric Validation Checks */}
               <div className="flex flex-col gap-2">

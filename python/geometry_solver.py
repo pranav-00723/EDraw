@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-EDraw Stage 3 — Deterministic Computational Geometry Solver (Python 3)
+EDraw Stage 3 — General Deterministic Computational Geometry Solver (Python 3)
 
-Reads a canonical v1.0.0 initial problem JSON from stdin and computes all
-mathematically determined quantities for straight-line orthographic projections
-using exact Euclidean and trigonometric relationships.
+Reads a canonical v1.0.0 initial problem JSON from stdin, inspects its classified
+Engineering Graphics module & entity schema, and solves all mathematically
+determined quantities using exact Euclidean and trigonometric relationships.
 
-Design invariants:
-- Never invents missing dimensions or guesses arbitrary branches when ambiguous.
-- Strictly distinguishes null (unknown) from 0.0 (on HP / on VP / parallel).
-- Detects overdetermined contradictions, sin^2(theta) + sin^2(phi) > 1,
-  projected length > true length, and negative lengths.
-- Preserves derivation formulas, dependencies, units, and independent residual
-  checks so Stage 4 can validate every derived value before updating JSON.
+Supported Active Modules:
+- projection_of_points (single & multi-point 4-quadrant + boundaries + relative offsets)
+- projection_of_straight_lines (arbitrary endpoints, partial solves, direction cosines, branches)
+
+Registered Unsupported / Unclear Modules:
+- Returns explicit solver_status ('unsupported' or 'needs_clarification') without guessing
+  or forcing unrelated questions into straight-line geometry.
 """
 
 from __future__ import annotations
@@ -106,6 +106,464 @@ def extract_constraint_flags(problem: Dict[str, Any]) -> Dict[str, bool]:
     return flags
 
 
+def classify_point_quadrant(y_mm: float, z_mm: float) -> Tuple[str, List[int], str, str]:
+    on_hp = abs(z_mm) <= TOL_MM
+    on_vp = abs(y_mm) <= TOL_MM
+
+    if on_hp and on_vp:
+        return "ON_BOTH_XY", [1, 2, 3, 4], "On XY line (0 mm)", "On XY line (0 mm)"
+    if on_hp:
+        if y_mm > 0:
+            return "ON_HP_IN_FRONT", [1, 4], "On XY line (0 mm)", f"{r4(y_mm)} mm below XY"
+        return "ON_HP_BEHIND", [2, 3], "On XY line (0 mm)", f"{r4(abs(y_mm))} mm above XY"
+    if on_vp:
+        if z_mm > 0:
+            return "ON_VP_ABOVE", [1, 2], f"{r4(z_mm)} mm above XY", "On XY line (0 mm)"
+        return "ON_VP_BELOW", [3, 4], f"{r4(abs(z_mm))} mm below XY", "On XY line (0 mm)"
+
+    if z_mm > 0 and y_mm > 0:
+        return "FIRST", [1], f"{r4(z_mm)} mm above XY", f"{r4(y_mm)} mm below XY"
+    if z_mm > 0 and y_mm < 0:
+        return "SECOND", [2], f"{r4(z_mm)} mm above XY", f"{r4(abs(y_mm))} mm above XY"
+    if z_mm < 0 and y_mm < 0:
+        return "THIRD", [3], f"{r4(abs(z_mm))} mm below XY", f"{r4(abs(y_mm))} mm above XY"
+    return "FOURTH", [4], f"{r4(abs(z_mm))} mm below XY", f"{r4(y_mm)} mm below XY"
+
+
+def quadrant_check_passes(declared: str, y_mm: float, z_mm: float) -> Tuple[bool, str]:
+    d = declared.upper()
+    if d == "FIRST":
+        ok = z_mm >= -TOL_MM and y_mm >= -TOL_MM
+        return ok, "1st quadrant requires z >= 0 (above/on HP) and y >= 0 (in front of/on VP)."
+    if d == "SECOND":
+        ok = z_mm >= -TOL_MM and y_mm <= TOL_MM
+        return ok, "2nd quadrant requires z >= 0 (above/on HP) and y <= 0 (behind/on VP)."
+    if d == "THIRD":
+        ok = z_mm <= TOL_MM and y_mm <= TOL_MM
+        return ok, "3rd quadrant requires z <= 0 (below/on HP) and y <= 0 (behind/on VP)."
+    if d == "FOURTH":
+        ok = z_mm <= TOL_MM and y_mm >= -TOL_MM
+        return ok, "4th quadrant requires z <= 0 (below/on HP) and y >= 0 (in front of/on VP)."
+    return True, ""
+
+
+def solve_point_set(problem: Dict[str, Any]) -> Dict[str, Any]:
+    geometry = problem.get("geometry") or {}
+    points_raw = geometry.get("points") or []
+    rel_relations = geometry.get("relative_relations") or []
+    givens, _units, numeric_issues = extract_initial_values(problem)
+
+    uncertain_readings = (problem.get("source") or {}).get("uncertain_readings") or []
+    blocking_uncertainties = [
+        u for u in uncertain_readings if isinstance(u, dict) and u.get("severity") == "blocking"
+    ]
+    if blocking_uncertainties:
+        return {
+            "ok": True,
+            "solver_status": "ambiguous",
+            "derived_values": {},
+            "unresolved_unknowns": {
+                k: "Blocked by uncertain OCR symbol reading requiring confirmation."
+                for k in (problem.get("unknowns") or {}).keys()
+            },
+            "solved_coordinates": None,
+            "solved_points": None,
+            "missing_requirements": [],
+            "issues": [
+                {
+                    "code": "BLOCKING_OCR_UNCERTAINTY",
+                    "stage": "stage_3_python_solver",
+                    "severity": "error",
+                    "field": u.get("suspected_property"),
+                    "message": f"Uncertain OCR reading '{u.get('raw_token')}': {u.get('reason')}",
+                }
+                for u in blocking_uncertainties
+            ],
+            "ambiguities": [
+                {
+                    "id": u.get("id", "ocr_uncertainty"),
+                    "property": u.get("suspected_property") or "source_text",
+                    "reason": u.get("reason", "Uncertain OCR reading."),
+                    "candidates": (
+                        [{"suggested": u.get("suggested_interpretation"), "raw": u.get("raw_token")}]
+                        if u.get("suggested_interpretation")
+                        else []
+                    ),
+                }
+                for u in blocking_uncertainties
+            ],
+            "checks": [],
+            "derivation": [],
+        }
+
+    issues: List[Dict[str, Any]] = list(numeric_issues)
+    ambiguities: List[Dict[str, Any]] = []
+    checks: List[Dict[str, Any]] = []
+    derivation: List[Dict[str, Any]] = []
+    derived_values: Dict[str, Dict[str, Any]] = {}
+
+    # Preserve blocking parser errors (e.g. AMBIGUOUS_HP_SIDE / CONFLICTING_POINT_Z)
+    existing_issues = (problem.get("validation") or {}).get("issues") or []
+    has_parser_conflict = any(
+        isinstance(i, dict) and i.get("severity") == "error" and str(i.get("code", "")).startswith("CONFLICTING_")
+        for i in existing_issues
+    )
+    parser_ambig = [
+        i
+        for i in existing_issues
+        if isinstance(i, dict) and i.get("severity") == "error" and str(i.get("code", "")).startswith("AMBIGUOUS_")
+    ]
+    for a in parser_ambig:
+        ambiguities.append(
+            {
+                "id": str(a.get("code", "ambig")).lower(),
+                "property": str(a.get("field") or "coordinate"),
+                "reason": str(a.get("message") or "Ambiguous point side specification."),
+                "candidates": [],
+            }
+        )
+
+    is_single = len(points_raw) == 1
+    point_state: Dict[str, Dict[str, Any]] = {}
+    point_order: List[str] = []
+
+    for idx, p in enumerate(points_raw):
+        if not isinstance(p, dict):
+            continue
+        lbl = str(p.get("label") or f"P{idx + 1}").strip() or f"P{idx + 1}"
+        prefix = "" if is_single else f"{lbl}."
+        x_val = givens.get(f"{prefix}x_mm", p.get("x_mm"))
+        y_val = givens.get(f"{prefix}y_mm", p.get("y_mm"))
+        z_val = givens.get(f"{prefix}z_mm", p.get("z_mm"))
+
+        point_state[lbl] = {
+            "label": lbl,
+            "prefix": prefix,
+            "x_mm": float(x_val) if isinstance(x_val, (int, float)) else None,
+            "y_mm": float(y_val) if isinstance(y_val, (int, float)) else None,
+            "z_mm": float(z_val) if isinstance(z_val, (int, float)) else None,
+            "declared_quadrant": p.get("declared_quadrant"),
+            "x_is_layout_default": False,
+        }
+        point_order.append(lbl)
+
+    def add_point_deriv(prop: str, val: float, deps: List[str], formula: str, explanation: str) -> None:
+        if prop in givens:
+            return
+        derived_values[prop] = {
+            "property": prop,
+            "value": r4(val),
+            "unit": "mm",
+            "dependencies": deps,
+            "formula": formula,
+        }
+        derivation.append(
+            {
+                "step": len(derivation) + 1,
+                "formula": formula,
+                "explanation": explanation,
+                "result": f"{r4(val)} mm",
+            }
+        )
+
+    # Propagate relative relations iteratively (both forward & inverse)
+    for _ in range(16):
+        changed = False
+        for rel in rel_relations:
+            if not isinstance(rel, dict):
+                continue
+            subj = str(rel.get("subject") or "").strip()
+            ref = str(rel.get("reference") or "").strip()
+            axis = str(rel.get("axis") or "").strip().lower()
+            delta = rel.get("delta_mm")
+            if subj not in point_state or ref not in point_state or axis not in ("x", "y", "z"):
+                continue
+            if not isinstance(delta, (int, float)) or not math.isfinite(delta):
+                continue
+            delta_f = float(delta)
+            coord_key = f"{axis}_mm"
+            s_val = point_state[subj][coord_key]
+            r_val = point_state[ref][coord_key]
+
+            if r_val is not None and s_val is None:
+                computed = r_val + delta_f
+                point_state[subj][coord_key] = computed
+                prop_key = f"{point_state[subj]['prefix']}{coord_key}"
+                ref_key = f"{point_state[ref]['prefix']}{coord_key}"
+                add_point_deriv(
+                    prop_key,
+                    computed,
+                    [ref_key],
+                    f"{subj}.{axis} = {ref}.{axis} + ({r4(delta_f)})",
+                    f"Derived {subj}.{coord_key} relative to point {ref} ({rel.get('excerpt', '')}).",
+                )
+                changed = True
+            elif s_val is not None and r_val is None:
+                computed = s_val - delta_f
+                point_state[ref][coord_key] = computed
+                prop_key = f"{point_state[ref]['prefix']}{coord_key}"
+                subj_key = f"{point_state[subj]['prefix']}{coord_key}"
+                add_point_deriv(
+                    prop_key,
+                    computed,
+                    [subj_key],
+                    f"{ref}.{axis} = {subj}.{axis} - ({r4(delta_f)})",
+                    f"Derived {ref}.{coord_key} inversely from point {subj} ({rel.get('excerpt', '')}).",
+                )
+                changed = True
+            elif s_val is not None and r_val is not None:
+                diff = s_val - r_val
+                if abs(diff - delta_f) > TOL_MM:
+                    issues.append(
+                        {
+                            "code": "CONTRADICTORY_POINT_OFFSET",
+                            "stage": "stage_3_python_solver",
+                            "severity": "error",
+                            "field": f"{point_state[subj]['prefix']}{coord_key}",
+                            "message": (
+                                f"Contradictory relative offset between {subj} and {ref} along {axis}: "
+                                f"existing {subj}.{axis} - {ref}.{axis} = {r4(diff)} mm conflicts with stated {r4(delta_f)} mm."
+                            ),
+                        }
+                    )
+        if not changed:
+            break
+
+    # Assign clean lateral X layout defaults ONLY when x_mm was unstated (never alters y/z geometric validity)
+    layout_cursor = 0.0
+    for lbl in point_order:
+        st = point_state[lbl]
+        if st["x_mm"] is None:
+            st["x_mm"] = layout_cursor
+            st["x_is_layout_default"] = True
+            layout_cursor += 65.0
+            # Immediately propagate any x relative offsets from this anchor if needed
+            for rel in rel_relations:
+                if (
+                    isinstance(rel, dict)
+                    and rel.get("axis") == "x"
+                    and rel.get("reference") == lbl
+                    and isinstance(rel.get("delta_mm"), (int, float))
+                ):
+                    subj = str(rel.get("subject") or "")
+                    if subj in point_state and point_state[subj]["x_mm"] is None:
+                        point_state[subj]["x_mm"] = st["x_mm"] + float(rel["delta_mm"])
+                        point_state[subj]["x_is_layout_default"] = True
+        else:
+            layout_cursor = max(layout_cursor + 65.0, float(st["x_mm"]) + 65.0)
+
+    solved_points: List[Dict[str, Any]] = []
+    missing_requirements: List[Dict[str, Any]] = []
+    solved_count = 0
+    underdet_count = 0
+
+    for lbl in point_order:
+        st = point_state[lbl]
+        prefix = st["prefix"]
+        x_val = st["x_mm"]
+        y_val = st["y_mm"]
+        z_val = st["z_mm"]
+        s_low = lbl.lower()
+
+        if st["declared_quadrant"] and y_val is not None and z_val is not None:
+            ok_q, reason_q = quadrant_check_passes(str(st["declared_quadrant"]), y_val, z_val)
+            checks.append(
+                {
+                    "id": f"check_quadrant_{lbl}",
+                    "name": f"Point {lbl} Declared Quadrant Consistency",
+                    "passed": ok_q,
+                    "expected": str(st["declared_quadrant"]),
+                    "actual": f"y={r4(y_val)}, z={r4(z_val)}",
+                    "tolerance": TOL_MM,
+                }
+            )
+            if not ok_q:
+                issues.append(
+                    {
+                        "code": "CONTRADICTORY_QUADRANT",
+                        "stage": "stage_3_python_solver",
+                        "severity": "error",
+                        "field": f"{prefix}z_mm",
+                        "message": f"Point {lbl} contradicts declared {st['declared_quadrant']} quadrant: {reason_q}",
+                    }
+                )
+
+        if y_val is None or z_val is None:
+            underdet_count += 1
+            if z_val is None:
+                missing_requirements.append(
+                    {
+                        "id": f"missing_point_z_{lbl}",
+                        "category": "coordinate",
+                        "parameter": f"{prefix}z_mm",
+                        "label": f"Height of Point {lbl} from HP (z)",
+                        "unit": "mm",
+                        "alternatives": [f"{prefix}z_mm"],
+                        "reason": f"Distance of point {lbl} above/below/on HP is not determined.",
+                        "example_fix": f"Specify '{lbl} is 20 mm above HP', 'below HP', or 'in HP'.",
+                    }
+                )
+            if y_val is None:
+                missing_requirements.append(
+                    {
+                        "id": f"missing_point_y_{lbl}",
+                        "category": "coordinate",
+                        "parameter": f"{prefix}y_mm",
+                        "label": f"Depth of Point {lbl} from VP (y)",
+                        "unit": "mm",
+                        "alternatives": [f"{prefix}y_mm"],
+                        "reason": f"Distance of point {lbl} in front of/behind/on VP is not determined.",
+                        "example_fix": f"Specify '{lbl} is 30 mm in front of VP', 'behind VP', or 'in VP'.",
+                    }
+                )
+
+            solved_points.append(
+                {
+                    "label": lbl,
+                    "status": "underdetermined",
+                    "x_mm": r4(x_val) if x_val is not None else None,
+                    "x_is_layout_default": st["x_is_layout_default"],
+                    "y_mm": r4(y_val) if y_val is not None else None,
+                    "z_mm": r4(z_val) if z_val is not None else None,
+                    "hp_relation": None if z_val is None else ("on" if abs(z_val) <= TOL_MM else ("above" if z_val > 0 else "below")),
+                    "vp_relation": None if y_val is None else ("on" if abs(y_val) <= TOL_MM else ("in_front" if y_val > 0 else "behind")),
+                    "front_view_y": r4(z_val) if z_val is not None else None,
+                    "top_view_y": r4(-y_val) if y_val is not None else None,
+                    "front_view_label": f"{s_low}′",
+                    "top_view_label": s_low,
+                    "quadrant": None,
+                    "valid_quadrants": [],
+                    "front_view_desc": f"{r4(z_val)} mm {'above' if z_val >= 0 else 'below'} XY" if z_val is not None else "Unresolved",
+                    "top_view_desc": f"{r4(abs(y_val))} mm {'below' if y_val >= 0 else 'above'} XY" if y_val is not None else "Unresolved",
+                    "explanation": f"Point {lbl} is missing required HP/VP coordinate constraints.",
+                }
+            )
+            continue
+
+        # Solved point coordinates under First-Angle BIS SP 46:2003 unfolding:
+        # Front view vertical offset = +z (above XY when z > 0)
+        # Top view vertical offset   = -y (below XY when y > 0, i.e., in front of VP)
+        fv_y = float(z_val)
+        tv_y = float(-y_val)
+        quad_name, valid_quads, fv_desc, tv_desc = classify_point_quadrant(y_val, z_val)
+        hp_rel = "on" if abs(z_val) <= TOL_MM else ("above" if z_val > 0 else "below")
+        vp_rel = "on" if abs(y_val) <= TOL_MM else ("in_front" if y_val > 0 else "behind")
+
+        add_point_deriv(
+            f"{prefix}front_view_y",
+            fv_y,
+            [f"{prefix}z_mm"],
+            f"front_view_y({s_low}′) = z = {r4(z_val)}",
+            f"Front view {s_low}′ sits at {fv_desc} (z = {r4(z_val)} mm).",
+        )
+        add_point_deriv(
+            f"{prefix}top_view_y",
+            tv_y,
+            [f"{prefix}y_mm"],
+            f"top_view_y({s_low}) = -y = {r4(-y_val)}",
+            f"Top view {s_low} sits at {tv_desc} (-y = {r4(-y_val)} mm).",
+        )
+        if f"{prefix}x_mm" not in givens and not st["x_is_layout_default"] and x_val is not None:
+            add_point_deriv(
+                f"{prefix}x_mm",
+                float(x_val),
+                [],
+                f"{lbl}.x = {r4(float(x_val))}",
+                f"Lateral position of {lbl} along XY is {r4(float(x_val))} mm.",
+            )
+
+        checks.extend(
+            [
+                {
+                    "id": f"check_point_fv_{lbl}",
+                    "name": f"Point {lbl} Front View Projection (front_view_y == z)",
+                    "passed": abs(fv_y - z_val) <= 1e-4,
+                    "expected": f"{r4(z_val)} mm",
+                    "actual": f"{r4(fv_y)} mm",
+                    "tolerance": 1e-4,
+                },
+                {
+                    "id": f"check_point_tv_{lbl}",
+                    "name": f"Point {lbl} Top View Projection (top_view_y == -y)",
+                    "passed": abs(tv_y + y_val) <= 1e-4,
+                    "expected": f"{r4(-y_val)} mm",
+                    "actual": f"{r4(tv_y)} mm",
+                    "tolerance": 1e-4,
+                },
+            ]
+        )
+
+        solved_count += 1
+        solved_points.append(
+            {
+                "label": lbl,
+                "status": "solved",
+                "x_mm": r4(float(x_val)) if x_val is not None else 0.0,
+                "x_is_layout_default": st["x_is_layout_default"],
+                "y_mm": r4(y_val),
+                "z_mm": r4(z_val),
+                "hp_relation": hp_rel,
+                "vp_relation": vp_rel,
+                "front_view_y": r4(fv_y),
+                "top_view_y": r4(tv_y),
+                "front_view_label": f"{s_low}′",
+                "top_view_label": s_low,
+                "quadrant": quad_name,
+                "valid_quadrants": valid_quads,
+                "front_view_desc": fv_desc,
+                "top_view_desc": tv_desc,
+                "explanation": (
+                    f"Point {lbl} lies at (y={r4(y_val)} mm, z={r4(z_val)} mm) in {quad_name}. "
+                    f"FV {s_low}′ is {fv_desc}; TV {s_low} is {tv_desc}."
+                ),
+            }
+        )
+
+    unresolved_unknowns: Dict[str, str] = {}
+    for prop in (problem.get("unknowns") or {}).keys():
+        if prop in derived_values or prop in givens:
+            continue
+        if prop.endswith("x_mm") and solved_count > 0:
+            unresolved_unknowns[prop] = "X position along XY not specified in question; assigned clean projector spacing for display."
+        else:
+            unresolved_unknowns[prop] = f"Underdetermined: insufficient constraints to solve '{prop}'."
+
+    has_error_issue = has_parser_conflict or any(i.get("severity") == "error" for i in issues)
+    if has_error_issue:
+        solver_status = "inconsistent"
+    elif ambiguities:
+        solver_status = "ambiguous"
+    elif underdet_count > 0 and solved_count > 0:
+        solver_status = "partially_solved"
+    elif underdet_count > 0 or solved_count == 0:
+        solver_status = "underdetermined"
+        issues.append(
+            {
+                "code": "UNDERDETERMINED_SYSTEM",
+                "stage": "stage_3_python_solver",
+                "severity": "warning",
+                "field": missing_requirements[0]["parameter"] if missing_requirements else None,
+                "message": "Point projection is underdetermined: provide distances to both HP and VP.",
+            }
+        )
+    else:
+        solver_status = "solved"
+
+    return {
+        "ok": True,
+        "solver_status": solver_status,
+        "derived_values": derived_values if solver_status != "inconsistent" else {},
+        "unresolved_unknowns": unresolved_unknowns,
+        "solved_coordinates": None,
+        "solved_points": solved_points if solver_status != "inconsistent" else None,
+        "missing_requirements": missing_requirements,
+        "issues": issues,
+        "ambiguities": ambiguities,
+        "checks": checks,
+        "derivation": derivation,
+    }
+
+
 def diagnose_missing_constraints(
     known: Dict[str, float],
     abs_dz: Optional[float],
@@ -117,8 +575,7 @@ def diagnose_missing_constraints(
 ) -> List[Dict[str, Any]]:
     """
     Analyze an underdetermined straight-line projection system and return the exact
-    minimal geometric parameters needed to lock the remaining degrees of freedom
-    (up to 5 independent DOFs: 2 endpoint placement + 3 intrinsic line shape/orientation).
+    minimal geometric parameters needed to lock the remaining degrees of freedom.
     """
     if not missing_required:
         return []
@@ -147,7 +604,6 @@ def diagnose_missing_constraints(
         or flags.get("perpendicular_hp", False)
     )
 
-    # 1. Scale / linear dimension (required whenever no linear measurement exists)
     if not has_scale:
         requirements.append(
             {
@@ -156,22 +612,15 @@ def diagnose_missing_constraints(
                 "parameter": "true_length",
                 "label": f"True Length (TL) of Line {line_lbl}",
                 "unit": "mm",
-                "alternatives": [
-                    "true_length",
-                    "front_view_length",
-                    "top_view_length",
-                    "dep",
-                ],
+                "alternatives": ["true_length", "front_view_length", "top_view_length", "dep"],
                 "reason": (
                     f"No linear length measurement is available for Line {line_lbl}. "
-                    "At least one length (such as True Length TL, Front View length, Top View length, or DEP) "
-                    "is required to establish scale."
+                    "At least one length (TL, FV, TV, or DEP) is required to establish scale."
                 ),
-                "example_fix": f"Add the true length (e.g., 'line {line_lbl} 80 mm long') or a projected view length.",
+                "example_fix": f"Add true length (e.g., 'line {line_lbl} 80 mm long') or a projected view length.",
             }
         )
 
-    # 2. Vertical / HP orientation (theta_hp, parallel/perp to HP, or equivalent TV / end_z_hp)
     if not has_hp_orientation:
         alts = ["theta_hp"]
         if "true_length" in known:
@@ -201,7 +650,6 @@ def diagnose_missing_constraints(
             }
         )
 
-    # 3. Depth / VP orientation (phi_vp, parallel/perp to VP, or equivalent FV / end_y_vp)
     if not has_vp_orientation:
         alts = ["phi_vp"]
         if "true_length" in known:
@@ -231,7 +679,6 @@ def diagnose_missing_constraints(
             }
         )
 
-    # 4. Special coupling case: both |dz| and |dy| are known (so scale exists) but DEP / TL / angles are still unlocked
     if (
         has_scale
         and abs_dz is not None
@@ -241,7 +688,6 @@ def diagnose_missing_constraints(
         and not has_hp_orientation
         and not has_vp_orientation
     ):
-        # Replace generic dual-angle requirements with the single remaining 3rd-axis coupling DOF
         requirements = [r for r in requirements if r["id"] not in ("missing_hp_inclination", "missing_vp_inclination")]
         requirements.append(
             {
@@ -250,23 +696,15 @@ def diagnose_missing_constraints(
                 "parameter": "dep",
                 "label": "Distance Between End Projectors (DEP) or True Length (TL)",
                 "unit": "mm",
-                "alternatives": [
-                    "dep",
-                    "true_length",
-                    "front_view_length",
-                    "top_view_length",
-                    "theta_hp",
-                    "phi_vp",
-                ],
+                "alternatives": ["dep", "true_length", "front_view_length", "top_view_length", "theta_hp", "phi_vp"],
                 "reason": (
                     f"Both vertical height difference (|Δz| = {r4(abs_dz)} mm) and depth difference (|Δy| = {r4(abs_dy)} mm) "
-                    "are known, leaving only 1 remaining shape degree of freedom along the XY reference axis."
+                    "are known, leaving 1 remaining shape degree of freedom along the XY axis."
                 ),
-                "example_fix": "Provide the distance between end projectors (DEP), true length (TL), FV/TV length, or one true inclination angle.",
+                "example_fix": "Provide DEP, true length (TL), FV/TV length, or one true inclination angle.",
             }
         )
 
-    # 5. Start/reference endpoint vertical distance from HP
     if "start_z_hp" not in known and "end_z_hp" not in known:
         requirements.append(
             {
@@ -280,7 +718,7 @@ def diagnose_missing_constraints(
                     f"Neither endpoint {start_lbl} nor endpoint {end_lbl} has a known distance above/below/on HP "
                     "to anchor the Front View relative to the XY line."
                 ),
-                "example_fix": f"Specify end {start_lbl} height from HP (e.g., 'end {start_lbl} is 20 mm above HP' or 'in HP').",
+                "example_fix": f"Specify end {start_lbl} height from HP (e.g., 'end {start_lbl} is 20 mm above HP').",
             }
         )
     elif "start_z_hp" not in known and "end_z_hp" in known and abs_dz is None:
@@ -292,14 +730,11 @@ def diagnose_missing_constraints(
                 "label": f"Distance of Endpoint {start_lbl} from HP",
                 "unit": "mm",
                 "alternatives": ["start_z_hp", "theta_hp"],
-                "reason": (
-                    f"Endpoint {end_lbl} height from HP is known, but endpoint {start_lbl} height from HP cannot be computed without |Δz|."
-                ),
-                "example_fix": f"Specify endpoint {start_lbl} distance from HP or provide the HP inclination θ.",
+                "reason": f"Endpoint {end_lbl} height is known, but {start_lbl} height cannot be computed without |Δz|.",
+                "example_fix": f"Specify endpoint {start_lbl} distance from HP or provide θ.",
             }
         )
 
-    # 6. Start/reference endpoint depth distance from VP
     if "start_y_vp" not in known and "end_y_vp" not in known:
         requirements.append(
             {
@@ -313,7 +748,7 @@ def diagnose_missing_constraints(
                     f"Neither endpoint {start_lbl} nor endpoint {end_lbl} has a known distance in front of/behind/on VP "
                     "to anchor the Top View relative to the XY line."
                 ),
-                "example_fix": f"Specify end {start_lbl} distance from VP (e.g., 'end {start_lbl} is 30 mm in front of VP' or 'in VP').",
+                "example_fix": f"Specify end {start_lbl} distance from VP (e.g., 'end {start_lbl} is 30 mm in front of VP').",
             }
         )
     elif "start_y_vp" not in known and "end_y_vp" in known and abs_dy is None:
@@ -325,14 +760,11 @@ def diagnose_missing_constraints(
                 "label": f"Distance of Endpoint {start_lbl} from VP",
                 "unit": "mm",
                 "alternatives": ["start_y_vp", "phi_vp"],
-                "reason": (
-                    f"Endpoint {end_lbl} distance from VP is known, but endpoint {start_lbl} distance from VP cannot be computed without |Δy|."
-                ),
-                "example_fix": f"Specify endpoint {start_lbl} distance from VP or provide the VP inclination φ.",
+                "reason": f"Endpoint {end_lbl} distance from VP is known, but {start_lbl} distance cannot be computed without |Δy|.",
+                "example_fix": f"Specify endpoint {start_lbl} distance from VP or provide φ.",
             }
         )
 
-    # Fallback safety: if still missing a required parameter not covered above, report it explicitly
     if not requirements and missing_required:
         first_prop = missing_required[0]
         requirements.append(
@@ -360,6 +792,7 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
             "derived_values": {},
             "unresolved_unknowns": {},
             "solved_coordinates": None,
+            "solved_points": None,
             "missing_requirements": [],
             "issues": [
                 {
@@ -367,14 +800,14 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
                     "stage": "stage_3_python_solver",
                     "severity": "error",
                     "field": "geometry.entity_type",
-                    "message": f"Python solver currently supports 'straight_line', received '{geometry.get('entity_type')}'.",
+                    "message": f"Straight-line solver received incompatible entity_type '{geometry.get('entity_type')}'.",
                 }
             ],
             "ambiguities": [],
             "checks": [],
+            "derivation": [],
         }
 
-    # Check blocking OCR uncertainties before attempting numerical solve
     uncertain_readings = (problem.get("source") or {}).get("uncertain_readings") or []
     blocking_uncertainties = [u for u in uncertain_readings if isinstance(u, dict) and u.get("severity") == "blocking"]
     if blocking_uncertainties:
@@ -387,6 +820,7 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
                 for prop in (problem.get("unknowns") or {}).keys()
             },
             "solved_coordinates": None,
+            "solved_points": None,
             "missing_requirements": [],
             "issues": [
                 {
@@ -412,6 +846,7 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
                 for u in blocking_uncertainties
             ],
             "checks": [],
+            "derivation": [],
         }
 
     givens, _units, issues = extract_initial_values(problem)
@@ -421,12 +856,12 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
     start_lbl = str(endpoints.get("start", "A")).strip() or "A"
     end_lbl = str(endpoints.get("end", "B")).strip() or "B"
 
-    # Known map tracks both explicitly given and newly derived quantities
     known: Dict[str, float] = dict(givens)
     derived_meta: Dict[str, Dict[str, Any]] = {}
     contradictions: List[Dict[str, Any]] = list(issues)
     ambiguities: List[Dict[str, Any]] = []
     checks: List[Dict[str, Any]] = []
+    derivation: List[Dict[str, Any]] = []
 
     def add_contradiction(code: str, field: Optional[str], message: str) -> None:
         contradictions.append(
@@ -447,7 +882,6 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
         formula: str,
         tol: Optional[float] = None,
     ) -> bool:
-        """Assign derived value if unknown, or check consistency if already known."""
         if not math.isfinite(value):
             add_contradiction("NON_FINITE_RESULT", prop, f"Computed non-finite value for {prop}.")
             return False
@@ -468,10 +902,18 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
             "dependencies": list(dict.fromkeys(deps)),
             "formula": formula,
         }
+        derivation.append(
+            {
+                "step": len(derivation) + 1,
+                "formula": f"{prop} = {formula}",
+                "explanation": f"Derived {prop} from {', '.join(dict.fromkeys(deps))}.",
+                "result": f"{r4(value)} {unit}",
+            }
+        )
         return True
 
-    # Basic physical domain checks on givens
-    for length_prop in ("true_length", "front_view_length", "top_view_length", "dep"):
+    # Physical domain checks on givens
+    for length_prop in ("true_length", "front_view_length", "top_view_length", "dep", "abs_delta_z", "abs_delta_y"):
         if length_prop in givens and givens[length_prop] < -TOL_MM:
             add_contradiction(
                 "NEGATIVE_LENGTH",
@@ -495,47 +937,33 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
                     f"Angle '{angle_prop}' = {ang}° must be between 0° and 90°.",
                 )
 
-    # Apply explicit parallel / perpendicular orientation constraints
     if flags["perpendicular_hp"] and flags["perpendicular_vp"]:
-        add_contradiction(
-            "IMPOSSIBLE_ORIENTATION",
-            "constraints",
-            "A straight line cannot be simultaneously perpendicular to both HP and VP.",
-        )
+        add_contradiction("IMPOSSIBLE_ORIENTATION", "constraints", "A straight line cannot be simultaneously perpendicular to both HP and VP.")
     if flags["perpendicular_hp"] and flags["parallel_hp"]:
-        add_contradiction(
-            "IMPOSSIBLE_ORIENTATION",
-            "constraints",
-            "A straight line cannot be both parallel and perpendicular to HP.",
-        )
+        add_contradiction("IMPOSSIBLE_ORIENTATION", "constraints", "A straight line cannot be both parallel and perpendicular to HP.")
     if flags["perpendicular_vp"] and flags["parallel_vp"]:
-        add_contradiction(
-            "IMPOSSIBLE_ORIENTATION",
-            "constraints",
-            "A straight line cannot be both parallel and perpendicular to VP.",
-        )
+        add_contradiction("IMPOSSIBLE_ORIENTATION", "constraints", "A straight line cannot be both parallel and perpendicular to VP.")
 
     if flags["perpendicular_hp"]:
-        set_or_check("theta_hp", 90.0, "deg", ["constraint:perpendicular_hp"], "perpendicular to HP => theta_hp = 90 deg")
-        set_or_check("phi_vp", 0.0, "deg", ["constraint:perpendicular_hp"], "perpendicular to HP => parallel to VP => phi_vp = 0 deg")
-        set_or_check("dep", 0.0, "mm", ["constraint:perpendicular_hp"], "perpendicular to HP => dep = 0 mm")
-        set_or_check("top_view_length", 0.0, "mm", ["constraint:perpendicular_hp"], "perpendicular to HP => TV = 0 mm (point view)")
+        set_or_check("theta_hp", 90.0, "deg", ["constraint:perpendicular_hp"], "perpendicular to HP => 90 deg")
+        set_or_check("phi_vp", 0.0, "deg", ["constraint:perpendicular_hp"], "perpendicular to HP => parallel to VP => 0 deg")
+        set_or_check("dep", 0.0, "mm", ["constraint:perpendicular_hp"], "perpendicular to HP => 0 mm")
+        set_or_check("top_view_length", 0.0, "mm", ["constraint:perpendicular_hp"], "perpendicular to HP => 0 mm (point view)")
 
     if flags["perpendicular_vp"]:
-        set_or_check("phi_vp", 90.0, "deg", ["constraint:perpendicular_vp"], "perpendicular to VP => phi_vp = 90 deg")
-        set_or_check("theta_hp", 0.0, "deg", ["constraint:perpendicular_vp"], "perpendicular to VP => parallel to HP => theta_hp = 0 deg")
-        set_or_check("dep", 0.0, "mm", ["constraint:perpendicular_vp"], "perpendicular to VP => dep = 0 mm")
-        set_or_check("front_view_length", 0.0, "mm", ["constraint:perpendicular_vp"], "perpendicular to VP => FV = 0 mm (point view)")
+        set_or_check("phi_vp", 90.0, "deg", ["constraint:perpendicular_vp"], "perpendicular to VP => 90 deg")
+        set_or_check("theta_hp", 0.0, "deg", ["constraint:perpendicular_vp"], "perpendicular to VP => parallel to HP => 0 deg")
+        set_or_check("dep", 0.0, "mm", ["constraint:perpendicular_vp"], "perpendicular to VP => 0 mm")
+        set_or_check("front_view_length", 0.0, "mm", ["constraint:perpendicular_vp"], "perpendicular to VP => 0 mm (point view)")
 
     if flags["parallel_hp"]:
-        set_or_check("theta_hp", 0.0, "deg", ["constraint:parallel_hp"], "parallel to HP => theta_hp = 0 deg")
-        set_or_check("alpha_fv", 0.0, "deg", ["constraint:parallel_hp"], "parallel to HP => alpha_fv = 0 deg")
+        set_or_check("theta_hp", 0.0, "deg", ["constraint:parallel_hp"], "parallel to HP => 0 deg")
+        set_or_check("alpha_fv", 0.0, "deg", ["constraint:parallel_hp"], "parallel to HP => 0 deg")
 
     if flags["parallel_vp"]:
-        set_or_check("phi_vp", 0.0, "deg", ["constraint:parallel_vp"], "parallel to VP => phi_vp = 0 deg")
-        set_or_check("beta_tv", 0.0, "deg", ["constraint:parallel_vp"], "parallel to VP => beta_tv = 0 deg")
+        set_or_check("phi_vp", 0.0, "deg", ["constraint:parallel_vp"], "parallel to VP => 0 deg")
+        set_or_check("beta_tv", 0.0, "deg", ["constraint:parallel_vp"], "parallel to VP => 0 deg")
 
-    # Track magnitude deltas |dz| and |dy| separately so sign ambiguities are never silently hidden
     abs_dz: Optional[float] = None
     abs_dz_deps: List[str] = []
     abs_dz_formula: str = ""
@@ -588,11 +1016,16 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
         abs_dy_formula = formula
         return True
 
-    # Fixed-point deductive propagation (max 16 passes, strictly monotonic)
+    # Seed from explicit abs_delta_z / abs_delta_y if provided
+    if "abs_delta_z" in givens:
+        set_or_check_abs_dz(givens["abs_delta_z"], ["abs_delta_z"], "given abs_delta_z")
+    if "abs_delta_y" in givens:
+        set_or_check_abs_dy(givens["abs_delta_y"], ["abs_delta_y"], "given abs_delta_y")
+
+    # Fixed-point deductive propagation
     for _ in range(16):
         changed = False
 
-        # 1. Endpoint differences
         if "start_z_hp" in known and "end_z_hp" in known:
             dz_val = known["end_z_hp"] - known["start_z_hp"]
             signed_dz = dz_val
@@ -609,9 +1042,8 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
             if set_or_check_abs_dy(abs(dy_val), ["start_y_vp", "end_y_vp"], "|end_y_vp - start_y_vp|"):
                 changed = True
 
-        # Parallel plane zero deltas
         if flags["parallel_hp"] or ("theta_hp" in known and abs(known["theta_hp"]) < TOL_DEG):
-            if set_or_check_abs_dz(0.0, ["theta_hp"], "theta_hp = 0 => |dz| = 0"):
+            if set_or_check_abs_dz(0.0, ["theta_hp"], "theta_hp = 0 => 0"):
                 changed = True
             signed_dz = 0.0
             signed_dz_deps = ["theta_hp"]
@@ -624,7 +1056,7 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
                     changed = True
 
         if flags["parallel_vp"] or ("phi_vp" in known and abs(known["phi_vp"]) < TOL_DEG):
-            if set_or_check_abs_dy(0.0, ["phi_vp"], "phi_vp = 0 => |dy| = 0"):
+            if set_or_check_abs_dy(0.0, ["phi_vp"], "phi_vp = 0 => 0"):
                 changed = True
             signed_dy = 0.0
             signed_dy_deps = ["phi_vp"]
@@ -636,7 +1068,6 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
                 if set_or_check("start_y_vp", known["end_y_vp"], "mm", ["end_y_vp", "phi_vp"], "end_y_vp (parallel to VP)"):
                     changed = True
 
-        # 2. Direction cosine check whenever both theta_hp and phi_vp are known
         if "theta_hp" in known and "phi_vp" in known:
             th = known["theta_hp"]
             ph = known["phi_vp"]
@@ -648,8 +1079,6 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
                     f"Geometrically impossible inclinations: theta ({r4(th)}°) + phi ({r4(ph)}°) exceeds 90° (sin²θ + sin²φ = {sin2_sum:.4f} > 1).",
                 )
 
-        # 3. True Length <-> Projected Lengths <-> True Inclinations
-        # TV = TL * cos(theta_hp), |dz| = TL * sin(theta_hp)
         if "true_length" in known and "theta_hp" in known:
             tl = known["true_length"]
             th = known["theta_hp"]
@@ -658,7 +1087,6 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
             if set_or_check_abs_dz(tl * math.sin(deg2rad(th)), ["true_length", "theta_hp"], "true_length * sin(theta_hp)"):
                 changed = True
 
-        # FV = TL * cos(phi_vp), |dy| = TL * sin(phi_vp)
         if "true_length" in known and "phi_vp" in known:
             tl = known["true_length"]
             ph = known["phi_vp"]
@@ -667,21 +1095,18 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
             if set_or_check_abs_dy(tl * math.sin(deg2rad(ph)), ["true_length", "phi_vp"], "true_length * sin(phi_vp)"):
                 changed = True
 
-        # From TV and theta_hp -> TL (when cos(theta_hp) > 0)
         if "top_view_length" in known and "theta_hp" in known:
             cos_th = math.cos(deg2rad(known["theta_hp"]))
             if cos_th > 1e-5:
                 if set_or_check("true_length", known["top_view_length"] / cos_th, "mm", ["top_view_length", "theta_hp"], "top_view_length / cos(theta_hp)"):
                     changed = True
 
-        # From FV and phi_vp -> TL (when cos(phi_vp) > 0)
         if "front_view_length" in known and "phi_vp" in known:
             cos_ph = math.cos(deg2rad(known["phi_vp"]))
             if cos_ph > 1e-5:
                 if set_or_check("true_length", known["front_view_length"] / cos_ph, "mm", ["front_view_length", "phi_vp"], "front_view_length / cos(phi_vp)"):
                     changed = True
 
-        # From TL and TV -> theta_hp
         if "true_length" in known and "top_view_length" in known and known["true_length"] > TOL_MM:
             ratio = known["top_view_length"] / known["true_length"]
             if ratio > 1.0 + TOL_TRIG:
@@ -695,7 +1120,6 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
                 if set_or_check("theta_hp", th_val, "deg", ["true_length", "top_view_length"], "acos(top_view_length / true_length)"):
                     changed = True
 
-        # From TL and FV -> phi_vp
         if "true_length" in known and "front_view_length" in known and known["true_length"] > TOL_MM:
             ratio = known["front_view_length"] / known["true_length"]
             if ratio > 1.0 + TOL_TRIG:
@@ -709,7 +1133,6 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
                 if set_or_check("phi_vp", ph_val, "deg", ["true_length", "front_view_length"], "acos(front_view_length / true_length)"):
                     changed = True
 
-        # From TL and |dz| -> theta_hp
         if "true_length" in known and abs_dz is not None and known["true_length"] > TOL_MM:
             ratio = abs_dz / known["true_length"]
             if ratio > 1.0 + TOL_TRIG:
@@ -723,7 +1146,6 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
                 if set_or_check("theta_hp", th_val, "deg", ["true_length"] + abs_dz_deps, "asin(|dz| / true_length)"):
                     changed = True
 
-        # From TL and |dy| -> phi_vp
         if "true_length" in known and abs_dy is not None and known["true_length"] > TOL_MM:
             ratio = abs_dy / known["true_length"]
             if ratio > 1.0 + TOL_TRIG:
@@ -737,22 +1159,18 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
                 if set_or_check("phi_vp", ph_val, "deg", ["true_length"] + abs_dy_deps, "asin(|dy| / true_length)"):
                     changed = True
 
-        # From |dz| and theta_hp -> TL (when sin(theta_hp) > 0)
         if abs_dz is not None and "theta_hp" in known:
             sin_th = math.sin(deg2rad(known["theta_hp"]))
             if sin_th > 1e-5:
                 if set_or_check("true_length", abs_dz / sin_th, "mm", abs_dz_deps + ["theta_hp"], "|dz| / sin(theta_hp)"):
                     changed = True
 
-        # From |dy| and phi_vp -> TL (when sin(phi_vp) > 0)
         if abs_dy is not None and "phi_vp" in known:
             sin_ph = math.sin(deg2rad(known["phi_vp"]))
             if sin_ph > 1e-5:
                 if set_or_check("true_length", abs_dy / sin_ph, "mm", abs_dy_deps + ["phi_vp"], "|dy| / sin(phi_vp)"):
                     changed = True
 
-        # 4. Orthogonal projection right triangles:
-        # FV^2 = dep^2 + dz^2, TV^2 = dep^2 + dy^2, TL^2 = dep^2 + dy^2 + dz^2
         if "dep" in known and abs_dz is not None:
             fv_val = math.hypot(known["dep"], abs_dz)
             if set_or_check("front_view_length", fv_val, "mm", ["dep"] + abs_dz_deps, "sqrt(dep^2 + dz^2)"):
@@ -828,7 +1246,6 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
                 if set_or_check("dep", math.sqrt(max(0.0, dx_sq)), "mm", ["true_length"] + abs_dy_deps + abs_dz_deps, "sqrt(true_length^2 - dy^2 - dz^2)"):
                     changed = True
 
-        # 5. Apparent angles alpha_fv and beta_tv
         if "front_view_length" in known and "alpha_fv" in known:
             fv = known["front_view_length"]
             al = known["alpha_fv"]
@@ -857,7 +1274,6 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
                 if set_or_check("beta_tv", be_val, "deg", ["dep"] + abs_dy_deps, "atan2(|dy|, dep)"):
                     changed = True
 
-        # From dep and alpha_fv -> FV, |dz|
         if "dep" in known and "alpha_fv" in known:
             cos_al = math.cos(deg2rad(known["alpha_fv"]))
             if cos_al > 1e-5:
@@ -866,7 +1282,6 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
                 if set_or_check_abs_dz(known["dep"] * math.tan(deg2rad(known["alpha_fv"])), ["dep", "alpha_fv"], "dep * tan(alpha_fv)"):
                     changed = True
 
-        # From dep and beta_tv -> TV, |dy|
         if "dep" in known and "beta_tv" in known:
             cos_be = math.cos(deg2rad(known["beta_tv"]))
             if cos_be > 1e-5:
@@ -875,21 +1290,18 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
                 if set_or_check_abs_dy(known["dep"] * math.tan(deg2rad(known["beta_tv"])), ["dep", "beta_tv"], "dep * tan(beta_tv)"):
                     changed = True
 
-        # From |dz| and alpha_fv -> FV, dep
         if abs_dz is not None and "alpha_fv" in known:
             sin_al = math.sin(deg2rad(known["alpha_fv"]))
             if sin_al > 1e-5:
                 if set_or_check("front_view_length", abs_dz / sin_al, "mm", abs_dz_deps + ["alpha_fv"], "|dz| / sin(alpha_fv)"):
                     changed = True
 
-        # From |dy| and beta_tv -> TV, dep
         if abs_dy is not None and "beta_tv" in known:
             sin_be = math.sin(deg2rad(known["beta_tv"]))
             if sin_be > 1e-5:
                 if set_or_check("top_view_length", abs_dy / sin_be, "mm", abs_dy_deps + ["beta_tv"], "|dy| / sin(beta_tv)"):
                     changed = True
 
-        # From FV, TV, dep -> TL = sqrt(FV^2 + TV^2 - dep^2)
         if "front_view_length" in known and "top_view_length" in known and "dep" in known:
             tl_sq = known["front_view_length"] ** 2 + known["top_view_length"] ** 2 - known["dep"] ** 2
             if tl_sq < -TOL_MM:
@@ -901,46 +1313,47 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
         if not changed or contradictions:
             break
 
+    # Export abs_delta_z / abs_delta_y if resolved (even in underdetermined partial solves)
+    if not contradictions:
+        if abs_dz is not None:
+            set_or_check("abs_delta_z", abs_dz, "mm", abs_dz_deps, abs_dz_formula)
+        if abs_dy is not None:
+            set_or_check("abs_delta_y", abs_dy, "mm", abs_dy_deps, abs_dy_formula)
+
+    # Check zero true length if TL got derived to 0
+    if "true_length" in known and known["true_length"] <= TOL_MM:
+        add_contradiction("ZERO_TRUE_LENGTH", "true_length", f"Degenerate zero-length line (TL = {r4(known['true_length'])} mm).")
+
     # Resolve endpoint B signed positions from start_z_hp / start_y_vp + |dz| / |dy|
-    # Explicitly detect genuine sign ambiguity vs uniquely constrained first-quadrant branch
     if not contradictions:
         branch_pref = quadrant_hints.get("branch_preference", "unspecified")
         end_hp_hint = quadrant_hints.get("end_hp")
         end_vp_hint = quadrant_hints.get("end_vp")
 
-        # Resolve end_z_hp
         if "end_z_hp" not in known and "start_z_hp" in known and abs_dz is not None:
             z1 = known["start_z_hp"]
             if abs_dz <= TOL_MM:
                 set_or_check("end_z_hp", z1, "mm", ["start_z_hp"] + abs_dz_deps, "start_z_hp + 0")
-                signed_dz = 0.0
             else:
                 z_plus = z1 + abs_dz
                 z_minus = z1 - abs_dz
-                # Check if explicit hint or first-quadrant constraint uniquely determines the sign
                 if end_hp_hint == "below" and z_minus < 0 <= z_plus:
                     set_or_check("end_z_hp", z_minus, "mm", ["start_z_hp"] + abs_dz_deps, "start_z_hp - |dz| (end below HP)")
-                    signed_dz = -abs_dz
                 elif end_hp_hint == "above" and z_minus < -TOL_MM:
                     set_or_check("end_z_hp", z_plus, "mm", ["start_z_hp"] + abs_dz_deps, "start_z_hp + |dz| (end above HP)")
-                    signed_dz = abs_dz
                 elif z_minus < -TOL_MM and (flags["first_quadrant"] or quadrant_hints.get("start_hp") in ("above", "on")):
-                    # Only +|dz| remains in the 1st quadrant (above HP)
                     set_or_check("end_z_hp", z_plus, "mm", ["start_z_hp"] + abs_dz_deps, "start_z_hp + |dz| (unique 1st-quadrant branch above HP)")
-                    signed_dz = abs_dz
                 elif branch_pref == "first_quadrant_positive":
                     set_or_check("end_z_hp", z_plus, "mm", ["start_z_hp"] + abs_dz_deps, "start_z_hp + |dz| (first-quadrant away from HP)")
-                    signed_dz = abs_dz
                 else:
-                    # Both z1 + |dz| and z1 - |dz| remain valid above HP!
                     ambiguities.append(
                         {
                             "id": "ambiguous_end_z_sign",
                             "property": "end_z_hp",
                             "reason": (
                                 f"Both {end_lbl} = {r4(z_plus)} mm above HP (+|dz|) and "
-                                f"{end_lbl} = {r4(z_minus)} mm above HP (-|dz|) satisfy |dz| = {r4(abs_dz)} mm "
-                                f"in the first quadrant. Specify whether {end_lbl} is higher or lower than {start_lbl}."
+                                f"{end_lbl} = {r4(z_minus)} mm above HP (-|dz|) satisfy |dz| = {r4(abs_dz)} mm. "
+                                f"Specify whether {end_lbl} is higher or lower than {start_lbl}."
                             ),
                             "candidates": [
                                 {"branch": "rising_away_from_hp", "end_z_hp": r4(z_plus), "dz": r4(abs_dz)},
@@ -949,27 +1362,21 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
                         }
                     )
 
-        # Resolve end_y_vp
         if "end_y_vp" not in known and "start_y_vp" in known and abs_dy is not None:
             y1 = known["start_y_vp"]
             if abs_dy <= TOL_MM:
                 set_or_check("end_y_vp", y1, "mm", ["start_y_vp"] + abs_dy_deps, "start_y_vp + 0")
-                signed_dy = 0.0
             else:
                 y_plus = y1 + abs_dy
                 y_minus = y1 - abs_dy
                 if end_vp_hint == "behind" and y_minus < 0 <= y_plus:
                     set_or_check("end_y_vp", y_minus, "mm", ["start_y_vp"] + abs_dy_deps, "start_y_vp - |dy| (end behind VP)")
-                    signed_dy = -abs_dy
                 elif end_vp_hint == "in_front" and y_minus < -TOL_MM:
                     set_or_check("end_y_vp", y_plus, "mm", ["start_y_vp"] + abs_dy_deps, "start_y_vp + |dy| (end in front of VP)")
-                    signed_dy = abs_dy
                 elif y_minus < -TOL_MM and (flags["first_quadrant"] or quadrant_hints.get("start_vp") in ("in_front", "on")):
                     set_or_check("end_y_vp", y_plus, "mm", ["start_y_vp"] + abs_dy_deps, "start_y_vp + |dy| (unique 1st-quadrant branch in front of VP)")
-                    signed_dy = abs_dy
                 elif branch_pref == "first_quadrant_positive":
                     set_or_check("end_y_vp", y_plus, "mm", ["start_y_vp"] + abs_dy_deps, "start_y_vp + |dy| (first-quadrant away from VP)")
-                    signed_dy = abs_dy
                 else:
                     ambiguities.append(
                         {
@@ -977,8 +1384,8 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
                             "property": "end_y_vp",
                             "reason": (
                                 f"Both {end_lbl} = {r4(y_plus)} mm in front of VP (+|dy|) and "
-                                f"{end_lbl} = {r4(y_minus)} mm in front of VP (-|dy|) satisfy |dy| = {r4(abs_dy)} mm "
-                                f"in the first quadrant. Specify whether {end_lbl} is farther from or nearer to VP than {start_lbl}."
+                                f"{end_lbl} = {r4(y_minus)} mm in front of VP (-|dy|) satisfy |dy| = {r4(abs_dy)} mm. "
+                                f"Specify whether {end_lbl} is farther from or nearer to VP than {start_lbl}."
                             ),
                             "candidates": [
                                 {"branch": "away_from_vp", "end_y_vp": r4(y_plus), "dy": r4(abs_dy)},
@@ -987,7 +1394,6 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
                         }
                     )
 
-    # Identify required properties for complete orthographic construction
     required_for_draw = [
         "true_length",
         "front_view_length",
@@ -1013,7 +1419,37 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
         else:
             unresolved_unknowns[prop] = f"Underdetermined: insufficient independent constraints to uniquely compute '{prop}'."
 
-    # Build solved coordinates & independent residual checks only when all required fields are solved and consistent
+    # Partial mathematical verification checks for derived values when underdetermined (e.g. FV + alpha -> dep, |dz|)
+    if not contradictions and not ambiguities and missing_required:
+        if "front_view_length" in known and "alpha_fv" in known and "dep" in known and abs_dz is not None:
+            fv = known["front_view_length"]
+            al = known["alpha_fv"]
+            checks.append(
+                {
+                    "id": "check_partial_fv_right_triangle",
+                    "name": "Partial Front-View Right Triangle (FV·cos α = DEP, FV·sin α = |Δz|)",
+                    "passed": abs(fv * math.cos(deg2rad(al)) - known["dep"]) <= 1e-2
+                    and abs(fv * math.sin(deg2rad(al)) - abs_dz) <= 1e-2,
+                    "expected": f"DEP={r4(fv * math.cos(deg2rad(al)))}, |Δz|={r4(fv * math.sin(deg2rad(al)))}",
+                    "actual": f"DEP={r4(known['dep'])}, |Δz|={r4(abs_dz)}",
+                    "tolerance": 1e-2,
+                }
+            )
+        if "top_view_length" in known and "beta_tv" in known and "dep" in known and abs_dy is not None:
+            tv = known["top_view_length"]
+            be = known["beta_tv"]
+            checks.append(
+                {
+                    "id": "check_partial_tv_right_triangle",
+                    "name": "Partial Top-View Right Triangle (TV·cos β = DEP, TV·sin β = |Δy|)",
+                    "passed": abs(tv * math.cos(deg2rad(be)) - known["dep"]) <= 1e-2
+                    and abs(tv * math.sin(deg2rad(be)) - abs_dy) <= 1e-2,
+                    "expected": f"DEP={r4(tv * math.cos(deg2rad(be)))}, |Δy|={r4(tv * math.sin(deg2rad(be)))}",
+                    "actual": f"DEP={r4(known['dep'])}, |Δy|={r4(abs_dy)}",
+                    "tolerance": 1e-2,
+                }
+            )
+
     solved_coordinates = None
     if not contradictions and not ambiguities and not missing_required:
         tl = known["true_length"]
@@ -1029,7 +1465,6 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
         dz = z2 - z1
         dy = y2 - y1
 
-        # Independent mathematical verification checks
         tl_check = math.sqrt(dep ** 2 + dy ** 2 + dz ** 2)
         fv_check = math.hypot(dep, dz)
         tv_check = math.hypot(dep, dy)
@@ -1079,9 +1514,6 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
                 "Solved values failed independent Euclidean/trigonometric consistency checks.",
             )
         else:
-            # First-angle orthographic coordinates (in mm, XY reference line at y = 0):
-            # Front view: +z above XY => y_2d = +z
-            # Top view:   +y in front of VP => y_2d = -y (below XY)
             s_low = start_lbl.lower()
             e_low = end_lbl.lower()
             b1_x = tl * math.cos(deg2rad(theta))
@@ -1120,7 +1552,6 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
                 }
             )
 
-    # Determine final solver status and run underdetermined constraint diagnostics
     missing_requirements: List[Dict[str, Any]] = []
     if contradictions:
         solver_status = "inconsistent"
@@ -1138,7 +1569,7 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
             missing_required=missing_required,
         )
         req_labels = [r["parameter"] for r in missing_requirements]
-        contradictions_or_info = [
+        contradictions.append(
             {
                 "code": "UNDERDETERMINED_SYSTEM",
                 "stage": "stage_3_python_solver",
@@ -1149,8 +1580,7 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
                     f"to uniquely determine [{', '.join(missing_required)}]."
                 ),
             }
-        ]
-        contradictions.extend(contradictions_or_info)
+        )
     else:
         solver_status = "solved"
 
@@ -1160,11 +1590,88 @@ def solve_straight_line(problem: Dict[str, Any]) -> Dict[str, Any]:
         "derived_values": derived_meta if solver_status != "inconsistent" else {},
         "unresolved_unknowns": unresolved_unknowns,
         "solved_coordinates": solved_coordinates if solver_status == "solved" else None,
+        "solved_points": None,
         "missing_requirements": missing_requirements,
         "issues": contradictions,
         "ambiguities": ambiguities,
         "checks": checks,
+        "derivation": derivation,
     }
+
+
+def dispatch_solver(problem: Dict[str, Any]) -> Dict[str, Any]:
+    module = problem.get("module") or {}
+    module_id = module.get("id")
+    impl_status = module.get("implementation_status")
+    geometry = problem.get("geometry") or {}
+    entity_type = geometry.get("entity_type")
+    task_domain = (problem.get("task") or {}).get("domain")
+
+    if module_id == "unknown_module" or task_domain == "unknown":
+        return {
+            "ok": True,
+            "solver_status": "needs_clarification",
+            "derived_values": {},
+            "unresolved_unknowns": {},
+            "solved_coordinates": None,
+            "solved_points": None,
+            "missing_requirements": [
+                {
+                    "id": "clarify_engineering_module",
+                    "category": "module_support",
+                    "parameter": "module.id",
+                    "label": "Engineering Graphics Module & Entity",
+                    "unit": None,
+                    "alternatives": ["projection_of_points", "projection_of_straight_lines"],
+                    "reason": "Input statement did not uniquely specify a known Engineering Graphics entity (e.g., Point or Straight Line).",
+                    "example_fix": "Clarify the object and constraints (e.g., 'A point P is 25 mm above HP...' or 'A line AB 80 mm long...').",
+                }
+            ],
+            "issues": [
+                {
+                    "code": "MODULE_NEEDS_CLARIFICATION",
+                    "stage": "stage_3_python_solver",
+                    "severity": "error",
+                    "field": "module.id",
+                    "message": "Cannot solve: problem module and geometric entities could not be identified without clarification.",
+                }
+            ],
+            "ambiguities": [],
+            "checks": [],
+            "derivation": [],
+        }
+
+    if impl_status == "unsupported" or entity_type in ("plane", "solid", "general"):
+        mod_name = module.get("name") or geometry.get("topic") or entity_type or "Unknown Module"
+        return {
+            "ok": True,
+            "solver_status": "unsupported",
+            "derived_values": {},
+            "unresolved_unknowns": {},
+            "solved_coordinates": None,
+            "solved_points": None,
+            "missing_requirements": [],
+            "issues": [
+                {
+                    "code": "UNSUPPORTED_MODULE",
+                    "stage": "stage_3_python_solver",
+                    "severity": "error",
+                    "field": "module.id",
+                    "message": (
+                        f"Module '{mod_name}' was accurately classified, but its deterministic domain solver "
+                        "is not implemented in this release. No fabricated fallback geometry was generated."
+                    ),
+                }
+            ],
+            "ambiguities": [],
+            "checks": [],
+            "derivation": [],
+        }
+
+    if entity_type == "point_set" or module_id == "projection_of_points":
+        return solve_point_set(problem)
+
+    return solve_straight_line(problem)
 
 
 def main() -> int:
@@ -1211,7 +1718,7 @@ def main() -> int:
         return 1
 
     try:
-        result = solve_straight_line(payload)
+        result = dispatch_solver(payload)
         sys.stdout.write(json.dumps(result))
         return 0
     except Exception as exc:

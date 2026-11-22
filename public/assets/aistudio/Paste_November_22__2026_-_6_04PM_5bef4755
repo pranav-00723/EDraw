@@ -1,0 +1,1177 @@
+
+MASTER ENGINEERING PROMPT — REBUILD EDRAW AS A GENERAL ENGINEERING GRAPHICS QUESTION INTERPRETATION AND SOLVING SYSTEM
+
+1. YOUR ROLE
+
+Act as a senior software architect, OCR engineer, engineering graphics domain expert, computational geometry engineer, mathematics specialist, and full-stack developer.
+
+Your task is to inspect, debug, refactor, and complete my existing EDraw application.
+
+EDraw is an AI-powered Engineering Graphics learning and problem-solving application. It must accept engineering drawing questions in image or text form, understand the question regardless of how it is worded, convert it into structured JSON, identify mathematical constraints, solve the problem, generate appropriate JavaScript output, and present a correct, explainable solution.
+
+This is an implementation task, not a request for a design proposal.
+
+Inspect the actual codebase, implement the changes, integrate them into the existing application, and verify the result.
+
+Do not replace the application with a superficial demonstration, static mockup, or unrelated new project.
+
+2. THE CORE PROBLEM
+
+The current OCR and question-processing implementation handles some basic Engineering Graphics questions but fails on unfamiliar, indirect, complex, or edge-case questions.
+
+Examples include:
+
+- Confusing a front-view angle with an inclination to HP or VP.
+- Failing to calculate true length when it is not explicitly provided.
+- Failing to infer unknown inclinations from projection measurements and other constraints.
+- Assuming every angle mentioned in a question is an inclination of the true line.
+- Assuming every question directly provides the required measurements.
+- Failing when the question uses unfamiliar wording, alternative terminology, or indirect mathematical descriptions.
+- Failing when endpoint labels differ from A and B.
+- Failing when a question specifies projected length, reference-line angle, endpoint position, or another indirect geometric relationship.
+- Producing a fixed JSON schema that does not represent the actual question.
+- Producing an answer without checking whether the information is sufficient.
+- Making incorrect assumptions about missing information.
+- Using one module's interpretation rules for another module.
+
+Fix the underlying architectural weaknesses instead of adding isolated patches for individual questions.
+
+The objective is broad generalization across Engineering Graphics questions, including questions not explicitly anticipated during development.
+
+Do not claim that any system can guarantee correctness on literally every possible question. Build a robust, extensible architecture that maximizes generalization, validates results, detects unsupported cases, and fails transparently rather than inventing facts.
+
+3. FIRST ACTION: INSPECT THE EXISTING PROJECT
+
+Before modifying code, inspect the actual project structure and identify:
+
+- Frontend framework and application entry point.
+- Backend and API routes.
+- Existing OCR provider and invocation logic.
+- Image upload and preprocessing pipeline.
+- Existing prompts and Gemini/API integrations.
+- JSON schemas, parsers, validators, and geometry calculations.
+- JavaScript generation and rendering logic.
+- Database and authentication integrations, if present.
+- Module selection and question-routing logic.
+- Existing tests, dependencies, and environment configuration.
+
+Read relevant files before rewriting them.
+
+Create an implementation plan based on the actual code, then proceed without waiting for approval unless a genuinely blocking decision requires clarification.
+
+PRESERVATION REQUIREMENTS
+
+- Preserve existing working functionality.
+- Preserve routes, integrations, authentication, registration, database access, and UI features unless changes are necessary.
+- Reuse existing components and dependencies wherever appropriate.
+- Do not delete working files merely to simplify the implementation.
+- Do not invent API keys, database credentials, environment variables, or successful test results.
+- Do not assume Git metadata exists.
+- Do not initialize a new Git repository as a side effect.
+- Keep secrets on the backend.
+- Never expose API keys in browser code.
+- Report required environment configuration explicitly.
+
+If the architecture needs substantial refactoring, perform it incrementally and keep the application runnable.
+
+4. REQUIRED SYSTEM ARCHITECTURE
+
+Implement the following pipeline:
+
+USER IMAGE OR TEXT
+    |
+    v
+INPUT NORMALIZATION
+    |
+    v
+OCR / VISUAL EXTRACTION
+    |
+    v
+RAW EVIDENCE PRESERVATION
+    |
+    v
+MODULE IDENTIFICATION
+    |
+    v
+SEMANTIC QUESTION INTERPRETATION
+    |
+    v
+DYNAMIC QUESTION-SPECIFIC JSON
+    |
+    v
+SCHEMA VALIDATION
+    |
+    v
+DOMAIN CONSTRAINT CONSTRUCTION
+    |
+    v
+DETERMINISTIC SOLVER
+    |
+    v
+SOLUTION VALIDATION
+    |
+    v
+QUESTION-SPECIFIC JAVASCRIPT / VISUALIZATION CONFIGURATION
+    |
+    v
+FINAL ANSWER, DERIVATION, AND ENGINEERING DRAWING
+
+Every stage must have clearly defined inputs and outputs.
+
+Do not combine OCR, semantic interpretation, mathematical reasoning, solving, and rendering into one enormous prompt or opaque function.
+
+LAYER A: OCR AND EVIDENCE EXTRACTION
+
+Extract text, symbols, numerical values, units, diagram labels, dimension lines, and relevant visual relationships.
+
+LAYER B: GENERAL QUESTION INTERPRETATION
+
+Understand what the question states, what it asks, which entities are involved, and what each measurement or relationship means.
+
+LAYER C: MODULE-SPECIFIC DOMAIN ADAPTERS
+
+Interpret the question using the applicable Engineering Graphics rules.
+
+LAYER D: DYNAMIC JSON GENERATION
+
+Represent the problem accurately, including knowns, unknowns, constraints, assumptions, requested outputs, and provenance.
+
+LAYER E: CONSTRAINT SOLVER
+
+Calculate unknown quantities using verified equations and geometric relationships.
+
+LAYER F: VALIDATION
+
+Check mathematical consistency, constraint satisfaction, solution uniqueness, physical feasibility, and output completeness.
+
+LAYER G: JAVASCRIPT GENERATION AND RENDERING
+
+Produce a question-specific execution configuration and, where necessary, a standalone JavaScript solution file.
+
+LAYER H: USER INTERFACE
+
+Display the recognized question, structured data, solution steps, final results, and generated drawings.
+
+Each layer must be independently testable.
+
+5. BUILD A MODULE-INDEPENDENT CORE
+
+The general question interpreter must not be hardcoded to projection of straight lines.
+
+It must understand general Engineering Graphics concepts, including:
+
+- Geometric entities.
+- Points, lines, planes, solids, and surfaces.
+- Dimensions and units.
+- Angles and orientations.
+- Geometric relationships.
+- Reference planes and reference lines.
+- Projections and views.
+- Spatial positions and coordinate systems.
+- Construction requirements.
+- Given conditions.
+- Unknown quantities.
+- Requested outputs.
+- Geometric constraints.
+- Construction sequences.
+- Mathematical relationships.
+- Diagram annotations.
+- Conditional instructions and exceptions.
+
+Implement a module registry or equivalent extensible routing system.
+
+Each module adapter must declare:
+
+- Stable module identifier.
+- Module name and supported terminology.
+- Recognized geometric entities.
+- Relevant measurement types.
+- Valid constraint types.
+- Available equation families.
+- Supported solver capabilities.
+- Output requirements.
+- Rendering capabilities.
+- Validation rules.
+- Supported and unsupported problem classes.
+
+Identify modules from the meaning and context of questions, not isolated keywords.
+
+For example, the phrase "inclined at 30 degrees" does not identify the module or the meaning of the angle by itself.
+
+Use the entity, reference, relationship, and full question context.
+
+If the module cannot be identified confidently, retain the general interpretation and request clarification or route it to an appropriate general solver.
+
+Never silently force an unfamiliar question into the nearest known module.
+
+6. MODULE-SPECIFIC SUPPORT
+
+Implement and thoroughly test these two modules first:
+
+1. Projection of Points.
+2. Projection of Straight Lines.
+
+The architecture must support future modules without redesigning the general OCR pipeline.
+
+Potential future modules include:
+
+- Projection of planes.
+- Projection of solids.
+- Sections of solids.
+- Development of surfaces.
+- Isometric projections.
+- Orthographic projections.
+- Perspective drawing.
+- Engineering curves.
+- Intersection of surfaces.
+- Auxiliary views.
+- Other Engineering Graphics topics supported by the application.
+
+The core interpreter must be shared. Domain-specific equations, constraints, validators, and rendering rules must belong to their respective adapters.
+
+Do not claim a future module is fully supported merely because its name appears in a registry. Report its actual implementation and testing status.
+
+7. OCR: MAXIMIZE ACCURACY AND PRESERVE EVIDENCE
+
+Inspect the existing OCR implementation before deciding whether to replace or improve it.
+
+Support both image input and directly supplied text.
+
+Extract, when present:
+
+- Complete question text.
+- Problem numbers.
+- Endpoint labels.
+- Point labels.
+- Line and plane names.
+- Numerical values.
+- Mathematical operators.
+- Degree symbols.
+- Units.
+- Superscripts and subscripts.
+- Fractions.
+- Roots.
+- Greek letters.
+- Coordinate notation.
+- Reference-plane abbreviations.
+- Projection terminology.
+- Diagram labels.
+- Relevant spatial relationships shown by diagrams.
+
+Pay special attention to confusing notation:
+
+- 0 and O.
+- 1 and lowercase l.
+- 5 and S.
+- Degree symbols and punctuation.
+- Minus signs and dashes.
+- Decimal points.
+- Subscripts and superscripts.
+- HP, VP, XY, and XV.
+- Similar-looking endpoint labels.
+
+Do not blindly replace uncertain characters with guessed values.
+
+PRESERVE THREE REPRESENTATIONS
+
+1. raw_ocr_text: Original OCR output, preserved faithfully.
+2. normalized_text: Cleaned text with normalized spacing and notation.
+3. interpretation: Semantic representation of the question.
+
+Never discard raw evidence when normalizing text.
+
+CONFIDENCE
+
+Preserve OCR confidence when the provider supports it.
+
+Otherwise, distinguish estimated interpretation confidence from actual OCR confidence. Never fabricate confidence scores.
+
+If a symbol, label, or measurement is ambiguous and materially affects the answer, identify the ambiguity and request clarification when necessary.
+
+DIAGRAM INTERPRETATION
+
+Inspect diagrams for labels, dimensions, reference lines, projection symbols, and explicit geometric relationships.
+
+Do not infer exact measurements from a drawing's apparent proportions unless the question explicitly permits graphical measurement.
+
+8. SEMANTIC INTERPRETATION
+
+Build a general interpretation stage that converts the question into explicit engineering concepts.
+
+Distinguish:
+
+- Explicitly stated facts.
+- Mathematically implied facts.
+- Requested quantities.
+- Unknowns.
+- Uncertainties.
+- Assumptions.
+- Quantities that cannot be inferred from available evidence.
+
+The same geometric condition may appear through different vocabulary, sentence structures, abbreviations, or indirect descriptions.
+
+Normalize equivalent meanings into a consistent internal representation.
+
+Never treat different geometric concepts as equivalent merely because their wording is similar.
+
+PRESERVE THESE DISTINCTIONS
+
+- True-line inclination versus front-view angle.
+- True-line inclination versus top-view angle.
+- Angle to HP versus angle to VP.
+- Angle with XY/XV versus angle with a projection plane.
+- True length versus front-view length.
+- True length versus top-view length.
+- Point height above HP versus point depth in front of VP.
+- Line orientation versus endpoint location.
+- Given measurement versus requested measurement.
+- Explicit value versus derived value.
+
+Interpret each angle using the object it describes, its reference, and the projection or plane involved.
+
+Example:
+
+If the question says "the front view makes an angle of 40 degrees with XY", do not automatically convert it into "inclination to HP = 40 degrees".
+
+If the question says "the line is inclined at 40 degrees to HP", do not automatically interpret it as a front-view angle.
+
+If wording is genuinely ambiguous, preserve the possible interpretations and request clarification when they produce different solutions.
+
+9. DYNAMIC JSON: THE QUESTION DETERMINES THE STRUCTURE
+
+Do not use one rigid, module-specific JSON object for every question.
+
+Build a validated canonical problem envelope containing a module-specific payload.
+
+The outer envelope should remain reasonably stable so the frontend, validator, solver, and renderer communicate reliably.
+
+The domain-specific payload must adapt to the question.
+
+Dynamic question-specific data must not mean an unpredictable outer API contract.
+
+Use a structure conceptually similar to this:
+
+{
+  "schema_version": "1.0",
+  "problem_id": "generated-identifier",
+  "module": {
+    "id": "identified-module",
+    "name": "identified-module-name",
+    "confidence": null
+  },
+  "source": {
+    "input_type": "image",
+    "raw_ocr_text": "",
+    "normalized_text": "",
+    "diagram_evidence": [],
+    "ambiguities": []
+  },
+  "interpretation": {
+    "entities": [],
+    "givens": [],
+    "constraints": [],
+    "requested_outputs": [],
+    "assumptions": [],
+    "unresolved_questions": []
+  },
+  "solution_state": {
+    "status": "not_solved",
+    "unknowns": [],
+    "results": [],
+    "derivation": [],
+    "validation": []
+  },
+  "execution": {
+    "solver_id": null,
+    "renderer_id": null,
+    "visualization_config": {}
+  }
+}
+
+This is a conceptual example, not a requirement to use precisely these fields if the existing architecture has a better validated design.
+
+Define the actual schema with clear types, required fields, optional fields, enums, and validation rules.
+
+The module-specific payload must represent different entities and relationships without changing the entire application's data contract.
+
+REQUIREMENTS FOR EVERY JSON OUTPUT
+
+- Valid JSON syntax.
+- No Markdown fences around API JSON responses.
+- No comments inside JSON.
+- No trailing commas.
+- Explicit units for dimensional values.
+- Explicit angle units.
+- Stable identifiers for entities.
+- Clear distinction between known and unknown quantities.
+- Explicit source and provenance for extracted values.
+- Distinction between observed, inferred, assumed, and calculated data.
+- Representation of uncertainty where relevant.
+- Record of requested output quantities.
+- Machine-readable unresolved or error states where necessary.
+
+Never encode an unknown value as zero.
+
+Never silently omit a quantity relevant to the question.
+
+Never invent default measurements.
+
+Never label a derived value as directly extracted.
+
+QUANTITY REPRESENTATION
+
+Prefer typed quantities over ambiguous bare numbers.
+
+For example:
+
+{
+  "id": "front_view_angle",
+  "kind": "angle",
+  "value": 45,
+  "unit": "deg",
+  "status": "given",
+  "reference": {
+    "entity": "front_view",
+    "relation": "angle_with",
+    "target": "XY"
+  },
+  "source": {
+    "type": "text",
+    "evidence": "front view makes an angle of 45 degrees with XY"
+  }
+}
+
+This demonstrates why a value alone is insufficient. The solver must know what the angle describes.
+
+Use an extensible schema capable of representing new quantity types without requiring a completely new application-wide JSON structure for every module.
+
+10. PROJECTION OF POINTS: REQUIRED DOMAIN ADAPTER
+
+Implement a dedicated point-projection adapter.
+
+It must handle questions concerning:
+
+- Points above, below, or on HP.
+- Points in front of, behind, or on VP.
+- All four standard quadrants.
+- Distances from HP and VP.
+- Distances from reference planes.
+- Front-view and top-view locations.
+- Positions relative to XY.
+- Multiple points.
+- Relative positions between points.
+- Missing or indirectly described coordinates.
+- Questions asking for the quadrant or spatial position.
+- Questions asking for projections of multiple points.
+- Unconventional wording or labels.
+
+Represent point locations using a consistent coordinate convention.
+
+One possible convention is:
+
+- x: position along XY.
+- y: signed depth relative to VP.
+- z: signed height relative to HP.
+
+Document the sign convention and ensure that all solvers and renderers use it consistently.
+
+Do not assume a point's label determines its position.
+
+Do not assume that a single-point question can always be solved without sufficient coordinates or reference conditions.
+
+Do not invent coordinates that the question does not determine.
+
+For each point-projection problem, determine:
+
+1. Which coordinates or positional relationships are given.
+2. Which coordinates remain unknown.
+3. Which projections can be constructed.
+4. Whether the quadrant or spatial location is uniquely determined.
+5. Whether multiple valid configurations remain possible.
+6. Which outputs the question explicitly requests.
+
+Validate that generated projections agree with supplied coordinates and reference-plane conditions.
+
+11. PROJECTION OF STRAIGHT LINES: GENERAL CONSTRAINT SOLVER
+
+Implement a dedicated straight-line adapter independent of endpoint nomenclature and question templates.
+
+Support arbitrary valid endpoint labels, including AB, CD, NM, LK, JP, and labels not encountered during development.
+
+Do not hardcode A and B into the mathematical solver.
+
+Use endpoint identifiers extracted from the interpreted question.
+
+REPRESENTABLE QUANTITIES
+
+- True length.
+- Front-view length.
+- Top-view length.
+- Inclination to HP.
+- Inclination to VP.
+- Front-view angle with XY/XV.
+- Top-view angle with XY/XV.
+- Endpoint height relative to HP.
+- Endpoint depth relative to VP.
+- Endpoint coordinates when available.
+- Relative height difference.
+- Relative depth difference.
+- Relative displacement along XY.
+- Quadrant and spatial orientation.
+- Whether an endpoint lies in a reference plane.
+- Whether a line is parallel or perpendicular to a reference plane.
+- Whether a line is parallel or perpendicular to a reference line.
+- Requested projections.
+- Requested unknown measurements.
+
+Support additional constraint types through an extensible registry.
+
+FUNDAMENTAL GEOMETRIC REPRESENTATION
+
+For endpoints A and B, define:
+
+Delta x = x_B - x_A
+
+Delta y = y_B - y_A
+
+Delta z = z_B - z_A
+
+True length:
+
+L = sqrt(Delta x^2 + Delta y^2 + Delta z^2)
+
+Front-view length:
+
+L_F = sqrt(Delta x^2 + Delta z^2)
+
+Top-view length:
+
+L_T = sqrt(Delta x^2 + Delta y^2)
+
+Under the selected coordinate convention, inclination to HP:
+
+theta = asin(|Delta z| / L)
+
+Inclination to VP:
+
+phi = asin(|Delta y| / L)
+
+Front-view angle with XY:
+
+alpha_F = atan2(|Delta z|, |Delta x|)
+
+Top-view angle with XY:
+
+alpha_T = atan2(|Delta y|, |Delta x|)
+
+These formulas apply under the stated coordinate convention.
+
+If signed directions, directed angles, or orientation conventions matter, retain the appropriate signed components rather than losing directional information through absolute values.
+
+Use consistent degree/radian conversion.
+
+Handle zero-length projections and inverse-trigonometric domain errors explicitly.
+
+CRITICAL SOLVING REQUIREMENT
+
+Do not select a formula solely because a keyword appears in the question.
+
+Translate the interpreted measurements into mathematical constraints.
+
+Examples:
+
+- Known true length constrains the 3D displacement magnitude.
+- Known front-view length constrains the front-view displacement magnitude.
+- Known top-view length constrains the top-view displacement magnitude.
+- Known front-view angle constrains the relationship between Delta x and Delta z.
+- Known top-view angle constrains the relationship between Delta x and Delta y.
+- Known inclination to HP constrains the relationship between Delta z and true length.
+- Known inclination to VP constrains the relationship between Delta y and true length.
+- Endpoint positions constrain the relevant displacement components.
+
+Do not require true length to be supplied if it can be derived.
+
+Do not attempt to calculate true length if the constraints do not determine it.
+
+Do not confuse a projected-view angle with the inclination of the original line.
+
+SOLVING STRATEGY
+
+1. Normalize quantities and units.
+2. Identify independent variables.
+3. Construct applicable equations.
+4. Eliminate variables analytically when straightforward.
+5. Use an appropriate numerical method when necessary.
+6. Check all candidate solutions against every original constraint.
+7. Determine whether the solution is unique.
+8. Detect contradictory constraints.
+9. Detect underdetermined systems.
+10. Return all valid solutions when multiple solutions are meaningful and supported.
+11. Request clarification when unresolved ambiguity prevents a reliable answer.
+
+Use deterministic, tested mathematical code for numerical results.
+
+The LLM may assist with semantic interpretation and selecting supported constraint families, but must not be the sole authority for arithmetic or geometric validity.
+
+Do not use a general-purpose numerical optimizer as a substitute for checking whether the problem is mathematically identifiable.
+
+12. GENERAL SOLVING ACROSS MODULES
+
+Build a common solver interface that module adapters can implement.
+
+A solver receives:
+
+- Validated problem representation.
+- Applicable module constraints.
+- Requested outputs.
+- Solver settings and numerical tolerances.
+
+It returns:
+
+- Solution status.
+- Computed quantities.
+- Units.
+- Derivation steps.
+- Constraint residuals or equivalent consistency checks.
+- Remaining unknowns.
+- Ambiguities.
+- Validation results.
+- Explanation of any inability to solve the problem.
+
+Use meaningful statuses:
+
+- solved
+- partially_solved
+- underdetermined
+- ambiguous
+- inconsistent
+- unsupported
+- needs_clarification
+
+Do not force every input into a successful numerical answer.
+
+If underdetermined, identify the missing independent information as specifically as possible.
+
+If inconsistent, identify conflicting constraints where possible.
+
+If unsupported, explain which capability or relationship is missing.
+
+Interpretation success must be separate from solver success. A question can be interpreted correctly even if it cannot be solved uniquely.
+
+13. QUESTION-SPECIFIC JAVASCRIPT GENERATION
+
+The JavaScript output must adapt to the actual question.
+
+Do not create one hardcoded JavaScript file that assumes every question has the same variables, module, drawing, or requested outputs.
+
+Do not allow an LLM to generate unrestricted executable code that is immediately evaluated in the browser.
+
+PREFERRED IMPLEMENTATION
+
+Maintain a stable, tested JavaScript runtime containing reusable functionality for:
+
+- Reading validated problem data.
+- Executing supported solver operations.
+- Creating geometric entities.
+- Computing projections.
+- Producing drawing coordinates.
+- Rendering supported constructions.
+- Displaying measurements.
+- Generating explanation steps.
+- Reporting validation results.
+
+For each question, produce a question-specific execution configuration or generated JavaScript module that:
+
+1. Identifies the module.
+2. References relevant geometric entities.
+3. Contains validated givens and constraints.
+4. Defines requested outputs.
+5. Selects appropriate supported operations.
+6. Supplies drawing parameters.
+7. Specifies required labels and dimensions.
+8. Defines the presentation of the solution.
+
+The generated output must reflect the actual question rather than a fixed example.
+
+STANDALONE JAVASCRIPT REQUIREMENT
+
+Where the existing application requires one JavaScript file per solution, generate a complete, self-contained question-specific file with a clearly defined interface.
+
+It must not depend on undeclared global variables, unavailable libraries, or hidden application state.
+
+If the application already uses a reusable runtime, prefer a small generated module that imports that runtime instead of duplicating the entire geometry engine.
+
+If a standalone file is required, bundle or include only necessary verified functionality.
+
+SAFETY AND VALIDATION
+
+Never execute untrusted LLM-generated code directly.
+
+Prefer validated JSON instructions interpreted by a trusted execution engine.
+
+If JavaScript files must be generated:
+
+- Validate the generated source.
+- Restrict allowed imports and operations.
+- Do not expose server secrets.
+- Do not permit arbitrary file or network access.
+- Do not execute generated code on the server without appropriate isolation.
+- Add timeouts or execution limits where appropriate.
+- Return a clear error if generated code fails validation.
+
+CORRECTNESS
+
+The JavaScript must use actual problem data and calculated results.
+
+It must not contain example measurements copied from a previous question.
+
+It must not fabricate unknown values.
+
+It must not silently substitute a default module or drawing.
+
+If the problem is underdetermined, display known information and unresolved requirements rather than presenting a fabricated completed drawing.
+
+14. VALIDATE STRUCTURED OUTPUT BEFORE USE
+
+Implement schema validation at the API boundary.
+
+The pipeline must be:
+
+OCR result
+-> semantic interpretation
+-> JSON generation
+-> JSON schema validation
+-> semantic consistency checks
+-> constraint construction
+-> solver
+-> numerical validation
+-> execution configuration validation
+-> rendering
+
+If JSON is invalid, attempt a bounded correction process.
+
+Do not retry indefinitely.
+
+Do not repair invalid data by silently changing extracted measurements.
+
+Preserve original evidence and record any correction.
+
+Validate:
+
+- Quantity types.
+- Units.
+- Angle references.
+- Endpoint identifiers.
+- Entity references.
+- Module identifiers.
+- Requested outputs.
+- Constraint references.
+- Solver result status.
+- Rendering instructions.
+
+Validate relationships between fields as well as their individual types.
+
+For example, a constraint referencing an unknown endpoint must be rejected or resolved explicitly.
+
+A numerical answer must not be marked valid merely because the JSON parses successfully.
+
+15. PROMPTING AND LLM INTEGRATION
+
+Inspect existing Gemini and OCR prompts.
+
+Separate instructions by responsibility. Use distinct prompts or model calls where they improve reliability:
+
+1. OCR extraction, if performed by an LLM.
+2. Semantic interpretation.
+3. Module identification.
+4. Structured JSON generation.
+5. Interpretation repair, if necessary.
+6. Explanation generation.
+
+Do not make the LLM independently invent a complete geometry solution when deterministic calculations are available.
+
+Use structured output or schema-constrained generation when supported.
+
+Do not rely exclusively on prompt wording to enforce the schema.
+
+Validate outputs programmatically.
+
+Prompts must instruct the model to:
+
+- Preserve relevant evidence.
+- Distinguish givens from requested quantities.
+- Interpret angles in context.
+- Recognize indirect wording.
+- Avoid module-specific assumptions in the general interpreter.
+- Avoid inventing measurements.
+- Represent uncertainty.
+- Identify missing constraints.
+- Produce valid structured data.
+- Use supported domain concepts and operations.
+- Flag unsupported concepts instead of pretending to solve them.
+
+Do not add prompt instructions indefinitely as a substitute for proper architecture.
+
+If OCR uses a local model, preserve its existing integration where appropriate.
+
+If OCR uses a remote service, preserve the correct API and security boundaries.
+
+Do not assume fine-tuning is necessary. First identify whether each failure originates in OCR, semantic interpretation, schema design, constraint selection, mathematical solving, or rendering.
+
+16. BUILD A GENERAL TESTING FRAMEWORK
+
+Create automated tests that verify generalization rather than merely reproducing known examples.
+
+A. OCR TESTS
+
+Test:
+
+- Clear printed text.
+- Low-quality images.
+- Mathematical symbols.
+- Different endpoint labels.
+- Multi-line questions.
+- Mixed text and diagrams.
+- Unusual spacing and punctuation.
+- Ambiguous symbols.
+- Missing or partially obscured text.
+
+Evaluate OCR accuracy separately from downstream solving accuracy.
+
+B. SEMANTIC INTERPRETATION TESTS
+
+Test:
+
+- Direct statements.
+- Indirect descriptions.
+- Alternative vocabulary.
+- Different sentence structures.
+- Angles of the true line.
+- Angles of front and top views.
+- Angles relative to reference lines.
+- Endpoint-position conditions.
+- Questions mixing several constraint types.
+- Questions asking for quantities that are not directly supplied.
+
+C. PROJECTION OF POINTS TESTS
+
+Cover:
+
+- All four standard quadrants.
+- Points on HP or VP.
+- Points at the intersection of reference planes.
+- Multiple points.
+- Missing coordinates.
+- Relative positions.
+- Alternative point labels.
+- Underdetermined and contradictory cases.
+
+D. PROJECTION OF STRAIGHT LINES TESTS
+
+Cover:
+
+- True length given.
+- True length unknown.
+- Front-view length given.
+- Top-view length given.
+- Both projected lengths given.
+- Inclination to HP given.
+- Inclination to VP given.
+- Front-view angle with XY/XV given.
+- Top-view angle with XY/XV given.
+- Endpoint distances from HP and VP.
+- Endpoint coordinates.
+- Multiple simultaneous constraints.
+- Different endpoint labels.
+- Indirectly phrased questions.
+- Multiple valid geometric configurations.
+- Inconsistent measurements.
+- Insufficient information.
+- Zero-length or degenerate projections where applicable.
+
+E. CROSS-MODULE TESTS
+
+Verify that the general interpreter does not force a point question into the straight-line adapter or vice versa.
+
+Test unknown and unsupported modules to ensure transparent failure.
+
+F. REGRESSION TESTS
+
+Every known failure must become a regression test.
+
+Keep previously working examples passing.
+
+Do not declare success solely because the code compiles.
+
+17. REQUIRED GOLDEN TEST CASES
+
+Use these as initial mathematical regression tests. They are not a complete definition of system capabilities.
+
+TEST 1: TRUE LENGTH AND BOTH INCLINATIONS
+
+Given:
+
+- True length = 80 mm.
+- Inclination to HP = 30 degrees.
+- Inclination to VP = 45 degrees.
+
+Expected magnitudes:
+
+- Vertical displacement = 40 mm.
+- Depth displacement approximately 56.569 mm.
+- XY displacement approximately 40.000 mm.
+- Front-view length approximately 56.569 mm.
+- Top-view length approximately 69.282 mm.
+
+Validate the results against the equations.
+
+TEST 2: FRONT-VIEW ANGLE MUST NOT BE CONFUSED WITH INCLINATION
+
+Given:
+
+- Front-view length = 65 mm.
+- Front-view angle with XY = 45 degrees.
+
+Expected:
+
+- Absolute XY displacement approximately 45.962 mm.
+- Absolute vertical displacement approximately 45.962 mm.
+
+These two givens alone do not determine depth displacement or true length.
+
+The system must identify the problem as underdetermined unless further independent information is available.
+
+TEST 3: POINT COORDINATES
+
+Given a point with:
+
+- x = 25 mm.
+- Signed depth y = 30 mm.
+- Signed height z = 20 mm.
+
+Expected:
+
+- The top-view location must use x and y.
+- The front-view location must use x and z.
+- The chosen sign convention must be applied consistently.
+
+TEST 4: DIFFERENT ENDPOINT NAMES
+
+Use a question about line LK instead of AB.
+
+Expected:
+
+- The entities must be identified as L and K.
+- No solver logic should depend specifically on A or B.
+- Computed quantities must match the equivalent AB problem when geometric constraints are identical.
+
+TEST 5: INCONSISTENT CONSTRAINTS
+
+Construct a problem where the stated true length is smaller than the stated front-view length.
+
+Expected:
+
+- The solver identifies the contradiction because a projection cannot exceed true length.
+- It does not silently modify either measurement.
+
+TEST 6: MISSING INFORMATION
+
+Provide only a true length and an endpoint's height above HP, with no further independent information.
+
+Expected:
+
+- The solver must not assume a unique orientation.
+- It must distinguish known endpoint height from unknown displacement components.
+- It must identify additional information required to determine the requested result.
+
+Add further tests after these initial cases.
+
+For every numerical test, use an independent reference calculation rather than trusting the production solver to validate itself.
+
+18. TEST THE ENTIRE APPLICATION END TO END
+
+Test the real application path, not just isolated functions.
+
+For each representative question, verify that:
+
+1. The user can submit an image or text.
+2. OCR or text input produces evidence.
+3. The semantic interpreter identifies the question correctly.
+4. The correct module adapter is selected.
+5. The JSON is valid.
+6. Constraints are constructed correctly.
+7. The solver returns a correct result or correct unresolved status.
+8. The result passes numerical validation.
+9. Question-specific JavaScript or visualization configuration is generated.
+10. The drawing and answer are rendered.
+11. Errors are displayed meaningfully.
+12. Existing application functionality continues working.
+
+Do not fabricate test outputs or claim an image was processed when no actual test was performed.
+
+If a required API key, model, database, or runtime is unavailable, identify the blocker and complete the testable parts.
+
+19. PERFORMANCE, COST, AND RELIABILITY
+
+Optimize for reliability before adding unnecessary model calls.
+
+- Avoid repeating OCR when an existing result remains valid.
+- Cache only when the cache key includes all relevant inputs and versions.
+- Use deterministic calculations for known mathematical relationships.
+- Keep model calls bounded.
+- Set timeouts.
+- Handle malformed API responses.
+- Handle unavailable providers.
+- Handle unsupported file formats.
+- Avoid infinite retry loops.
+- Log stage-specific errors.
+- Never log secrets.
+- Never silently convert failed operations into successful answers.
+- Trace each result back to its original evidence and constraints.
+
+Do not introduce large new dependencies without a clear benefit.
+
+If a numerical solver, schema validator, or rendering library is necessary, justify its role and integrate it properly.
+
+20. USER EXPERIENCE REQUIREMENTS
+
+The application should provide:
+
+- Image and text input.
+- Clear processing state.
+- Recognized question.
+- Structured interpretation view where appropriate.
+- Clear distinction between given and derived quantities.
+- Generated solution.
+- Step-by-step mathematical reasoning.
+- Drawing or projection when supported.
+- Transparent explanation when more information is required.
+- A way to correct a misread measurement or ambiguous interpretation.
+- Meaningful error states for unsupported questions.
+
+Do not expose unnecessary debugging output to ordinary users.
+
+Keep detailed diagnostic information available in development logs.
+
+A failed solve must not erase the recognized question or extracted evidence.
+
+21. IMPLEMENTATION ORDER
+
+PHASE 1: AUDIT
+
+Inspect the current project and map OCR, interpretation, solver, JSON, JavaScript, and rendering paths.
+
+PHASE 2: ESTABLISH A STABLE CONTRACT
+
+Define the canonical problem envelope, typed quantities, constraint representation, module registry, and validation rules.
+
+PHASE 3: IMPROVE OCR AND INTERPRETATION
+
+Fix evidence preservation, mathematical notation handling, semantic classification, angle-reference interpretation, and indirect wording.
+
+PHASE 4: IMPLEMENT THE POINT ADAPTER
+
+Implement and test point-projection constraints and coordinate conventions.
+
+PHASE 5: IMPLEMENT THE STRAIGHT-LINE ADAPTER
+
+Implement displacement representation, projection equations, angle constraints, endpoint conditions, and numerical validation.
+
+PHASE 6: IMPLEMENT SOLVER ORCHESTRATION
+
+Create the common solver interface, underdetermination detection, ambiguity handling, contradiction detection, and result reporting.
+
+PHASE 7: IMPLEMENT QUESTION-SPECIFIC JAVASCRIPT OUTPUT
+
+Integrate validated execution configuration with the existing drawing and visualization runtime.
+
+PHASE 8: INTEGRATE FRONTEND AND BACKEND
+
+Connect the entire pipeline to the real application without breaking existing features.
+
+PHASE 9: TEST AND REPAIR
+
+Run golden tests, edge-case tests, regression tests, and end-to-end tests.
+
+PHASE 10: FINAL AUDIT
+
+Inspect the implementation for incomplete functions, placeholder logic, incorrect assumptions, unhandled errors, and inconsistent data structures.
+
+Do not stop after creating the architecture or completing one module.
+
+22. STRICT PROHIBITIONS
+
+Do not:
+
+- Hardcode a single sample question.
+- Hardcode endpoint names.
+- Hardcode one JSON payload for every module.
+- Assume every angle is an inclination to HP or VP.
+- Assume every question supplies true length.
+- Treat OCR text as a mathematically validated solution.
+- Allow the LLM to invent missing measurements.
+- Treat zero as the default for unknown values.
+- Use regex alone as the semantic interpretation engine.
+- Use keyword matching as the only module classifier.
+- Use prompt-only logic where deterministic validation is required.
+- Generate a static drawing unrelated to the actual question.
+- Return plausible-looking answers without constraint validation.
+- Mark unsupported modules as fully implemented.
+- Silently discard ambiguities.
+- Rewrite unrelated working functionality.
+- Expose secrets or execute untrusted generated code without appropriate safeguards.
+- Claim testing succeeded without running tests.
+
+Regex, rules, and pattern matching may support OCR cleanup, entity extraction, and known terminology. They must not be the sole mechanism for understanding every question.
+
+23. ACCEPTANCE CRITERIA
+
+The task is complete only when:
+
+1. The existing project has been inspected.
+2. The architecture is implemented in the actual application.
+3. OCR evidence is preserved.
+4. Semantic interpretation is separate from OCR.
+5. Module routing is extensible.
+6. Projection of Points is implemented and tested.
+7. Projection of Straight Lines is implemented and tested.
+8. Angles are interpreted according to their geometric references.
+9. Unknowns can be solved from independent constraints.
+10. Underdetermined problems are detected.
+11. Contradictory constraints are detected.
+12. JSON is validated before execution.
+13. Question-specific JavaScript reflects the actual problem.
+14. Visualization uses validated inputs and calculations.
+15. Existing functionality has been regression-tested.
+16. No critical stage is merely a placeholder.
+17. Errors are reported without inventing results.
+18. Test results accurately reflect what was executed.
+
+If any criterion cannot be met because of missing dependencies, unavailable services, or environmental limitations, report the limitation explicitly.
+
+24. FINAL DELIVERABLES
+
+After implementation, provide:
+
+1. Summary of original architectural weaknesses.
+2. Description of the architecture actually implemented.
+3. List of files created or modified and their responsibilities.
+4. Actual JSON schema and representative question-specific JSON example.
+5. Implemented module registry and solver interfaces.
+6. Implementation status of Projection of Points.
+7. Implementation status of Projection of Straight Lines.
+8. Question-specific JavaScript generation approach.
+9. Tests executed and their actual results.
+10. Known remaining limitations.
+11. Required environment variables, dependencies, and setup steps.
+12. Exact instructions to run and verify the application.
+
+Do not respond with a theoretical roadmap alone.
+
+Start by inspecting the current codebase, then implement the solution in the existing project.
+
+FINAL ENGINEERING PRINCIPLE
+
+Build one general question-understanding pipeline, multiple specialized Engineering Graphics domain adapters, a validated dynamic JSON representation, deterministic constraint solvers, and question-specific execution outputs.
+
+The system must generalize through explicit semantics, geometry, and verification—not through memorizing individual question formats.

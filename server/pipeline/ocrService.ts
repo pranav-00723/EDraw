@@ -15,6 +15,7 @@ export interface OcrExtractionSuccess {
   input_type: 'image' | 'text';
   raw_text: string;
   confidence: number | null;
+  diagram_evidence?: string[];
   warnings: string[];
   uncertain_readings: UncertainReading[];
 }
@@ -49,14 +50,16 @@ export interface OcrCapabilities {
 const DEFAULT_OLLAMA_MODEL = 'glm-ocr';
 const GEMINI_OCR_MODEL = 'gemini-4-hydrogen';
 
-const OCR_SYSTEM_PROMPT = `You are a verbatim Engineering Drawing OCR transcription engine.
-Transcribe ALL text, mathematical symbols (°, θ, φ, α, β, ′), object/endpoint labels (e.g. AB, PQ, NM, LK, JP), plane references (HP, VP), units (mm, cm, m, deg), and measurements exactly as written in the image.
+const OCR_SYSTEM_PROMPT = `You are a verbatim Engineering Drawing OCR & Visual Evidence Extraction engine.
+Extract ALL text, problem numbers, point labels, line/plane names, numerical values, mathematical operators, units (mm, cm, m, deg), degree symbols (°), superscripts/subscripts (′), fractions, roots, Greek letters (θ, φ, α, β), coordinate notation, reference planes (HP, VP, XY, XV), and any explicit diagram labels or dimension callouts visible in the image.
+
 CRITICAL RULES:
-- Preserve exact problem wording, symbols, labels, and numbers.
-- Do NOT solve the problem.
+- Preserve exact problem wording, symbols, labels, and numbers verbatim.
+- Do NOT solve the problem or calculate derived numbers.
 - Do NOT invent missing measurements or silently guess illegible digits.
-- If a number or symbol is blurry or ambiguous, wrap it in [UNCERTAIN: <best reading>] so downstream validation can flag it.
-- Output ONLY the transcribed question text.`;
+- Do NOT infer unstated dimensions from apparent drawing proportions.
+- If a character, digit, or symbol is blurry or ambiguous (e.g. 0 vs O, 1 vs l, 5 vs S, missing °), wrap it in [UNCERTAIN: <best reading>] so downstream validation can flag it.
+- If a diagram shows explicit labels or dimensions not written in prose, append them at the end under "[DIAGRAM EVIDENCE]: ..." without mixing them into the problem prose.`;
 
 export function getOllamaConfig(): { baseUrl: string | null; model: string; apiKey: string | null } {
   const rawUrl = (process.env.OLLAMA_BASE_URL || '').trim();
@@ -104,6 +107,17 @@ export function getOcrCapabilities(): OcrCapabilities {
   };
 }
 
+export function extractDiagramEvidence(rawOutput: string): string[] {
+  const evidence: string[] = [];
+  const regex = /\[DIAGRAM\s+EVIDENCE\]\s*:\s*([^\n]+)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(rawOutput)) !== null) {
+    const line = match[1].trim();
+    if (line) evidence.push(line);
+  }
+  return evidence;
+}
+
 /**
  * Inspects raw OCR text for common symbol misrecognitions without silently altering numbers.
  */
@@ -128,14 +142,15 @@ export function detectUncertainOcrReadings(rawText: string): UncertainReading[] 
   }
 
   // 2. Classic degree-symbol misrecognition as trailing zero:
-  // e.g. "inclined at 300 to HP" or "at 450 to the VP" or "300° to HP"
+  // e.g. "inclined at 300 to HP", "at 450 to the VP", "450 with XY"
   const degreeAsZeroRegex =
-    /(?:inclined\s*(?:at)?|angle\s*(?:of)?|at|making)\s+(\d{3,4})\s*(?:°|deg|degrees)?\s*(?:to|with)\s*(?:the\s*)?(h\.?\s*p\.?|v\.?\s*p\.?)/gi;
+    /(?:inclined\s*(?:at)?|angle\s*(?:of)?|at|making|makes)\s+(?:an\s+angle\s+(?:of\s+)?)?(\d{3,4})\s*(?:°|deg|degrees)?\s*(?:to|with)\s*(?:the\s*)?(h\.?\s*p\.?|v\.?\s*p\.?|xy|xv)\b/gi;
   while ((match = degreeAsZeroRegex.exec(text)) !== null) {
     const rawNum = match[1];
     const numVal = Number(rawNum);
-    const plane = match[2].replace(/[\s.]+/g, '').toUpperCase();
-    const suspectedProp = plane === 'HP' ? 'theta_hp' : 'phi_vp';
+    const targetRaw = match[2].replace(/[\s.]+/g, '').toUpperCase();
+    const isHpOrVp = targetRaw === 'HP' || targetRaw === 'VP';
+    const suspectedProp = isHpOrVp ? (targetRaw === 'HP' ? 'theta_hp' : 'phi_vp') : null;
     if (numVal > 90 && rawNum.endsWith('0')) {
       const candidateDeg = Number(rawNum.slice(0, -1));
       if (candidateDeg >= 0 && candidateDeg <= 90) {
@@ -144,28 +159,42 @@ export function detectUncertainOcrReadings(rawText: string): UncertainReading[] 
           id: `ocr_deg_zero_${idx}`,
           raw_token: match[0],
           suspected_property: suspectedProp,
-          reason: `Read "${rawNum}" for inclination to ${plane} (> 90°). The degree symbol (°) may have been OCR-misread as a trailing "0".`,
+          reason: `Read "${rawNum}" for angle to ${targetRaw} (> 90°). The degree symbol (°) may have been OCR-misread as a trailing "0".`,
           severity: 'blocking',
-          suggested_interpretation: `${candidateDeg}° to ${plane}`,
+          suggested_interpretation: `${candidateDeg}° to ${targetRaw}`,
         });
       }
     }
   }
 
-  // 3. Degree symbol misread as letter 'o', 'O', or corrupted symbol next to angle (e.g., "30o to HP", "45º" is ok, "30O", "30?" or "30§")
+  // 3. Degree symbol misread as letter 'o', 'O', or corrupted symbol next to angle (e.g., "30o to HP", "30O", "30?" or "30§")
   const degreeAsBadSymRegex =
-    /(\d+(?:\.\d+)?)\s*([?§@#%$]|o\b|O\b)\s*(?:to|with)\s*(?:the\s*)?(h\.?\s*p\.?|v\.?\s*p\.?)/g;
+    /(\d+(?:\.\d+)?)\s*([?§@#%$]|o\b|O\b)\s*(?:to|with)\s*(?:the\s*)?(h\.?\s*p\.?|v\.?\s*p\.?|xy|xv)\b/g;
   while ((match = degreeAsBadSymRegex.exec(text)) !== null) {
-    const plane = match[3].replace(/[\s.]+/g, '').toUpperCase();
-    const suspectedProp = plane === 'HP' ? 'theta_hp' : 'phi_vp';
+    const targetRaw = match[3].replace(/[\s.]+/g, '').toUpperCase();
+    const suspectedProp = targetRaw === 'HP' ? 'theta_hp' : targetRaw === 'VP' ? 'phi_vp' : null;
     idx += 1;
     readings.push({
       id: `ocr_deg_sym_${idx}`,
       raw_token: match[0],
       suspected_property: suspectedProp,
-      reason: `Possible OCR symbol misrecognition "${match[1]}${match[2]}" before ${plane}. Confirm whether this means ${match[1]}°.`,
+      reason: `Possible OCR symbol misrecognition "${match[1]}${match[2]}" before ${targetRaw}. Confirm whether this means ${match[1]}°.`,
       severity: 'blocking',
-      suggested_interpretation: `${match[1]}° to ${plane}`,
+      suggested_interpretation: `${match[1]}° to ${targetRaw}`,
+    });
+  }
+
+  // 3b. OCR letter/digit confusion inside measurement values (e.g. "l5 mm", "O.5 m", "S0 mm" where digit confused with l/O/S)
+  const digitLetterConfusionRegex = /\b([OolI]\d|\d[OolI]|S\d|\dS)\s*(?:mm|cm|m|deg|°)\b/g;
+  while ((match = digitLetterConfusionRegex.exec(text)) !== null) {
+    idx += 1;
+    readings.push({
+      id: `ocr_glyph_confusion_${idx}`,
+      raw_token: match[0],
+      suspected_property: null,
+      reason: `Possible glyph confusion (0/O, 1/l, or 5/S) in measurement token "${match[0]}".`,
+      severity: 'blocking',
+      suggested_interpretation: null,
     });
   }
 
@@ -351,6 +380,7 @@ export async function runStage1Ocr(params: {
       };
     }
     const uncertain_readings = detectUncertainOcrReadings(rawText);
+    const diagram_evidence = extractDiagramEvidence(rawText);
     return {
       ok: true,
       stage: 'stage_1_ocr',
@@ -358,6 +388,7 @@ export async function runStage1Ocr(params: {
       input_type: 'text',
       raw_text: rawText,
       confidence: 1,
+      diagram_evidence,
       warnings: uncertain_readings.map((u) => u.reason),
       uncertain_readings,
     };
@@ -374,6 +405,7 @@ export async function runStage1Ocr(params: {
     try {
       const out = await runOllamaGlmOcr(imageBase64, params.fetchImpl);
       const uncertain_readings = detectUncertainOcrReadings(out.text);
+      const diagram_evidence = extractDiagramEvidence(out.text);
       return {
         ok: true,
         stage: 'stage_1_ocr',
@@ -381,6 +413,7 @@ export async function runStage1Ocr(params: {
         input_type: 'image',
         raw_text: out.text,
         confidence: null,
+        diagram_evidence,
         warnings: [...warnings, ...uncertain_readings.map((u) => u.reason)],
         uncertain_readings,
       };
@@ -396,6 +429,7 @@ export async function runStage1Ocr(params: {
     try {
       const text = await runGeminiVisionOcr(imageBase64, mimeType);
       const uncertain_readings = detectUncertainOcrReadings(text);
+      const diagram_evidence = extractDiagramEvidence(text);
       return {
         ok: true,
         stage: 'stage_1_ocr',
@@ -403,6 +437,7 @@ export async function runStage1Ocr(params: {
         input_type: 'image',
         raw_text: text,
         confidence: null,
+        diagram_evidence,
         warnings: [...warnings, ...uncertain_readings.map((u) => u.reason)],
         uncertain_readings,
       };
@@ -418,6 +453,7 @@ export async function runStage1Ocr(params: {
     try {
       const out = await runLocalTesseractOcr(imageBase64);
       const uncertain_readings = detectUncertainOcrReadings(out.text);
+      const diagram_evidence = extractDiagramEvidence(out.text);
       if (out.confidence !== null && out.confidence < 0.65) {
         warnings.push(
           `Local Tesseract OCR confidence is low (${Math.round(out.confidence * 100)}%). Verify extracted measurements carefully.`
@@ -430,6 +466,7 @@ export async function runStage1Ocr(params: {
         input_type: 'image',
         raw_text: out.text,
         confidence: out.confidence,
+        diagram_evidence,
         warnings: [...warnings, ...uncertain_readings.map((u) => u.reason)],
         uncertain_readings,
       };

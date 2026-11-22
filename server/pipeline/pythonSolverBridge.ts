@@ -10,8 +10,10 @@ import { fileURLToPath } from 'url';
 import type {
   AmbiguityRecord,
   CanonicalEngineeringProblem,
+  DerivationStep,
   MissingRequirement,
   SolvedLineCoordinates,
+  SolvedPointRecord,
   SolverStatus,
   ValidationCheck,
   ValidationIssue,
@@ -39,10 +41,12 @@ export interface PythonSolverOutput {
   derived_values: Record<string, PythonDerivedEntry>;
   unresolved_unknowns: Record<string, string>;
   solved_coordinates: SolvedLineCoordinates | null;
+  solved_points: SolvedPointRecord[] | null;
   missing_requirements: MissingRequirement[];
   issues: ValidationIssue[];
   ambiguities: AmbiguityRecord[];
   checks: ValidationCheck[];
+  derivation: DerivationStep[];
 }
 
 export interface PythonSolverFailure {
@@ -210,6 +214,9 @@ export function runStage3PythonSolver(
           derived_values: (parsed.derived_values as Record<string, PythonDerivedEntry>) || {},
           unresolved_unknowns: (parsed.unresolved_unknowns as Record<string, string>) || {},
           solved_coordinates: (parsed.solved_coordinates as SolvedLineCoordinates | null) || null,
+          solved_points: Array.isArray(parsed.solved_points)
+            ? (parsed.solved_points as SolvedPointRecord[])
+            : null,
           missing_requirements: Array.isArray(parsed.missing_requirements)
             ? (parsed.missing_requirements as MissingRequirement[])
             : [],
@@ -218,6 +225,7 @@ export function runStage3PythonSolver(
             ? (parsed.ambiguities as AmbiguityRecord[])
             : [],
           checks: Array.isArray(parsed.checks) ? (parsed.checks as ValidationCheck[]) : [],
+          derivation: Array.isArray(parsed.derivation) ? (parsed.derivation as DerivationStep[]) : [],
         });
       } catch (parseErr) {
         finish({

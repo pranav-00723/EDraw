@@ -23,15 +23,8 @@ import {
 } from 'lucide-react';
 import { PointInput, HpRelation, VpRelation } from '../types/projection';
 import { LineProblemInput, TargetQuadrantB, LineInputMode } from '../types/lines';
-import {
-  parseTextToNormalizedModel,
-  solveNormalizedModel,
-  normalizeMasterOcrText,
-} from '../utils/straightLineMasterSolver';
-import {
-  NormalizedConstraintModel,
-  MasterValidationStatus,
-} from '../types/masterLines';
+import type { NormalizedConstraintModel } from '../types/masterLines';
+import type { MissingRequirement } from '../pipeline/schema';
 
 export interface ExtractedQuestionSchema {
   line_name: string;
@@ -109,6 +102,7 @@ interface ScanQuestionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onApplyPoint: (point: PointInput) => void;
+  onApplyPoints?: (points: PointInput[]) => void;
   onApplyLine: (lineInput: LineProblemInput) => void;
   isDark?: boolean;
   initialTopic?: 'points' | 'lines';
@@ -161,16 +155,22 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
   isOpen,
   onClose,
   onApplyPoint,
+  onApplyPoints,
   onApplyLine,
-  isDark = false,
-  initialTopic = 'lines',
 }) => {
   const [activeTab, setActiveTab] = useState<'upload' | 'camera' | 'text' | 'samples'>('upload');
   const [questionText, setQuestionText] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [parsedResult, setParsedResult] = useState<ParsedQuestionResult | null>(null);
+  const [parsedLineInput, setParsedLineInput] = useState<LineProblemInput | null>(null);
+  const [pointInputs, setPointInputs] = useState<PointInput[] | null>(null);
   const [normalizedModel, setNormalizedModel] = useState<NormalizedConstraintModel | null>(null);
-  const [extractedSchema, setExtractedSchema] = useState<ExtractedQuestionSchema | null>(null);
+  const [blockedInfo, setBlockedInfo] = useState<{
+    moduleTitle?: string;
+    message: string;
+    missingRequirements?: MissingRequirement[];
+    unsupported?: boolean;
+  } | null>(null);
   const [appliedNotification, setAppliedNotification] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -181,6 +181,8 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
   const [cameraPermissionError, setCameraPermissionError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const debounceRef = useRef<number | null>(null);
+  const requestSeqRef = useRef<number>(0);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const nativeCameraInputRef = useRef<HTMLInputElement | null>(null);
@@ -196,150 +198,99 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
   useEffect(() => {
     return () => {
       stopCamera();
+      if (debounceRef.current) {
+        window.clearTimeout(debounceRef.current);
+      }
     };
   }, []);
 
   if (!isOpen) return null;
 
   /**
-   * Deterministic Master Solver parser connecting directly to straightLineMasterSolver
+   * Unified backend multi-module OCR + Semantic Interpretation + Deterministic Python Solver call
    */
-  const parseWithMasterSolver = (
-    text: string,
-    source: 'CLIPBOARD' | 'OCR' | 'SAMPLE' = 'CLIPBOARD'
-  ) => {
-    const cleanText = normalizeMasterOcrText(text.trim());
-    if (!cleanText || cleanText.length < 6) {
-      setParsedResult(null);
-      setNormalizedModel(null);
-      setExtractedSchema(null);
-      return;
-    }
-
-    const model = parseTextToNormalizedModel(cleanText, source);
-    const solution = solveNormalizedModel(model);
-    setNormalizedModel(model);
-
-    if (solution.candidate_solutions && solution.candidate_solutions.length > 0) {
-      const cand = solution.candidate_solutions[0];
-      const parsed: ParsedLineResult = {
-        type: 'LINE',
-        nameA: cand.nameA,
-        nameB: cand.nameB,
-        trueLength: cand.trueLength,
-        thetaDeg: cand.thetaDeg,
-        phiDeg: cand.phiDeg,
-        orientation: cand.orientation,
-        endA: {
-          name: cand.nameA,
-          hpRelation: cand.input.endA.hpRelation,
-          distanceHp: cand.input.endA.distanceHp,
-          vpRelation: cand.input.endA.vpRelation,
-          distanceVp: cand.input.endA.distanceVp,
-        },
-        endB: {
-          name: cand.nameB,
-          hpRelation: cand.input.endB.hpRelation,
-          distanceHp: cand.input.endB.distanceHp,
-          vpRelation: cand.input.endB.vpRelation,
-          distanceVp: cand.input.endB.distanceVp,
-        },
-        mode: cand.input.mode,
-        dep: cand.dep,
-        frontViewLength: cand.frontViewLength,
-        topViewLength: cand.topViewLength,
-        explanation: cand.orientationDesc,
-      };
-      setParsedResult(parsed);
-      setOcrEngine(source === 'SAMPLE' ? 'textbook-dataset' : 'master-geometry-solver');
-    } else {
-      setParsedResult(null);
-    }
-  };
-
-  /**
-   * Process image via server-side Gemini 3.8 Flash OCR and Tesseract engine
-   */
-  const processImageOcr = async (dataUrl: string, mimeType = 'image/jpeg') => {
+  const runScanEndpoint = async (payload: {
+    imageBase64?: string;
+    mimeType?: string;
+    text?: string;
+  }) => {
+    const seq = ++requestSeqRef.current;
     setIsScanning(true);
     setScanError(null);
-    setParsedResult(null);
-    setNormalizedModel(null);
-    setExtractedSchema(null);
+    setBlockedInfo(null);
 
     try {
       const res = await fetch('/api/scan-question', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          imageBase64: dataUrl,
-          mimeType,
-        }),
+        body: JSON.stringify(payload),
       });
 
-      if (!res.ok) {
-        throw new Error(`Server returned status ${res.status}`);
+      const data = await res.json();
+      if (seq !== requestSeqRef.current) return;
+
+      if (!res.ok && !data?.validated_json) {
+        throw new Error(data?.error || `Server returned status ${res.status}`);
       }
 
-      const data = await res.json();
       if (data.success) {
-        const text = data.rawText || '';
-        setQuestionText(text);
+        const text = data.rawText || payload.text || '';
+        if (payload.imageBase64 && text) {
+          setQuestionText(text);
+        }
+        setOcrEngine(data.source || 'multi-module-pipeline');
+        setNormalizedModel(data.normalizedModel || null);
 
-        const model = data.normalizedModel || parseTextToNormalizedModel(text, 'OCR');
-        const solution = data.solution || solveNormalizedModel(model);
-        setNormalizedModel(model);
-
-        if (solution.candidate_solutions && solution.candidate_solutions.length > 0) {
-          const cand = solution.candidate_solutions[0];
-          setParsedResult({
-            type: 'LINE',
-            nameA: cand.nameA,
-            nameB: cand.nameB,
-            trueLength: cand.trueLength,
-            thetaDeg: cand.thetaDeg,
-            phiDeg: cand.phiDeg,
-            orientation: cand.orientation,
-            endA: {
-              name: cand.nameA,
-              hpRelation: cand.input.endA.hpRelation,
-              distanceHp: cand.input.endA.distanceHp,
-              vpRelation: cand.input.endA.vpRelation,
-              distanceVp: cand.input.endA.distanceVp,
-            },
-            endB: {
-              name: cand.nameB,
-              hpRelation: cand.input.endB.hpRelation,
-              distanceHp: cand.input.endB.distanceHp,
-              vpRelation: cand.input.endB.vpRelation,
-              distanceVp: cand.input.endB.distanceVp,
-            },
-            mode: cand.input.mode,
-            dep: cand.dep,
-            frontViewLength: cand.frontViewLength,
-            topViewLength: cand.topViewLength,
-            explanation: cand.orientationDesc,
+        if (data.module === 'projection_of_points' && Array.isArray(data.points) && data.points.length > 0 && !data.blocked && data.parsed) {
+          setPointInputs(data.points);
+          setParsedLineInput(null);
+          setParsedResult(data.parsed);
+          setBlockedInfo(null);
+        } else if (data.module === 'projection_of_straight_lines' && !data.blocked && data.parsed) {
+          const lineCand = data.solution?.candidate_solutions?.[0]?.input || data.parsed;
+          setParsedLineInput(lineCand);
+          setPointInputs(null);
+          setParsedResult(data.parsed);
+          setBlockedInfo(null);
+        } else {
+          setParsedResult(null);
+          setParsedLineInput(null);
+          setPointInputs(null);
+          setBlockedInfo({
+            moduleTitle: data.moduleTitle || 'Engineering Problem',
+            message:
+              data.error ||
+              'Question requires additional constraints or uses an engineering module not yet enabled for interactive canvas plotting.',
+            missingRequirements: data.missing_requirements || [],
+            unsupported: Boolean(data.unsupported),
           });
         }
-        if (data.extractedSchema) {
-          setExtractedSchema(data.extractedSchema);
-        }
-        setOcrEngine(data.source || 'gemini-3.8-flash');
       } else {
         throw new Error(data.error || 'Failed to extract drawing values');
       }
     } catch (err: any) {
-      console.warn('Server OCR error:', err);
-      if (questionText && questionText.trim().length > 5) {
-        parseWithMasterSolver(questionText, 'OCR');
-      } else {
-        setScanError(
-          err.message || 'Unable to recognize text from this photo. Please try uploading a sharper image or type the question directly.'
-        );
-      }
+      if (seq !== requestSeqRef.current) return;
+      setParsedResult(null);
+      setParsedLineInput(null);
+      setPointInputs(null);
+      setScanError(
+        err?.message ||
+          'Unable to parse this question right now. Please check wording or try a sharper image.'
+      );
     } finally {
-      setIsScanning(false);
+      if (seq === requestSeqRef.current) {
+        setIsScanning(false);
+      }
     }
+  };
+
+  const processImageOcr = async (dataUrl: string, mimeType = 'image/jpeg') => {
+    setParsedResult(null);
+    setParsedLineInput(null);
+    setPointInputs(null);
+    setNormalizedModel(null);
+    setBlockedInfo(null);
+    await runScanEndpoint({ imageBase64: dataUrl, mimeType });
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -349,8 +300,10 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
     // Reset previous question state completely so no stale values display
     setQuestionText('');
     setParsedResult(null);
+    setParsedLineInput(null);
+    setPointInputs(null);
     setNormalizedModel(null);
-    setExtractedSchema(null);
+    setBlockedInfo(null);
     setScanError(null);
 
     const reader = new FileReader();
@@ -405,8 +358,10 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
     // Reset old state immediately
     setQuestionText('');
     setParsedResult(null);
+    setParsedLineInput(null);
+    setPointInputs(null);
     setNormalizedModel(null);
-    setExtractedSchema(null);
+    setBlockedInfo(null);
     setScanError(null);
 
     setSelectedImage(dataUrl);
@@ -418,95 +373,65 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
   const handleTextChange = (val: string) => {
     setQuestionText(val);
     setAppliedNotification(false);
-    parseWithMasterSolver(val, 'CLIPBOARD');
+    if (debounceRef.current) {
+      window.clearTimeout(debounceRef.current);
+    }
+    const trimmed = val.trim();
+    if (trimmed.length < 8) {
+      setParsedResult(null);
+      setBlockedInfo(null);
+      return;
+    }
+    debounceRef.current = window.setTimeout(() => {
+      void runScanEndpoint({ text: trimmed });
+    }, 350);
   };
 
   const handleSelectSample = (sample: typeof SAMPLE_TEXTBOOK_QUESTIONS[0]) => {
     setQuestionText(sample.text);
-    parseWithMasterSolver(sample.text, 'SAMPLE');
     setActiveTab('text');
+    void runScanEndpoint({ text: sample.text });
   };
 
   const handleApply = () => {
-    if (normalizedModel) {
-      const solution = solveNormalizedModel(normalizedModel);
-      if (solution.candidate_solutions && solution.candidate_solutions.length > 0) {
-        onApplyLine(solution.candidate_solutions[0].input);
-        setAppliedNotification(true);
-        setTimeout(() => {
-          stopCamera();
-          onClose();
-        }, 600);
-        return;
-      }
-    }
-
-    if (!parsedResult) return;
+    if (!parsedResult || blockedInfo) return;
 
     if (parsedResult.type === 'POINT') {
-      const pointInput: PointInput = {
-        id: `scanned-${Date.now()}`,
-        name: parsedResult.name,
-        color: '#2563eb',
-        hpRelation: parsedResult.hpRelation,
-        distanceHp: parsedResult.distanceHp,
-        vpRelation: parsedResult.vpRelation,
-        distanceVp: parsedResult.distanceVp,
-        x: 0,
-        showOptionalX: false,
-        isHidden: parsedResult.isHidden,
-      };
-      onApplyPoint(pointInput);
-    } else {
-      const lineInput: LineProblemInput = {
-        mode: parsedResult.mode,
-        nameA: parsedResult.nameA,
-        nameB: parsedResult.nameB,
-        color: '#2563eb',
-        trueLength: parsedResult.trueLength,
-        thetaDeg: parsedResult.thetaDeg,
-        phiDeg: parsedResult.phiDeg,
-        endA: {
-          name: parsedResult.nameA,
-          hpRelation: parsedResult.endA.hpRelation,
-          distanceHp: parsedResult.endA.distanceHp,
-          vpRelation: parsedResult.endA.vpRelation,
-          distanceVp: parsedResult.endA.distanceVp,
-        },
-        endB: parsedResult.endB
-          ? {
-              name: parsedResult.nameB,
-              hpRelation: parsedResult.endB.hpRelation,
-              distanceHp: parsedResult.endB.distanceHp,
-              vpRelation: parsedResult.endB.vpRelation,
-              distanceVp: parsedResult.endB.distanceVp,
-            }
-          : {
-              name: parsedResult.nameB,
-              hpRelation: 'ABOVE',
-              distanceHp:
-                parsedResult.orientation === 'PERPENDICULAR_HP'
-                  ? parsedResult.endA.distanceHp + parsedResult.trueLength
-                  : parsedResult.endA.distanceHp,
-              vpRelation: 'IN_FRONT',
-              distanceVp: parsedResult.endA.distanceVp,
-            },
-        dep: parsedResult.dep !== undefined ? parsedResult.dep : 0,
-        frontViewLength: parsedResult.frontViewLength ?? parsedResult.trueLength,
-        topViewLength: parsedResult.topViewLength ?? (parsedResult.orientation === 'PERPENDICULAR_HP' ? 0 : parsedResult.trueLength),
-        targetQuadrantB: 'FIRST',
-        endBQuadrant: 'ABOVE_FRONT',
-        hiddenA: parsedResult.hiddenA,
-        hiddenB: parsedResult.hiddenB,
-      };
-      onApplyLine(lineInput);
+      if (pointInputs && pointInputs.length > 1 && onApplyPoints) {
+        onApplyPoints(pointInputs);
+      } else if (pointInputs && pointInputs.length > 0) {
+        onApplyPoint(pointInputs[0]);
+      } else {
+        onApplyPoint({
+          id: `scanned-${Date.now()}`,
+          name: parsedResult.name,
+          color: '#2563eb',
+          hpRelation: parsedResult.hpRelation,
+          distanceHp: parsedResult.distanceHp,
+          vpRelation: parsedResult.vpRelation,
+          distanceVp: parsedResult.distanceVp,
+          x: 0,
+          showOptionalX: false,
+          isHidden: parsedResult.isHidden,
+        });
+      }
+      setAppliedNotification(true);
+      setTimeout(() => {
+        stopCamera();
+        onClose();
+      }, 450);
+      return;
     }
 
-    setAppliedNotification(true);
-    setTimeout(() => {
-      stopCamera();
-      onClose();
-    }, 600);
+    if (parsedLineInput) {
+      onApplyLine(parsedLineInput);
+      setAppliedNotification(true);
+      setTimeout(() => {
+        stopCamera();
+        onClose();
+      }, 450);
+      return;
+    }
   };
 
   return (
@@ -651,7 +576,7 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
                       )}
                     </div>
                     <p className="font-mono text-[11px] text-slate-600 dark:text-slate-300 line-clamp-2 leading-relaxed">
-                      {questionText || 'Analyzing image with Gemini 3.8 Flash...'}
+                      {questionText || 'Analyzing image with EDraw OCR & Semantic Pipeline...'}
                     </p>
                   </div>
                 </div>
@@ -797,6 +722,40 @@ export const ScanQuestionModal: React.FC<ScanQuestionModalProps> = ({
                   Ignoring solution steps; extracting true length, angles, and plane constraints.
                 </p>
               </div>
+            </div>
+          )}
+
+          {/* Error or Blocked Validation Banner */}
+          {scanError && !isScanning && (
+            <div className="p-3.5 rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50/70 dark:bg-rose-950/30 flex items-start gap-2.5 text-xs text-rose-900 dark:text-rose-200">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <span>{scanError}</span>
+            </div>
+          )}
+
+          {blockedInfo && !isScanning && (
+            <div className="p-4 rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-950/30 flex flex-col gap-2 text-xs text-amber-950 dark:text-amber-200">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-bold flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>
+                    {blockedInfo.unsupported
+                      ? `Module Recognized: ${blockedInfo.moduleTitle}`
+                      : `Cannot Plot Automatically — ${blockedInfo.moduleTitle}`}
+                  </span>
+                </span>
+                <span className="px-2 py-0.5 rounded bg-amber-200/80 dark:bg-amber-900/70 font-mono text-[10px] font-bold uppercase">
+                  {blockedInfo.unsupported ? 'UNSUPPORTED' : 'BLOCKED'}
+                </span>
+              </div>
+              <p className="text-[11px] leading-relaxed">{blockedInfo.message}</p>
+              {blockedInfo.missingRequirements && blockedInfo.missingRequirements.length > 0 && (
+                <ul className="space-y-1 text-[11px] font-mono text-amber-900 dark:text-amber-300">
+                  {blockedInfo.missingRequirements.map((req) => (
+                    <li key={req.id}>• {req.label}: {req.reason}</li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
 

@@ -25,6 +25,7 @@ interface PointsModuleProps {
   onChangeVpColor: (c: string) => void;
   isDark?: boolean;
   initialPointInput?: PointInput;
+  initialPointInputs?: PointInput[];
 }
 
 export const PointsModule: React.FC<PointsModuleProps> = ({
@@ -34,35 +35,46 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
   onChangeVpColor,
   isDark = false,
   initialPointInput,
+  initialPointInputs,
 }) => {
+  const initialPointsSeed =
+    initialPointInputs && initialPointInputs.length > 0
+      ? initialPointInputs
+      : initialPointInput
+      ? [initialPointInput]
+      : [
+          {
+            id: 'pt-default-1',
+            name: 'A',
+            color: '#7138E8',
+            hpRelation: 'ABOVE' as const,
+            distanceHp: 30,
+            vpRelation: 'IN_FRONT' as const,
+            distanceVp: 40,
+            x: 0,
+            showOptionalX: false,
+          },
+        ];
+
   // Active Points state — defaults to standard 1st Quadrant problem (Point A: 30mm above HP, 40mm in front of VP)
-  const [points, setPoints] = useState<PointInput[]>([
-    initialPointInput || {
-      id: 'pt-default-1',
-      name: 'A',
-      color: '#7138E8',
-      hpRelation: 'ABOVE',
-      distanceHp: 30,
-      vpRelation: 'IN_FRONT',
-      distanceVp: 40,
-      x: 0,
-      showOptionalX: false,
-    },
-  ]);
+  const [points, setPoints] = useState<PointInput[]>(initialPointsSeed);
 
   const [selectedPointId, setSelectedPointId] = useState<string | null>(
-    initialPointInput?.id || 'pt-default-1'
+    initialPointsSeed[0]?.id || 'pt-default-1'
   );
   const [activeTab, setActiveTab] = useState<'both' | '3d' | '2d'>('both');
   const [mobileSection, setMobileSection] = useState<'all' | 'inputs' | 'views' | 'analysis'>('all');
   const [isScanModalOpen, setIsScanModalOpen] = useState<boolean>(false);
 
   useEffect(() => {
-    if (initialPointInput) {
+    if (initialPointInputs && initialPointInputs.length > 0) {
+      setPoints(initialPointInputs);
+      setSelectedPointId(initialPointInputs[0].id);
+    } else if (initialPointInput) {
       setPoints([initialPointInput]);
       setSelectedPointId(initialPointInput.id);
     }
-  }, [initialPointInput]);
+  }, [initialPointInput, initialPointInputs]);
 
   // Compute all points coordinates and projections
   const computedPoints = useMemo(() => {

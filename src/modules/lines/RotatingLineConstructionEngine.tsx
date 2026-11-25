@@ -3,8 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ComputedLine } from '../../types/lines';
+import { buildLineVideoSteps, RotatingStepNumber } from '../../utils/lineVideoScript';
+import { useStepVoiceover } from '../../hooks/useStepVoiceover';
 import {
   Play,
   Pause,
@@ -21,9 +23,12 @@ import {
   Ruler,
   Eye,
   Sliders,
+  Volume2,
+  VolumeX,
+  Captions,
 } from 'lucide-react';
 
-export type RotatingStepNumber = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+export type { RotatingStepNumber };
 
 export interface RotatingLineEngineProps {
   line: ComputedLine;
@@ -43,7 +48,14 @@ export const RotatingLineConstructionEngine: React.FC<RotatingLineEngineProps> =
   const [activeStep, setActiveStep] = useState<RotatingStepNumber>(1);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [isCompletedView, setIsCompletedView] = useState<boolean>(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+  const [showCaptions, setShowCaptions] = useState<boolean>(true);
   const playTimerRef = useRef<number | null>(null);
+  const advanceDelayTimerRef = useRef<number | null>(null);
+  const shouldNarrateManualRef = useRef<boolean>(false);
+  const lastSpokenStepRef = useRef<string | null>(null);
+  const isPlayingRef = useRef<boolean>(false);
+  isPlayingRef.current = isPlaying;
 
   // SVG container and zoom/pan
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -97,9 +109,114 @@ export const RotatingLineConstructionEngine: React.FC<RotatingLineEngineProps> =
   const alphaApparent = elAux > 1e-4 ? (Math.atan2(dz, depCalculated) * 180) / Math.PI : 0;
   const betaApparent = plAux > 1e-4 ? (Math.atan2(dy, depCalculated) * 180) / Math.PI : 0;
 
-  // Auto-play timer
+  // Current active step number (forced to 8 in completed view)
+  const currentStep = isCompletedView ? 8 : activeStep;
+
+  // Step Educational Explanations & Voiceover Script
+  const stepInfo = useMemo(
+    () =>
+      buildLineVideoSteps({
+        nameA: line.nameA,
+        nameB: line.nameB,
+        tl,
+        theta,
+        phi,
+        plAux,
+        elAux,
+        zA,
+        yA,
+        zB,
+        yB,
+        depCalculated,
+        alphaApparent,
+        betaApparent,
+        hasHt: Boolean(line.ht?.exists),
+        hasVt: Boolean(line.vt?.exists),
+      }),
+    [
+      line.nameA,
+      line.nameB,
+      tl,
+      theta,
+      phi,
+      plAux,
+      elAux,
+      zA,
+      yA,
+      zB,
+      yB,
+      depCalculated,
+      alphaApparent,
+      betaApparent,
+      line.ht?.exists,
+      line.vt?.exists,
+    ]
+  );
+
+  const currentStepData = stepInfo[currentStep - 1];
+  const nextStepData = currentStep < 8 ? stepInfo[currentStep] : undefined;
+
+  const handleVoiceoverStepComplete = useCallback(() => {
+    if (!isPlayingRef.current) return;
+    if (advanceDelayTimerRef.current !== null) {
+      window.clearTimeout(advanceDelayTimerRef.current);
+    }
+    advanceDelayTimerRef.current = window.setTimeout(() => {
+      advanceDelayTimerRef.current = null;
+      if (!isPlayingRef.current) return;
+      setActiveStep((prev) => {
+        if (prev >= 8) {
+          setIsPlaying(false);
+          return 8;
+        }
+        return (prev + 1) as RotatingStepNumber;
+      });
+    }, 450);
+  }, []);
+
+  const voiceover = useStepVoiceover({
+    activeText: currentStepData.narration,
+    playbackSpeed,
+    voicePreset: 'warm-mentor',
+    onSpeechFinished: handleVoiceoverStepComplete,
+  });
+
+  // Trigger voiceover when playing steps or after explicit step selection
   useEffect(() => {
-    if (isPlaying) {
+    if (!isPlaying && !shouldNarrateManualRef.current) {
+      return;
+    }
+
+    const wasManual = shouldNarrateManualRef.current;
+    shouldNarrateManualRef.current = false;
+
+    if (!voiceover.voiceEnabled) {
+      return;
+    }
+
+    const stepKey = `${currentStepData.num}:${currentStepData.narration}`;
+    if (!wasManual && lastSpokenStepRef.current === stepKey) {
+      return;
+    }
+    lastSpokenStepRef.current = stepKey;
+    void voiceover.speak(currentStepData.narration, nextStepData?.narration);
+  }, [
+    isPlaying,
+    voiceover.voiceEnabled,
+    currentStepData.num,
+    currentStepData.narration,
+    nextStepData?.narration,
+    voiceover.speak,
+  ]);
+
+  // Muted auto-play timer (when voice is muted, advance on a clean timed cadence)
+  useEffect(() => {
+    if (playTimerRef.current !== null) {
+      clearTimeout(playTimerRef.current);
+      playTimerRef.current = null;
+    }
+
+    if (isPlaying && !voiceover.voiceEnabled) {
       playTimerRef.current = window.setTimeout(() => {
         setActiveStep((prev) => {
           if (prev >= 8) {
@@ -108,24 +225,42 @@ export const RotatingLineConstructionEngine: React.FC<RotatingLineEngineProps> =
           }
           return (prev + 1) as RotatingStepNumber;
         });
-      }, 3200);
-    } else {
-      if (playTimerRef.current) {
+      }, Math.round(3200 / playbackSpeed));
+    }
+
+    return () => {
+      if (playTimerRef.current !== null) {
         clearTimeout(playTimerRef.current);
         playTimerRef.current = null;
       }
-    }
-    return () => {
-      if (playTimerRef.current) clearTimeout(playTimerRef.current);
     };
-  }, [isPlaying, activeStep]);
+  }, [isPlaying, activeStep, voiceover.voiceEnabled, playbackSpeed]);
+
+  // Clear pending transition timeout on unmount or pause
+  useEffect(() => {
+    if (!isPlaying && advanceDelayTimerRef.current !== null) {
+      window.clearTimeout(advanceDelayTimerRef.current);
+      advanceDelayTimerRef.current = null;
+    }
+  }, [isPlaying]);
+
+  useEffect(() => {
+    return () => {
+      if (advanceDelayTimerRef.current !== null) {
+        window.clearTimeout(advanceDelayTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleTogglePlay = () => {
     if (isPlaying) {
       setIsPlaying(false);
+      voiceover.stop();
+      lastSpokenStepRef.current = null;
     } else {
       if (activeStep >= 8) setActiveStep(1);
       setIsCompletedView(false);
+      lastSpokenStepRef.current = null;
       setIsPlaying(true);
     }
   };
@@ -133,27 +268,64 @@ export const RotatingLineConstructionEngine: React.FC<RotatingLineEngineProps> =
   const handleStepChange = (step: RotatingStepNumber) => {
     setIsPlaying(false);
     setIsCompletedView(false);
+    voiceover.stop();
+    lastSpokenStepRef.current = null;
+    if (voiceover.voiceEnabled) {
+      shouldNarrateManualRef.current = true;
+      if (step === activeStep) {
+        const target = stepInfo[step - 1];
+        void voiceover.speak(target.narration, stepInfo[step]?.narration);
+        shouldNarrateManualRef.current = false;
+      }
+    }
     setActiveStep(step);
   };
 
   const handlePrev = () => {
-    setIsPlaying(false);
-    setIsCompletedView(false);
-    setActiveStep((prev) => (Math.max(1, prev - 1) as RotatingStepNumber));
+    const nextStep = Math.max(1, activeStep - 1) as RotatingStepNumber;
+    handleStepChange(nextStep);
   };
 
   const handleNext = () => {
-    setIsPlaying(false);
-    setIsCompletedView(false);
-    setActiveStep((prev) => (Math.min(8, prev + 1) as RotatingStepNumber));
+    const nextStep = Math.min(8, activeStep + 1) as RotatingStepNumber;
+    handleStepChange(nextStep);
   };
 
   const handleReset = () => {
     setIsPlaying(false);
     setIsCompletedView(false);
+    voiceover.stop();
+    lastSpokenStepRef.current = null;
     setActiveStep(1);
     setZoom(1.0);
     setPan({ x: 0, y: 0 });
+  };
+
+  const handleToggleMute = () => {
+    const nowEnabled = voiceover.toggleMute();
+    lastSpokenStepRef.current = null;
+    if (nowEnabled && isPlaying) {
+      lastSpokenStepRef.current = `${currentStepData.num}:${currentStepData.narration}`;
+      void voiceover.speak(currentStepData.narration, nextStepData?.narration, {
+        forceUnmute: true,
+      });
+    }
+  };
+
+  const handleListenCurrentStep = () => {
+    if (voiceover.isSpeaking) {
+      voiceover.stop();
+      return;
+    }
+    shouldNarrateManualRef.current = false;
+    lastSpokenStepRef.current = `${currentStepData.num}:${currentStepData.narration}`;
+    void voiceover.speak(currentStepData.narration, nextStepData?.narration, {
+      forceUnmute: true,
+    });
+  };
+
+  const handleCycleSpeed = () => {
+    setPlaybackSpeed((prev) => (prev === 1 ? 1.25 : prev === 1.25 ? 0.75 : 1));
   };
 
   // SVG Pan and Zoom handlers
@@ -308,114 +480,7 @@ export const RotatingLineConstructionEngine: React.FC<RotatingLineEngineProps> =
     };
   }, [tl, thetaRad, phiRad, zA, yA, zB, yB, depCalculated, plAux, elAux, line.ht, line.vt]);
 
-  // Current active step number (forced to 8 in completed view)
-  const currentStep = isCompletedView ? 8 : activeStep;
-
-  // Step Educational Explanations
-  const stepInfo = [
-    {
-      num: 1,
-      title: 'Step 1: Reference Line XY',
-      sub: 'Establish the ground line representing the intersection of HP and VP',
-      description:
-        'Draw the horizontal reference line XY. In First-Angle projection, the area above XY represents the Vertical Plane (VP for Front View/Elevation), and the area below XY represents the Horizontal Plane (HP for Top View/Plan).',
-      mathNote: 'Ground line XY: y = 0. Establishes the coordinate origin and drafting scale.',
-    },
-    {
-      num: 2,
-      title: 'Step 2: Locate Endpoint A (a′ and a)',
-      sub: 'Position front view a′ and top view a on the common reference projector',
-      description: `Erect a vertical projector line perpendicular to XY. Mark the Front View a′ at height |zA| = ${Math.abs(
-        zA
-      ).toFixed(1)} mm above HP. Mark the Top View a at depth |yA| = ${Math.abs(yA).toFixed(
-        1
-      )} mm in front of VP (drawn below XY). Both points strictly lie on the exact same vertical projector line.`,
-      mathNote: `a′ = (0, ${zA >= 0 ? '+' : ''}${zA.toFixed(1)} mm), a = (0, ${
-        yA >= 0 ? '-' : '+'
-      }${yA.toFixed(1)} mm in orthographic 2D).`,
-    },
-    {
-      num: 3,
-      title: 'Step 3: First Auxiliary Position — AB₁ (Parallel to VP, Inclined at θ to HP)',
-      sub: 'Draw true length line a′b₁′ at inclination θ, project down to find plan length ab₁',
-      description: `From front view a′, draw a′b₁′ equal to True Length (TL = ${tl.toFixed(
-        1
-      )} mm) inclined at θ = ${theta.toFixed(
-        1
-      )}° to the horizontal. Label b₁′. From b₁′, drop a vertical projector perpendicular to XY down to intersect the horizontal line drawn through a at point b₁. The line ab₁ is parallel to XY and gives the Plan Length (Top View Length PL = TL·cos θ = ${plAux.toFixed(
-        1
-      )} mm).`,
-      mathNote: `a′b₁′ = TL = ${tl.toFixed(1)} mm, θ = ${theta.toFixed(
-        1
-      )}°. Plan Length ab₁ = TL·cos(${theta.toFixed(1)}°) = ${plAux.toFixed(1)} mm.`,
-    },
-    {
-      num: 4,
-      title: 'Step 4: Second Auxiliary Position — AB₂ (Parallel to HP, Inclined at φ to VP)',
-      sub: 'Draw true length line ab₂ at inclination φ, project up to find elevation length a′b₂′',
-      description: `From top view a, draw ab₂ equal to True Length (TL = ${tl.toFixed(
-        1
-      )} mm) inclined at φ = ${phi.toFixed(
-        1
-      )}° to the horizontal. Label b₂. From b₂, erect a vertical projector perpendicular to XY up to intersect the horizontal line drawn through a′ at point b₂′. The line a′b₂′ is parallel to XY and gives the Elevation Length (Front View Length EL = TL·cos φ = ${elAux.toFixed(
-        1
-      )} mm).`,
-      mathNote: `ab₂ = TL = ${tl.toFixed(1)} mm, φ = ${phi.toFixed(
-        1
-      )}°. Elevation Length a′b₂′ = TL·cos(${phi.toFixed(1)}°) = ${elAux.toFixed(1)} mm.`,
-    },
-    {
-      num: 5,
-      title: 'Step 5: Locus Construction (Locus of b′ and Locus of b)',
-      sub: 'Draw continuous horizontal locus lines parallel to XY through b₁′ and b₂ with NO gaps',
-      description: `Through b₁′ in VP, draw the horizontal line parallel to XY: this is the "Locus of b′". Through b₂ in HP, draw the horizontal line parallel to XY: this is the "Locus of b". The locus lines extend seamlessly across the drawing with no gaps, defining the fixed vertical height and depth bounds for end B.`,
-      mathNote: `Locus of b′: height = ${zB.toFixed(1)} mm above HP. Locus of b: depth = ${yB.toFixed(
-        1
-      )} mm in front of VP.`,
-    },
-    {
-      num: 6,
-      title: 'Step 6: Final Top View Rotation (Rotate ab₁ to Intersect Locus of b)',
-      sub: 'Center a, radius R = ab₁ (Plan Length), swing arc to cut Locus of b at final point b',
-      description: `With top view a as center and radius equal to plan length ab₁ (PL = ${plAux.toFixed(
-        1
-      )} mm), swing a circular arc to intersect the Locus of b at point b. Join a and b with a thick continuous object line. This gives the final Top View (Plan) of line AB, inclined at apparent angle β = ${betaApparent.toFixed(
-        1
-      )}° to XY!`,
-      mathNote: `Center a, Radius R = ab₁ = ${plAux.toFixed(
-        1
-      )} mm. Intersection with locus gives b. Final Top View length ab = ${plAux.toFixed(1)} mm.`,
-    },
-    {
-      num: 7,
-      title: 'Step 7: Final Front View Rotation & End Projector Verification',
-      sub: 'Center a′, radius R = a′b₂′ (Elevation Length), swing arc to cut Locus of b′ at b′',
-      description: `With front view a′ as center and radius equal to elevation length a′b₂′ (EL = ${elAux.toFixed(
-        1
-      )} mm), swing a circular arc to intersect the Locus of b′ at point b′. Join a′ and b′ with a thick continuous line for the final Front View. Now connect b′ and b with a thin vertical projector: notice b′ and b lie on the EXACT same vertical line perpendicular to XY!`,
-      mathNote: `Center a′, Radius R = a′b₂′ = ${elAux.toFixed(
-        1
-      )} mm. Projector check: x(b′) ≡ x(b) = DEP = ${depCalculated.toFixed(2)} mm! Verified!`,
-    },
-    {
-      num: 8,
-      title: 'Step 8: Finishing & Engineering Graphics Verification',
-      sub: 'Highlight final views, show apparent angles (α, β), and verify all geometric invariants',
-      description: `The complete orthographic projection is obtained: Front View a′b′ (Elevation) and Top View ab (Plan) are highlighted in bold. Apparent angles α = ${alphaApparent.toFixed(
-        1
-      )}° and β = ${betaApparent.toFixed(
-        1
-      )}° are marked. All construction lines, auxiliary lines, and loci are preserved according to BIS SP 46 standards.`,
-      mathNote: `TL = ${tl.toFixed(1)} mm | EL = ${elAux.toFixed(1)} mm | PL = ${plAux.toFixed(
-        1
-      )} mm | θ = ${theta.toFixed(1)}° | φ = ${phi.toFixed(1)}° | α = ${alphaApparent.toFixed(
-        1
-      )}° | β = ${betaApparent.toFixed(1)}° | DEP = ${depCalculated.toFixed(1)} mm.`,
-    },
-  ];
-
-  // Current Step Description
-  const currentStepData = stepInfo[currentStep - 1];
+  // SVG Coordinates, stepInfo, and currentStepData are resolved above.
 
   // High-Resolution SVG/PNG Export
   const exportAsPng = () => {
@@ -508,11 +573,14 @@ export const RotatingLineConstructionEngine: React.FC<RotatingLineEngineProps> =
           </div>
 
           {/* Quick Action Buttons */}
-          <div className="flex items-center gap-1.5 text-xs">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
             {/* Completed Drawing View Toggle */}
             <button
+              type="button"
               onClick={() => {
                 setIsPlaying(false);
+                voiceover.stop();
+                lastSpokenStepRef.current = null;
                 setIsCompletedView(!isCompletedView);
               }}
               className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
@@ -527,20 +595,69 @@ export const RotatingLineConstructionEngine: React.FC<RotatingLineEngineProps> =
 
             {/* Play/Pause */}
             <button
+              type="button"
               onClick={handleTogglePlay}
               className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
                 isPlaying
                   ? 'bg-amber-600 text-white animate-pulse'
                   : 'bg-blue-600 hover:bg-blue-700 text-white'
               }`}
-              title={isPlaying ? 'Pause Construction' : 'Play Step-by-Step Construction'}
+              title={isPlaying ? 'Pause Construction' : 'Play Step-by-Step Construction with Voiceover'}
             >
               {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
               <span>{isPlaying ? 'Pause' : 'Play'}</span>
             </button>
 
+            {/* Voiceover Mute / Unmute Toggle */}
+            <button
+              type="button"
+              onClick={handleToggleMute}
+              aria-pressed={voiceover.isMuted}
+              className={`px-2.5 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 border ${
+                voiceover.isMuted
+                  ? 'bg-rose-950/70 hover:bg-rose-900/70 text-rose-200 border-rose-800/70'
+                  : voiceover.isSpeaking
+                  ? 'bg-emerald-950/80 hover:bg-emerald-900/80 text-emerald-200 border-emerald-700/80'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+              }`}
+              title={voiceover.isMuted ? 'Unmute step voiceover' : 'Mute step voiceover'}
+            >
+              {voiceover.isMuted ? (
+                <VolumeX className="w-3.5 h-3.5 text-rose-400" />
+              ) : (
+                <Volume2 className={`w-3.5 h-3.5 ${voiceover.isSpeaking ? 'text-emerald-400 animate-pulse' : 'text-blue-400'}`} />
+              )}
+              <span>{voiceover.isMuted ? 'Muted' : 'Voice On'}</span>
+            </button>
+
+            {/* Captions Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowCaptions((prev) => !prev)}
+              aria-pressed={showCaptions}
+              className={`p-1.5 rounded-lg border cursor-pointer transition ${
+                showCaptions
+                  ? 'bg-slate-800 text-blue-300 border-blue-800/70'
+                  : 'bg-slate-900 text-slate-500 border-slate-800 hover:text-slate-300'
+              }`}
+              title={showCaptions ? 'Hide voiceover captions' : 'Show voiceover captions'}
+            >
+              <Captions className="w-4 h-4" />
+            </button>
+
+            {/* Playback Speed */}
+            <button
+              type="button"
+              onClick={handleCycleSpeed}
+              className="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 cursor-pointer font-mono text-[11px] font-semibold"
+              title="Cycle voiceover & animation speed (1x / 1.25x / 0.75x)"
+            >
+              {playbackSpeed}x
+            </button>
+
             {/* Reset */}
             <button
+              type="button"
               onClick={handleReset}
               className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer"
               title="Reset Construction to Step 1"
@@ -550,6 +667,7 @@ export const RotatingLineConstructionEngine: React.FC<RotatingLineEngineProps> =
 
             {/* SVG Export */}
             <button
+              type="button"
               onClick={exportAsSvg}
               className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer"
               title="Export as Clean Vector SVG"
@@ -1413,6 +1531,20 @@ export const RotatingLineConstructionEngine: React.FC<RotatingLineEngineProps> =
             )}
           </svg>
 
+          {/* Live Voiceover Subtitle Overlay */}
+          {showCaptions && (voiceover.isSpeaking || isPlaying) && voiceover.activeCue && (
+            <div className="pointer-events-none absolute bottom-3 left-3 right-32 flex justify-center">
+              <div className="max-w-2xl px-3.5 py-2 rounded-xl bg-slate-950/90 border border-slate-700/80 text-slate-100 text-xs sm:text-sm font-medium shadow-lg backdrop-blur-md flex items-center gap-2">
+                {voiceover.isMuted ? (
+                  <VolumeX className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                ) : (
+                  <Volume2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 animate-pulse" />
+                )}
+                <span className="leading-snug">{voiceover.activeCue.text}</span>
+              </div>
+            </div>
+          )}
+
           {/* Pan / Zoom Floating Controls */}
           <div className="absolute bottom-3 right-3 flex items-center gap-1 bg-slate-900/90 border border-slate-700/80 p-1 rounded-lg backdrop-blur-md">
             <button
@@ -1447,9 +1579,9 @@ export const RotatingLineConstructionEngine: React.FC<RotatingLineEngineProps> =
 
         {/* Bottom Educational Explanation Panel */}
         <div className="p-4 bg-slate-900 border-t border-slate-800 flex flex-col gap-3">
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-300 font-mono text-xs font-bold border border-blue-800">
                   Step {currentStepData.num} of 8
                 </span>
@@ -1460,9 +1592,32 @@ export const RotatingLineConstructionEngine: React.FC<RotatingLineEngineProps> =
               <p className="text-xs text-slate-400 mt-1">{currentStepData.sub}</p>
             </div>
 
-            {/* Previous and Next Navigation */}
-            <div className="flex items-center gap-2">
+            {/* Voiceover Listen + Previous and Next Navigation */}
+            <div className="flex flex-wrap items-center gap-2">
               <button
+                type="button"
+                onClick={handleListenCurrentStep}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition border ${
+                  voiceover.isSpeaking
+                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                }`}
+                title={voiceover.isSpeaking ? 'Stop step voiceover' : 'Speak explanation for this step'}
+              >
+                {voiceover.isSpeaking ? (
+                  <>
+                    <VolumeX className="w-3.5 h-3.5" />
+                    <span>Stop Voice</span>
+                  </>
+                ) : (
+                  <>
+                    <Volume2 className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Narrate Step</span>
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
                 onClick={handlePrev}
                 disabled={currentStep === 1}
                 className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 text-xs font-semibold flex items-center gap-1 cursor-pointer transition border border-slate-700"
@@ -1471,6 +1626,7 @@ export const RotatingLineConstructionEngine: React.FC<RotatingLineEngineProps> =
                 <span>Prev</span>
               </button>
               <button
+                type="button"
                 onClick={handleNext}
                 disabled={currentStep === 8}
                 className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer transition shadow-xs"

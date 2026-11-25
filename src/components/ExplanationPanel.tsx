@@ -14,12 +14,14 @@ import {
   ArrowRight,
   Eye,
   RotateCw,
+  Video,
 } from 'lucide-react';
 
 interface ExplanationPanelProps {
   point: ComputedPoint | null;
   allPoints: ComputedPoint[];
   onSelectPoint?: (id: string) => void;
+  onOpenSolutionVideo?: () => void;
   isDark?: boolean;
 }
 
@@ -27,6 +29,7 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
   point,
   allPoints,
   onSelectPoint,
+  onOpenSolutionVideo,
   isDark = false,
 }) => {
   const [activeTab, setActiveTab] = useState<'steps' | 'details' | 'rules' | 'quadrants'>('steps');
@@ -161,6 +164,17 @@ export const ExplanationPanel: React.FC<ExplanationPanelProps> = ({
               <Info className="w-4 h-4 text-[#7138E8] dark:text-purple-300 shrink-0 mt-0.5" />
               <p>{point.explanation}</p>
             </div>
+
+            {onOpenSolutionVideo && (
+              <button
+                type="button"
+                onClick={onOpenSolutionVideo}
+                className="w-full py-2.5 px-4 rounded-xl bg-[#7138E8] hover:bg-[#5E28D1] text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7138E8]"
+              >
+                <Video className="w-3.5 h-3.5" />
+                <span>Watch Step-by-Step Solution Video</span>
+              </button>
+            )}
           </div>
         )}
         {/* ============================================================== */}

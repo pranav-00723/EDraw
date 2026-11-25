@@ -31,6 +31,7 @@ import { runStage5SvgRenderer } from './server/pipeline/svgRenderer.ts';
 import { generateQuestionJsExecution } from './server/pipeline/jsGenerator.ts';
 import { listRegisteredModules } from './src/pipeline/moduleRegistry.ts';
 import { getMeasurementValue, validateCanonicalProblem } from './src/pipeline/schema.ts';
+import { isStudioTtsAvailable, synthesizeNarrationSpeech } from './server/ttsService.ts';
 
 dotenv.config();
 
@@ -691,6 +692,38 @@ app.get('/api/pipeline/problems/:problemId', (req, res) => {
     return res.status(500).json({
       ok: false,
       error: err?.message || 'Unable to load persisted problem JSON.',
+    });
+  }
+});
+
+// ============================================================================
+// HUMAN-LIKE STUDIO NARRATION TTS ROUTES (Gemini 3.8 Flash Lite TTS)
+// ============================================================================
+
+app.get('/api/tts/status', (_req, res) => {
+  return res.json({
+    ok: true,
+    studioVoiceAvailable: isStudioTtsAvailable(),
+  });
+});
+
+app.post('/api/tts/narrate', async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const result = await synthesizeNarrationSpeech({
+      text: typeof body.text === 'string' ? body.text : '',
+      voicePreset: body.voicePreset,
+    });
+    if (!result.ok) {
+      return res.status(result.status).json(result);
+    }
+    return res.json(result);
+  } catch (err: any) {
+    console.error('Error in /api/tts/narrate:', err);
+    return res.status(500).json({
+      ok: false,
+      code: 'TTS_FAILED',
+      error: err?.message || 'Unable to synthesize speech narration.',
     });
   }
 });

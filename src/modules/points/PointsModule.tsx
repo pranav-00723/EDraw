@@ -15,8 +15,9 @@ import {
   PointParametersCard,
 } from '../../components/QuadrantResultCard';
 import { ScanQuestionModal } from '../../components/ScanQuestionModal';
+import { PointSolutionVideoModal } from '../../components/PointSolutionVideoModal';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
-import { Sparkles, Box, Layers, SlidersHorizontal, CheckCircle2 } from 'lucide-react';
+import { Sparkles, Box, Layers, SlidersHorizontal, CheckCircle2, Video } from 'lucide-react';
 
 interface PointsModuleProps {
   hpColor: string;
@@ -65,6 +66,7 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
   const [activeTab, setActiveTab] = useState<'both' | '3d' | '2d'>('both');
   const [mobileSection, setMobileSection] = useState<'all' | 'inputs' | 'views' | 'analysis'>('all');
   const [isScanModalOpen, setIsScanModalOpen] = useState<boolean>(false);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState<boolean>(false);
 
   useEffect(() => {
     if (initialPointInputs && initialPointInputs.length > 0) {
@@ -182,8 +184,18 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
           )}
         </div>
 
-        {/* Right Quick Controls: Scan Q->Ans + Layout Focus */}
+        {/* Right Quick Controls: Solution Video + Scan Q->Ans + Layout Focus */}
         <div className="flex items-center gap-2 ml-auto">
+          <button
+            type="button"
+            onClick={() => setIsVideoModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-[#E8E2F5] dark:border-slate-700 hover:border-[#7138E8] text-[#5B24CE] dark:text-purple-300 text-xs font-semibold shadow-xs cursor-pointer transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7138E8]"
+            title="Watch animated step-by-step drafting video explaining what, how, why, and when"
+          >
+            <Video className="w-3.5 h-3.5 text-[#7138E8] dark:text-purple-400" />
+            <span>Solution Video</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setIsScanModalOpen(true)}
@@ -301,14 +313,24 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
 
           {(activeTab === 'both' || activeTab === '2d') && (
             <div className="space-y-2">
-              <div className="flex items-center justify-between px-1 flex-wrap gap-1">
+              <div className="flex items-center justify-between px-1 flex-wrap gap-2">
                 <h2 className="text-[11px] font-bold uppercase tracking-wider text-[#77758F] dark:text-slate-400 flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-500" />
                   <span>Generated Projection</span>
                 </h2>
-                <span className="text-[11px] font-mono text-[#77758F] dark:text-slate-400">
-                  VP: Lowercase with Prime (a′) • HP: Lowercase without Prime (a) • Thin XY Line
-                </span>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <span className="text-[11px] font-mono text-[#77758F] dark:text-slate-400">
+                    VP: Lowercase with Prime (a′) • HP: Lowercase without Prime (a) • Thin XY Line
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsVideoModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#F1EBFF] hover:bg-[#E6DCFF] dark:bg-purple-950/60 dark:hover:bg-purple-900/60 text-[#5B24CE] dark:text-purple-200 text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7138E8]"
+                  >
+                    <Video className="w-3 h-3" />
+                    <span>How to Draw This (Video)</span>
+                  </button>
+                </div>
               </div>
               <TwoDOrthographicView
                 points={computedPoints}
@@ -351,6 +373,7 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
             point={selectedPoint}
             allPoints={computedPoints}
             onSelectPoint={setSelectedPointId}
+            onOpenSolutionVideo={() => setIsVideoModalOpen(true)}
             isDark={isDark}
           />
         </div>
@@ -366,6 +389,18 @@ export const PointsModule: React.FC<PointsModuleProps> = ({
           handleAddPoint(scannedPoint);
         }}
         onApplyLine={() => {}}
+      />
+
+      {/* Interactive Step-by-Step Solution Video Modal */}
+      <PointSolutionVideoModal
+        isOpen={isVideoModalOpen}
+        onClose={() => setIsVideoModalOpen(false)}
+        point={selectedPoint}
+        allPoints={computedPoints}
+        onSelectPoint={setSelectedPointId}
+        hpColor={hpColor}
+        vpColor={vpColor}
+        isDark={isDark}
       />
     </div>
   );
